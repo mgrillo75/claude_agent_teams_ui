@@ -297,7 +297,12 @@ function unknownPayloadLooksLikeError(value: unknown): boolean {
   if (type === 'error' || type?.endsWith('_error')) {
     return true;
   }
-  if (record.ok === false || record.success === false) {
+  if (
+    record.ok === false ||
+    record.success === false ||
+    record.isError === true ||
+    record.is_error === true
+  ) {
     return true;
   }
 
@@ -325,6 +330,7 @@ function payloadErrorMessage(payload: Record<string, unknown>): string | null {
   const direct =
     stringField(payload, 'error') ??
     stringField(payload, 'errorMessage') ??
+    stringField(payload, 'stderr') ??
     stringField(payload, 'message');
   if (direct) {
     return direct;

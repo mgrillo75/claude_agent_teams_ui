@@ -425,6 +425,39 @@ Reply to this comment using MCP tool task_add_comment.
     expect(result.items[0]?.preview).not.toContain('{"type"');
   });
 
+  it('marks structured isError payloads as errors and prefers stderr details', () => {
+    const result = extractMemberLogPreviewItems({
+      provider: 'opencode_runtime',
+      maxItems: 3,
+      textLimit: 160,
+      messages: [
+        message({
+          uuid: 'stderr-result',
+          type: 'user',
+          role: 'user',
+          timestamp: '2026-04-01T10:01:00.000Z',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'tool-stderr',
+              content: {
+                isError: true,
+                stderr: 'Permission denied while writing app/index.tsx',
+              },
+            },
+          ],
+        }),
+      ],
+    });
+
+    expect(result.items[0]).toMatchObject({
+      kind: 'tool_result',
+      title: 'Tool error',
+      preview: 'Permission denied while writing app/index.tsx',
+      tone: 'error',
+    });
+  });
+
   it('formats orphan comment result payloads without guessing add vs read semantics', () => {
     const result = extractMemberLogPreviewItems({
       provider: 'claude_transcript',
