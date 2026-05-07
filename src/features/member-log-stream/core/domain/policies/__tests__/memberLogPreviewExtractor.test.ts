@@ -1601,11 +1601,7 @@ Reply to this comment using MCP tool task_add_comment.
       title: 'Bash result',
       preview: 'Tests passed',
     });
-    expect(result.items[1]).toMatchObject({
-      kind: 'tool_use',
-      title: 'Bash',
-      preview: 'pnpm test',
-    });
+    expect(result.items).toHaveLength(1);
   });
 
   it('does not label arbitrary message fields as sent messages', () => {

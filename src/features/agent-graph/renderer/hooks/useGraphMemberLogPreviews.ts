@@ -26,10 +26,18 @@ function buildRequestKey(input: {
   textLimit: number;
   forceRefresh?: boolean;
 }): string {
-  const laneEntries = Object.entries(input.laneIdsByMember)
-    .map(([memberName, laneId]) => [normalizeMemberName(memberName), laneId.trim()] as const)
-    .filter(([, laneId]) => laneId.length > 0)
-    .sort((left, right) => left[0].localeCompare(right[0]));
+  const laneEntriesByMember = new Map<string, string>();
+  for (const [memberName, laneId] of Object.entries(input.laneIdsByMember)) {
+    const normalizedMemberName = normalizeMemberName(memberName);
+    const trimmedLaneId = laneId.trim();
+    if (!normalizedMemberName || !trimmedLaneId || laneEntriesByMember.has(normalizedMemberName)) {
+      continue;
+    }
+    laneEntriesByMember.set(normalizedMemberName, trimmedLaneId);
+  }
+  const laneEntries = Array.from(laneEntriesByMember.entries()).sort((left, right) =>
+    left[0].localeCompare(right[0])
+  );
   return JSON.stringify([
     input.teamName,
     input.memberNames.map(normalizeMemberName).sort((left, right) => left.localeCompare(right)),
@@ -82,6 +90,23 @@ function buildMemberCacheKey(input: {
     input.maxItemsPerMember,
     input.textLimit,
   ]);
+}
+
+function buildLaneIdsForMembers(
+  memberNames: readonly string[],
+  laneIdsByMember: Readonly<Record<string, string>>
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const memberName of memberNames) {
+    const laneId = laneIdForMember(memberName, laneIdsByMember);
+    if (!laneId) continue;
+    result[memberName] = laneId;
+    const normalizedMemberName = normalizeMemberName(memberName);
+    if (normalizedMemberName && normalizedMemberName !== memberName) {
+      result[normalizedMemberName] = laneId;
+    }
+  }
+  return result;
 }
 
 export function getSafeGraphLogPreviewLaneId(
@@ -226,10 +251,11 @@ export function useGraphMemberLogPreviews(input: {
         return;
       }
 
+      const requestedLaneIdsByMember = buildLaneIdsForMembers(membersToRequest, laneIdsByMember);
       const requestKey = buildRequestKey({
         teamName: input.teamName,
         memberNames: membersToRequest,
-        laneIdsByMember,
+        laneIdsByMember: requestedLaneIdsByMember,
         maxItemsPerMember,
         textLimit,
         forceRefresh: options?.forceRefresh,
@@ -247,7 +273,9 @@ export function useGraphMemberLogPreviews(input: {
           const requestOptions: MemberLogPreviewRequestOptions = {
             maxItemsPerMember,
             textLimit,
-            ...(Object.keys(laneIdsByMember).length > 0 ? { laneIdsByMember } : {}),
+            ...(Object.keys(requestedLaneIdsByMember).length > 0
+              ? { laneIdsByMember: requestedLaneIdsByMember }
+              : {}),
             ...(options?.forceRefresh ? { forceRefresh: true } : {}),
           };
           request = api.memberLogStream

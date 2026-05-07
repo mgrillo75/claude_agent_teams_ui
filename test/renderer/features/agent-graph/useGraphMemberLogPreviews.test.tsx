@@ -139,7 +139,10 @@ describe('useGraphMemberLogPreviews', () => {
         <HookProbe
           teamName="alpha-team"
           memberNames={['alice', 'alice']}
-          laneIdsByMember={{ alice: 'secondary:opencode:alice' }}
+          laneIdsByMember={{
+            alice: 'secondary:opencode:alice',
+            bob: 'secondary:opencode:bob',
+          }}
           onState={() => undefined}
         />
       );

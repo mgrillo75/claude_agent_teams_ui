@@ -533,6 +533,8 @@ function buildToolUseKey(input: {
 function isToolUseSupersededBySuccessResult(toolName: string): boolean {
   const canonical = canonicalToolName(toolName);
   return (
+    canonical === 'bash' ||
+    canonical === 'shell' ||
     canonical === 'sendmessage' ||
     canonical === 'message_send' ||
     canonical.startsWith('cross_team_') ||

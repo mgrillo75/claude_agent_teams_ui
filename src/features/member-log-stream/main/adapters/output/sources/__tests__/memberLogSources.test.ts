@@ -189,7 +189,7 @@ describe('ClaudeMemberTranscriptPreviewSource', () => {
     const result = await source.loadPreview(previewInput({ textLimit: 160 }));
 
     expect(result.status).toBe('included');
-    expect(result.items.map((item) => item.kind)).toEqual(['tool_result', 'tool_use']);
+    expect(result.items.map((item) => item.kind)).toEqual(['tool_result']);
     expect(result.items[0]?.preview?.length).toBeLessThanOrEqual(160);
     expect(parseFiles).toHaveBeenCalledWith(['/transcripts/latest.jsonl']);
   });
