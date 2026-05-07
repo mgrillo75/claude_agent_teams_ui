@@ -41,7 +41,7 @@ const {
       error: null as string | null,
       startedAt: null as string | null,
       authUrl: null as string | null,
-    },
+    } as CodexLoginStateDto,
   },
   loginStateListeners: new Set<() => void>(),
   loginSettledListeners: new Set<() => void>(),
@@ -242,6 +242,7 @@ describe('createCodexAccountFeature', () => {
       status: 'idle',
       error: null,
       startedAt: null,
+      authUrl: null,
     };
     loginStateListeners.clear();
     loginSettledListeners.clear();

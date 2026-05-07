@@ -57,6 +57,31 @@ function response(memberName: string, generatedAt: string): MemberLogPreviewResp
   };
 }
 
+function batchResponse(memberNames: string[], generatedAt: string): MemberLogPreviewResponse {
+  return {
+    generatedAt,
+    members: memberNames.map((memberName) => ({
+      memberName,
+      items: [
+        {
+          id: `${memberName}:${generatedAt}`,
+          kind: 'text',
+          provider: 'claude_transcript',
+          timestamp: generatedAt,
+          title: 'Assistant',
+          preview: memberName,
+          tone: 'neutral',
+        },
+      ],
+      coverage: [{ provider: 'claude_transcript', status: 'included' }],
+      warnings: [],
+      truncated: false,
+      overflowCount: 0,
+      generatedAt,
+    })),
+  };
+}
+
 const HookProbe = ({
   teamName,
   memberNames,
@@ -244,6 +269,65 @@ describe('useGraphMemberLogPreviews', () => {
       await Promise.resolve();
     });
     expect(latestState()?.previewsByMember.get('bob')?.items[0]?.preview).toBe('bob');
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it('does not duplicate preview requests when the same visible members are reordered', async () => {
+    const firstLoad = createDeferred<MemberLogPreviewResponse>();
+    apiMock.memberLogStream.getMemberLogPreviews.mockReturnValueOnce(firstLoad.promise);
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <HookProbe teamName="alpha-team" memberNames={['alice', 'bob']} onState={() => undefined} />
+      );
+      await Promise.resolve();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(700);
+      await Promise.resolve();
+    });
+    expect(apiMock.memberLogStream.getMemberLogPreviews).toHaveBeenCalledTimes(1);
+    expect(apiMock.memberLogStream.getMemberLogPreviews).toHaveBeenLastCalledWith(
+      'alpha-team',
+      ['alice', 'bob'],
+      expect.any(Object)
+    );
+
+    await act(async () => {
+      root.render(
+        <HookProbe teamName="alpha-team" memberNames={['bob', 'alice']} onState={() => undefined} />
+      );
+      await Promise.resolve();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(700);
+      await Promise.resolve();
+    });
+    expect(apiMock.memberLogStream.getMemberLogPreviews).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      firstLoad.resolve(batchResponse(['alice', 'bob'], '2026-04-03T00:00:00.000Z'));
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      root.render(
+        <HookProbe teamName="alpha-team" memberNames={['alice', 'bob']} onState={() => undefined} />
+      );
+      await Promise.resolve();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(700);
+      await Promise.resolve();
+    });
+    expect(apiMock.memberLogStream.getMemberLogPreviews).toHaveBeenCalledTimes(1);
 
     act(() => {
       root.unmount();

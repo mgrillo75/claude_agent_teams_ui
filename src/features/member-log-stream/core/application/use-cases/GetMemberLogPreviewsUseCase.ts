@@ -74,9 +74,16 @@ function stableInputKey(input: {
   textLimit: number;
   forceRefresh?: boolean;
 }): string {
+  const memberKeys = input.members
+    .map((member) => [normalizeMemberName(member.memberName), member.laneId ?? ''] as const)
+    .sort((left, right) => {
+      const byName = left[0].localeCompare(right[0]);
+      if (byName !== 0) return byName;
+      return left[1].localeCompare(right[1]);
+    });
   return JSON.stringify([
     input.teamName,
-    input.members.map((member) => [normalizeMemberName(member.memberName), member.laneId ?? '']),
+    memberKeys,
     input.maxItems,
     input.textLimit,
     input.forceRefresh === true,

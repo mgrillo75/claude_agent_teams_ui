@@ -465,7 +465,56 @@ function countArrayField(payload: Record<string, unknown>, keys: readonly string
   return null;
 }
 
+function formatTaskCollectionItem(task: Record<string, unknown>): string | null {
+  const taskRef = taskRefFromPayload(task);
+  const taskSummary = shortTaskSummary(task);
+  if (taskRef && taskSummary) return `${taskRef}: ${taskSummary}`;
+  if (taskRef) return taskRef;
+  return taskSummary;
+}
+
+function formatTaskCollectionArrayPayload(
+  items: readonly unknown[],
+  canonicalToolNameValue: string | null
+): KnownPayloadPreview | null {
+  const canonical = canonicalToolNameValue ?? '';
+  if (canonical !== 'task_list' && canonical !== 'task_briefing') {
+    return null;
+  }
+
+  const tasks = items
+    .map((item) => asRecord(item))
+    .filter((item): item is Record<string, unknown> => Boolean(item));
+  if (tasks.length === 0) {
+    return {
+      title: canonical === 'task_briefing' ? 'Task briefing' : 'Task list',
+      text: '0 tasks',
+    };
+  }
+
+  const taskSummaries = tasks.slice(0, 3).map(formatTaskCollectionItem).filter(Boolean);
+  const remainingTaskCount = Math.max(0, tasks.length - taskSummaries.length);
+  const moreText = remainingTaskCount > 0 ? `; +${remainingTaskCount} more` : '';
+  const countText = `${tasks.length} ${tasks.length === 1 ? 'task' : 'tasks'}`;
+  return {
+    title: canonical === 'task_briefing' ? 'Task briefing' : 'Task list',
+    text:
+      taskSummaries.length > 0
+        ? `${countText} - ${taskSummaries.join('; ')}${moreText}`
+        : countText,
+  };
+}
+
 function formatTaskCollectionPayload(payload: Record<string, unknown>): KnownPayloadPreview | null {
+  for (const key of ['tasks', 'items', 'actionable'] as const) {
+    const value = payload[key];
+    if (!Array.isArray(value)) continue;
+    const collection = formatTaskCollectionArrayPayload(value, 'task_list');
+    if (collection) {
+      return collection;
+    }
+  }
+
   const taskCount = countArrayField(payload, ['tasks', 'items', 'actionable']);
   const summary =
     stringField(payload, 'summary') ??
@@ -934,6 +983,10 @@ function previewUnknownValue(
     const textBlocks = textFromTextContentBlocks(value);
     if (textBlocks) {
       return previewUnknownValue(textBlocks, limit, priorityKeys, toolContext);
+    }
+    const knownCollection = formatTaskCollectionArrayPayload(value, toolContext?.canonicalName);
+    if (knownCollection) {
+      return { ...truncatePreview(knownCollection.text, limit), title: knownCollection.title };
     }
     const parts = value
       .slice(0, 3)

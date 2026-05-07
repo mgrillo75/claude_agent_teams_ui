@@ -5,8 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GraphMemberLogPreviewHud } from '@features/agent-graph/renderer/ui/GraphMemberLogPreviewHud';
 
 import type { GraphNode } from '@claude-teams/agent-graph';
+import type { MemberLogPreviewMember } from '@features/member-log-stream/contracts/dto';
 
-const basePreviewsByMember = new Map([
+const basePreviewsByMember = new Map<string, MemberLogPreviewMember>([
   [
     'team-lead',
     {
@@ -324,6 +325,91 @@ describe('GraphMemberLogPreviewHud', () => {
     });
 
     expect(onOpenMemberProfile).toHaveBeenCalledWith('team-lead', { initialTab: 'logs' });
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it('keeps compact event text readable without repeating the title prefix', async () => {
+    mockedPreviewsByMember = new Map<string, MemberLogPreviewMember>([
+      [
+        'alice',
+        {
+          memberName: 'alice',
+          items: [
+            {
+              id: 'message-sent-preview',
+              kind: 'tool_result',
+              provider: 'claude_transcript',
+              timestamp: '2026-04-03T00:01:00.000Z',
+              title: 'Message sent',
+              preview: 'Message sent to team-lead - #abc done',
+              tone: 'success',
+            },
+            {
+              id: 'generic-tool-result-preview',
+              kind: 'tool_result',
+              provider: 'claude_transcript',
+              timestamp: '2026-04-03T00:00:50.000Z',
+              title: 'Tool result',
+              preview: 'stored',
+              tone: 'success',
+            },
+          ],
+          coverage: [{ provider: 'claude_transcript', status: 'included' }],
+          warnings: [],
+          truncated: false,
+          overflowCount: 0,
+          generatedAt: '2026-04-03T00:01:00.000Z',
+        },
+      ],
+    ]);
+    const node: GraphNode = {
+      id: 'member:alpha-team:alice',
+      kind: 'member',
+      label: 'alice',
+      state: 'active',
+      domainRef: { kind: 'member', teamName: 'alpha-team', memberName: 'alice' },
+    };
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <GraphMemberLogPreviewHud
+          teamName="alpha-team"
+          nodes={[node]}
+          getLogWorldRect={() => ({
+            left: 40,
+            top: 80,
+            right: 300,
+            bottom: 372,
+            width: 260,
+            height: 292,
+          })}
+          getCameraZoom={() => 1}
+          worldToScreen={(x, y) => ({ x, y })}
+          getViewportSize={() => ({ width: 1200, height: 800 })}
+          focusNodeIds={null}
+        />
+      );
+      await Promise.resolve();
+    });
+
+    const messageRow = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('#abc done')
+    );
+    expect(messageRow?.textContent).toContain('Message sent');
+    expect(messageRow?.textContent).toContain('to team-lead - #abc done');
+    expect(messageRow?.textContent).not.toContain('Message sentMessage sent');
+    expect(messageRow?.textContent).not.toContain('Message sent now Message sent');
+
+    const genericResultRow = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('stored')
+    );
+    expect(genericResultRow?.textContent).toContain('Tool result');
 
     act(() => {
       root.unmount();

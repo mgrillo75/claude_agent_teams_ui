@@ -571,6 +571,80 @@ Reply to this comment using MCP tool task_add_comment.
     expect(JSON.stringify(result.items)).not.toContain('agent_teams_task_get_response');
   });
 
+  it('formats direct task list arrays without leaking raw array fields', () => {
+    const result = extractMemberLogPreviewItems({
+      provider: 'claude_transcript',
+      maxItems: 3,
+      textLimit: 220,
+      messages: [
+        message({
+          uuid: 'list-call',
+          timestamp: '2026-04-01T10:00:00.000Z',
+          content: [
+            {
+              type: 'tool_use',
+              id: 'tool-list',
+              name: 'mcp__agent-teams__task_list',
+              input: { teamName: 'demo' },
+            },
+          ],
+        }),
+        message({
+          uuid: 'list-result',
+          type: 'user',
+          role: 'user',
+          timestamp: '2026-04-01T10:01:00.000Z',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'tool-list',
+              content: JSON.stringify([
+                {
+                  id: '4499fbe5-1fee-42a5-8584-851fbfc4adcd',
+                  displayId: '4499fbe5',
+                  subject: 'Fix contact form route',
+                  status: 'todo',
+                  owner: 'bob',
+                },
+                {
+                  id: '0276a054-1111-4222-8333-444444444444',
+                  displayId: '0276a054',
+                  title: 'High-confidence bug triage',
+                  status: 'in_progress',
+                  owner: 'alice',
+                },
+                {
+                  id: '8a9e766b-1111-4222-8333-444444444444',
+                  displayId: '8a9e766b',
+                  title: 'Follow-up split',
+                  status: 'done',
+                  owner: 'tom',
+                },
+                {
+                  id: '898a6a3e-1111-4222-8333-444444444444',
+                  displayId: '898a6a3e',
+                  title: 'Regression research',
+                  status: 'done',
+                  owner: 'team-lead',
+                },
+              ]),
+            },
+          ],
+        }),
+      ],
+    });
+
+    expect(result.items[0]).toMatchObject({
+      kind: 'tool_result',
+      title: 'Task list',
+      preview:
+        '4 tasks - #4499fbe5: Fix contact form route, status todo, owner bob; #0276a054: High-confidence bug triage, status in_progress, owner alice; #8a9e766b: Follow-up split, status done, owner tom; +1 more',
+    });
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.preview).not.toContain('displayId');
+    expect(result.items[0]?.preview).not.toContain('[{');
+  });
+
   it('formats common board and cross-team tool previews compactly', () => {
     const result = extractMemberLogPreviewItems({
       provider: 'opencode_runtime',

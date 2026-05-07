@@ -101,8 +101,13 @@ function itemIcon(item: MemberLogPreviewItem): React.JSX.Element {
   return <MessageSquareText className={`${className} text-slate-300`} />;
 }
 
-function resolveEmptyText(preview: MemberLogPreviewMember | undefined, loading: boolean): string {
+function resolveEmptyText(
+  preview: MemberLogPreviewMember | undefined,
+  loading: boolean,
+  error: string | null
+): string {
   if (loading && !preview) return 'Loading logs';
+  if (error && !preview) return 'Logs unavailable';
   if (preview?.warnings.some((warning) => warning.code === 'codex_member_wide_not_supported')) {
     return 'Unsupported provider';
   }
@@ -111,10 +116,43 @@ function resolveEmptyText(preview: MemberLogPreviewMember | undefined, loading: 
 
 function compactDisplayTitle(item: MemberLogPreviewItem): string {
   const title = item.title.trim();
+  if (title.toLowerCase() === 'tool result') {
+    return title;
+  }
   if (item.kind === 'tool_result' && title.toLowerCase().endsWith(' result')) {
     return title.slice(0, -' result'.length).trim() || title;
   }
   return title;
+}
+
+function trimRepeatedTitlePrefix(preview: string, title: string): string {
+  const normalizedPreview = preview.toLowerCase();
+  const normalizedTitle = title.toLowerCase();
+  if (normalizedPreview.startsWith(`${normalizedTitle} - `)) {
+    return preview.slice(title.length + 3).trim();
+  }
+  if (normalizedPreview.startsWith(`${normalizedTitle}: `)) {
+    return preview.slice(title.length + 2).trim();
+  }
+  if (normalizedPreview.startsWith(`${normalizedTitle} `)) {
+    return preview.slice(title.length + 1).trim();
+  }
+  return preview;
+}
+
+function compactPreviewText(item: MemberLogPreviewItem, displayTitle: string): string {
+  const preview = item.preview?.trim();
+  if (preview) {
+    const compact = trimRepeatedTitlePrefix(preview, displayTitle);
+    return compact || preview;
+  }
+  if (item.kind === 'tool_result') {
+    return item.tone === 'error' ? 'No error output' : 'No output';
+  }
+  if (item.kind === 'tool_use') {
+    return 'No input';
+  }
+  return item.sourceLabel || 'Log event';
 }
 
 function setShellHidden(shell: HTMLDivElement): void {
@@ -155,7 +193,7 @@ export const GraphMemberLogPreviewHud = ({
       }),
     [nodes]
   );
-  const { previewsByMember, loading } = useGraphMemberLogPreviews({
+  const { previewsByMember, loading, error } = useGraphMemberLogPreviews({
     teamName,
     memberNames: visibleMemberNames,
     laneIdsByMember,
@@ -367,10 +405,10 @@ export const GraphMemberLogPreviewHud = ({
     (memberName: string, item: MemberLogPreviewItem) => {
       const relativeTime = formatRelativeTime(item.timestamp);
       const displayTitle = compactDisplayTitle(item);
-      const previewText = item.preview || item.sourceLabel || 'Log event';
+      const previewText = compactPreviewText(item, displayTitle);
       const titleText = relativeTime
-        ? `${item.title} ${relativeTime} ${previewText}`
-        : `${item.title} ${previewText}`;
+        ? `${displayTitle} ${relativeTime} ${previewText}`
+        : `${displayTitle} ${previewText}`;
       const isHighlighted = highlightedItemIds.has(item.id);
 
       return (
@@ -392,23 +430,15 @@ export const GraphMemberLogPreviewHud = ({
           >
             {itemIcon(item)}
           </span>
-          <span
-            className="inline-flex h-5 items-center align-top"
-            style={{ position: 'relative', top: '-3px' }}
-          >
-            <span className="text-[11px] font-medium leading-none text-slate-200">
-              {displayTitle}
-            </span>
-            {relativeTime ? (
-              <span className="ml-1 text-[9px] font-normal leading-none text-slate-500">
-                {relativeTime}
-              </span>
-            ) : null}
+          <span className="align-top text-[11px] font-medium leading-5 text-slate-200">
+            {displayTitle}
           </span>
-          <span
-            className="ml-1 break-words align-top text-[10px] leading-5 text-slate-300/85"
-            style={{ position: 'relative', top: '-3px' }}
-          >
+          {relativeTime ? (
+            <span className="ml-1 align-top text-[9px] font-normal leading-5 text-slate-500">
+              {relativeTime}
+            </span>
+          ) : null}
+          <span className="ml-1 break-words align-top text-[10px] leading-5 text-slate-300/85">
             {previewText}
           </span>
         </button>
@@ -467,7 +497,7 @@ export const GraphMemberLogPreviewHud = ({
                     className="flex h-14 min-h-14 items-center rounded-md border border-dashed border-white/10 bg-[rgba(8,14,28,0.28)] px-3 text-left text-[11px] text-slate-400/60"
                     onClick={() => openLogs(memberName)}
                   >
-                    {resolveEmptyText(preview, loading)}
+                    {resolveEmptyText(preview, loading, error)}
                   </button>
                 )}
                 {preview && preview.overflowCount > 0 ? (

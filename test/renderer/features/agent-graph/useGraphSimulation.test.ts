@@ -316,6 +316,9 @@ describe('stable slot layout planner', () => {
     });
 
     expect(snapshot).not.toBeNull();
+    if (!snapshot) {
+      throw new Error('Expected stable slot layout snapshot');
+    }
     expect(validateStableSlotLayout(snapshot!)).toEqual({ valid: true });
 
     for (const frame of snapshot.memberSlotFrames) {
@@ -429,6 +432,9 @@ describe('stable slot layout planner', () => {
     expect(snapshot).not.toBeNull();
     expect(frame).toBeDefined();
     expect(footprint).toBeDefined();
+    if (!snapshot || !frame || !footprint) {
+      throw new Error('Expected stable slot frame and footprint');
+    }
 
     const legacyHorizontalExtent = snapshot.runtimeCentralExclusion.right;
     const legacyVerticalExtent = Math.abs(snapshot.runtimeCentralExclusion.top);
@@ -990,6 +996,9 @@ describe('stable slot layout planner', () => {
     });
 
     expect(snapshot).not.toBeNull();
+    if (!snapshot) {
+      throw new Error('Expected stable slot layout snapshot');
+    }
     const targetFrame = snapshot.memberSlotFrames[1];
 
     expect(

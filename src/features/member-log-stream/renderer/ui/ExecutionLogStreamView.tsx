@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { MemberBadge } from '@renderer/components/team/MemberBadge';
 import { MemberExecutionLog } from '@renderer/components/team/members/MemberExecutionLog';
@@ -238,6 +238,7 @@ export function ExecutionLogStreamView<TStream extends ExecutionLogStreamLike>({
   getSegmentMetaLabel,
 }: Readonly<ExecutionLogStreamViewProps<TStream>>): React.JSX.Element {
   const [selectedParticipantKey, setSelectedParticipantKey] = useState<string>('all');
+  const appliedSelectionResetKeyRef = useRef<string | null>(null);
   const participants = stream?.participants ?? [];
   const memberColorMap = useMemo(() => buildMemberColorMap([...teamMembers]), [teamMembers]);
   const participantVisuals = useMemo(
@@ -248,8 +249,13 @@ export function ExecutionLogStreamView<TStream extends ExecutionLogStreamLike>({
   useEffect(() => {
     if (!stream) {
       setSelectedParticipantKey('all');
+      appliedSelectionResetKeyRef.current = null;
       return;
     }
+    if (appliedSelectionResetKeyRef.current === selectionResetKey) {
+      return;
+    }
+    appliedSelectionResetKeyRef.current = selectionResetKey;
     setSelectedParticipantKey(stream.defaultFilter);
   }, [selectionResetKey, stream]);
 

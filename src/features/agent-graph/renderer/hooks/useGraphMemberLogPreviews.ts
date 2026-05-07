@@ -32,7 +32,7 @@ function buildRequestKey(input: {
     .sort((left, right) => left[0].localeCompare(right[0]));
   return JSON.stringify([
     input.teamName,
-    input.memberNames.map(normalizeMemberName),
+    input.memberNames.map(normalizeMemberName).sort((left, right) => left.localeCompare(right)),
     laneEntries,
     input.maxItemsPerMember,
     input.textLimit,
@@ -143,7 +143,14 @@ export function useGraphMemberLogPreviews(input: {
     }
     return result;
   }, [input.memberNames]);
-  const memberKey = useMemo(() => memberNames.map(normalizeMemberName).join('|'), [memberNames]);
+  const memberKey = useMemo(
+    () =>
+      memberNames
+        .map(normalizeMemberName)
+        .sort((left, right) => left.localeCompare(right))
+        .join('|'),
+    [memberNames]
+  );
   const [previewsByMember, setPreviewsByMember] = useState(
     new Map<string, MemberLogPreviewMember>()
   );

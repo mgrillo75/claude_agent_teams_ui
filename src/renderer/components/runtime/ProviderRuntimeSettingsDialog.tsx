@@ -21,6 +21,7 @@ import {
 } from '@features/codex-runtime-profile/renderer';
 import { RuntimeProviderManagementPanel } from '@features/runtime-provider-management/renderer';
 import { ProviderBrandLogo } from '@renderer/components/common/ProviderBrandLogo';
+import { api } from '@renderer/api';
 import { Button } from '@renderer/components/ui/button';
 import {
   Dialog,
