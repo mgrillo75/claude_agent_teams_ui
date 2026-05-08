@@ -18,14 +18,11 @@ import {
   composerDraftStorage,
 } from '@renderer/services/composerDraftStorage';
 import {
-  DEFAULT_AGENT_IMAGE_OPTIMIZATION_BUDGET,
-  optimizeImageForAgent,
-} from '@features/agent-attachments/renderer';
-import {
-  fileToAttachmentPayload,
+  fileToAgentAttachmentPayload,
   MAX_FILES,
   MAX_TOTAL_SIZE,
   validateAttachment,
+  validateOptimizedImageTotal,
 } from '@renderer/utils/attachmentUtils';
 import { categorizeFile } from '@shared/constants/attachments';
 
@@ -107,40 +104,6 @@ function snapshotMatchesContent(
     draftPayloadEquals(snapshot.chips, content.chips) &&
     draftPayloadEquals(snapshot.attachments, content.attachments)
   );
-}
-
-function imageOutputFilename(filename: string, mimeType: 'image/png' | 'image/jpeg'): string {
-  const trimmed = filename.trim() || 'image';
-  const withoutExtension = trimmed.replace(/\.[^.\\/]+$/, '') || 'image';
-  return `${withoutExtension}.${mimeType === 'image/png' ? 'png' : 'jpg'}`;
-}
-
-function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = typeof reader.result === 'string' ? reader.result : '';
-      resolve(dataUrl.split(',')[1] ?? '');
-    };
-    reader.onerror = () => reject(new Error('Failed to read optimized image'));
-    reader.readAsDataURL(blob);
-  });
-}
-
-async function fileToAgentAttachmentPayload(file: File): Promise<AttachmentPayload> {
-  const category = categorizeFile(file);
-  if (category !== 'image' || file.type === 'image/gif') {
-    return fileToAttachmentPayload(file);
-  }
-
-  const optimized = await optimizeImageForAgent({ file });
-  return {
-    id: crypto.randomUUID(),
-    filename: imageOutputFilename(file.name, optimized.optimized.mimeType),
-    mimeType: optimized.optimized.mimeType,
-    size: optimized.optimized.sizeBytes,
-    data: await blobToBase64(optimized.optimized.blob),
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -473,11 +436,9 @@ export function useComposerDraft(teamName: string): UseComposerDraftResult {
         setAttachmentError('Total attachment size exceeds 20MB limit');
         return;
       }
-      const optimizedImageBytes = [...prev, ...newPayloads]
-        .filter((attachment) => attachment.mimeType.startsWith('image/'))
-        .reduce((sum, attachment) => sum + attachment.size, 0);
-      if (optimizedImageBytes > DEFAULT_AGENT_IMAGE_OPTIMIZATION_BUDGET.maxOutputBytesTotal) {
-        setAttachmentError('Optimized image attachments exceed the safe runtime size limit');
+      const optimizedImageTotal = validateOptimizedImageTotal([...prev, ...newPayloads]);
+      if (!optimizedImageTotal.valid) {
+        setAttachmentError(optimizedImageTotal.error);
         return;
       }
 

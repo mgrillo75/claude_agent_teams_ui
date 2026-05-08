@@ -2,10 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { draftStorage } from '@renderer/services/draftStorage';
 import {
-  fileToAttachmentPayload,
+  fileToAgentAttachmentPayload,
   MAX_FILES,
   MAX_TOTAL_SIZE,
   validateAttachment,
+  validateOptimizedImageTotal,
 } from '@renderer/utils/attachmentUtils';
 import { categorizeFile } from '@shared/constants/attachments';
 
@@ -189,7 +190,6 @@ export function useAttachments(options?: UseAttachmentsOptions): UseAttachmentsR
 
       if (supported.length === 0) return;
 
-      let batchSize = 0;
       let valid = true;
       for (const file of supported) {
         const validation = validateAttachment(file);
@@ -198,17 +198,16 @@ export function useAttachments(options?: UseAttachmentsOptions): UseAttachmentsR
           valid = false;
           break;
         }
-        batchSize += file.size;
       }
       if (!valid) return;
 
       const newPayloads: AttachmentPayload[] = [];
       for (const file of supported) {
         try {
-          const payload = await fileToAttachmentPayload(file);
+          const payload = await fileToAgentAttachmentPayload(file);
           newPayloads.push(payload);
-        } catch {
-          setError(`Failed to read file: ${file.name}`);
+        } catch (error) {
+          setError(error instanceof Error ? error.message : `Failed to read file: ${file.name}`);
           valid = false;
           break;
         }
@@ -221,8 +220,14 @@ export function useAttachments(options?: UseAttachmentsOptions): UseAttachmentsR
           return prev;
         }
         const currentTotal = prev.reduce((sum, a) => sum + a.size, 0);
+        const batchSize = newPayloads.reduce((sum, a) => sum + a.size, 0);
         if (currentTotal + batchSize > MAX_TOTAL_SIZE) {
           setError('Total attachment size exceeds 20MB limit');
+          return prev;
+        }
+        const optimizedImageTotal = validateOptimizedImageTotal([...prev, ...newPayloads]);
+        if (!optimizedImageTotal.valid) {
+          setError(optimizedImageTotal.error);
           return prev;
         }
         const next = [...prev, ...newPayloads];

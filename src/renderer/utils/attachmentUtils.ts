@@ -1,3 +1,7 @@
+import {
+  DEFAULT_AGENT_IMAGE_OPTIMIZATION_BUDGET,
+  optimizeImageForAgent,
+} from '@features/agent-attachments/renderer';
 import { categorizeFile, getEffectiveMimeType, isImageMime } from '@shared/constants/attachments';
 
 import type { AttachmentPayload, ImageMimeType } from '@shared/types';
@@ -49,6 +53,55 @@ export async function fileToAttachmentPayload(file: File): Promise<AttachmentPay
     reader.onerror = () => reject(new Error(`Failed to read file: ${file.name}`));
     reader.readAsDataURL(file);
   });
+}
+
+function imageOutputFilename(filename: string, mimeType: 'image/png' | 'image/jpeg'): string {
+  const trimmed = filename.trim() || 'image';
+  const withoutExtension = trimmed.replace(/\.[^.\\/]+$/, '') || 'image';
+  return `${withoutExtension}.${mimeType === 'image/png' ? 'png' : 'jpg'}`;
+}
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = typeof reader.result === 'string' ? reader.result : '';
+      resolve(dataUrl.split(',')[1] ?? '');
+    };
+    reader.onerror = () => reject(new Error('Failed to read optimized image'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+export async function fileToAgentAttachmentPayload(file: File): Promise<AttachmentPayload> {
+  const category = categorizeFile(file);
+  if (category !== 'image' || file.type === 'image/gif') {
+    return fileToAttachmentPayload(file);
+  }
+
+  const optimized = await optimizeImageForAgent({ file });
+  return {
+    id: crypto.randomUUID(),
+    filename: imageOutputFilename(file.name, optimized.optimized.mimeType),
+    mimeType: optimized.optimized.mimeType,
+    size: optimized.optimized.sizeBytes,
+    data: await blobToBase64(optimized.optimized.blob),
+  };
+}
+
+export function validateOptimizedImageTotal(
+  attachments: AttachmentPayload[]
+): { valid: true } | { valid: false; error: string } {
+  const optimizedImageBytes = attachments
+    .filter((attachment) => attachment.mimeType.startsWith('image/'))
+    .reduce((sum, attachment) => sum + attachment.size, 0);
+  if (optimizedImageBytes <= DEFAULT_AGENT_IMAGE_OPTIMIZATION_BUDGET.maxOutputBytesTotal) {
+    return { valid: true };
+  }
+  return {
+    valid: false,
+    error: 'Optimized image attachments exceed the safe runtime size limit',
+  };
 }
 
 export { categorizeFile, isImageMime };

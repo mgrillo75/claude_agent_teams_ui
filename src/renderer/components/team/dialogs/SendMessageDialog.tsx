@@ -33,6 +33,10 @@ import {
 } from '@renderer/utils/taskReferenceUtils';
 import { MAX_TEXT_LENGTH } from '@shared/constants';
 import { isLeadMember } from '@shared/utils/leadDetection';
+import {
+  inferTeamProviderIdFromModel,
+  normalizeOptionalTeamProviderId,
+} from '@shared/utils/teamProvider';
 import { AlertCircle, Paperclip, Send, X } from 'lucide-react';
 
 import { MemberBadge } from '../MemberBadge';
@@ -138,15 +142,23 @@ export const SendMessageDialog = ({
 
   const selectedMember = members.find((m) => m.name === member);
   const isLeadRecipient = selectedMember ? isLeadMember(selectedMember) : false;
+  const selectedProviderId =
+    normalizeOptionalTeamProviderId(selectedMember?.providerId) ??
+    inferTeamProviderIdFromModel(selectedMember?.model);
+  const isOpenCodeRecipient = selectedProviderId === 'opencode';
   const hasTeammates = members.length > 1;
   const canDelegate = hasTeammates && isLeadRecipient;
   const shouldAutoDelegate = canDelegate;
-  const supportsAttachments = isLeadRecipient && !!isTeamAlive;
+  const supportsAttachments = !!isTeamAlive && (isLeadRecipient || isOpenCodeRecipient);
   const canAttach = supportsAttachments && canAddMore;
   const attachmentRestrictionReason = !supportsAttachments
-    ? !isLeadRecipient
-      ? 'Files can only be sent to the team lead'
-      : 'Team must be online to attach files'
+    ? !isTeamAlive
+      ? 'Team must be online to attach files'
+      : !isLeadRecipient && !isOpenCodeRecipient
+        ? 'Files can be sent to the team lead or OpenCode teammates'
+        : isOpenCodeRecipient
+          ? 'Team must be online to attach files for OpenCode teammates'
+          : 'Team must be online to attach files'
     : undefined;
 
   // Auto-switch to delegate when lead recipient is selected, but don't
@@ -301,26 +313,31 @@ export const SendMessageDialog = ({
     }
   };
 
-  const handleFileInputChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const input = e.target;
-      if (input.files?.length) {
-        void addFiles(input.files);
-      }
-      input.value = '';
-    },
-    [addFiles]
-  );
-
   const showFileRestrictionError = useCallback(() => {
     setFileRestrictionError(
-      attachmentRestrictionReason ?? 'Files can only be sent to the team lead'
+      attachmentRestrictionReason ?? 'Files can be sent to the team lead or OpenCode teammates'
     );
     window.clearTimeout(fileRestrictionTimerRef.current);
     fileRestrictionTimerRef.current = window.setTimeout(() => {
       setFileRestrictionError(null);
     }, 4000);
   }, [attachmentRestrictionReason]);
+
+  const handleFileInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const input = e.target;
+      if (input.files?.length) {
+        if (!canAttach) {
+          showFileRestrictionError();
+          input.value = '';
+          return;
+        }
+        void addFiles(input.files);
+      }
+      input.value = '';
+    },
+    [addFiles, canAttach, showFileRestrictionError]
+  );
 
   // Cleanup restriction error timer on unmount
   useEffect(() => {
@@ -441,11 +458,9 @@ export const SendMessageDialog = ({
                       </button>
                     </TooltipTrigger>
                     <TooltipContent side="top">
-                      {!isTeamAlive
-                        ? 'Team must be online to attach files'
-                        : !canAddMore
-                          ? 'Maximum attachments reached'
-                          : 'Attach files (paste or drag & drop)'}
+                      {canAttach
+                        ? 'Attach files (paste or drag & drop)'
+                        : (attachmentRestrictionReason ?? 'Attachments are unavailable')}
                     </TooltipContent>
                   </Tooltip>
                 </>
@@ -458,7 +473,7 @@ export const SendMessageDialog = ({
               error={attachmentError ?? fileRestrictionError}
               onDismissError={clearAttachmentError}
               disabled={attachmentsBlocked}
-              disabledHint="File attachments are only supported when sending to the team lead while the team is online. Remove attachments or switch recipient."
+              disabledHint="File attachments are supported for the online team lead and online OpenCode teammates. Remove attachments or switch recipient."
             />
 
             <div className={quote ? 'flex flex-col' : 'contents'}>
