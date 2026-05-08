@@ -5,6 +5,7 @@ import { getAppIconPath } from '@main/utils/appIcon';
 import { getAppDataPath, getTeamsBasePath } from '@main/utils/pathDecoder';
 import { safeSendToRenderer } from '@main/utils/safeWebContentsSend';
 import { stripMarkdown } from '@main/utils/textFormatting';
+import { getErrorMessage } from '@shared/utils/errorHandling';
 import {
   estimateAgentAttachmentSerializedPayloadBytes,
   MAX_AGENT_ATTACHMENT_SERIALIZED_PAYLOAD_BYTES,
