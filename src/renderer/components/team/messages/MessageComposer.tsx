@@ -283,6 +283,10 @@ export const MessageComposer = ({
   const selectedMember = members.find((m) => m.name === recipient);
   const selectedResolvedColor = selectedMember ? colorMap.get(selectedMember.name) : undefined;
   const isLeadRecipient = selectedMember ? isLeadMember(selectedMember) : false;
+  const selectedProviderId =
+    normalizeOptionalTeamProviderId(selectedMember?.providerId) ??
+    inferTeamProviderIdFromModel(selectedMember?.model);
+  const isOpenCodeRecipient = selectedProviderId === 'opencode';
   const hasTeammates = members.length > 1;
   const canDelegate = hasTeammates && (isCrossTeam || isLeadRecipient);
   const shouldAutoDelegate = isLeadRecipient && canDelegate;
@@ -337,14 +341,19 @@ export const MessageComposer = ({
   // const leadContext = useStore((s) =>
   //   isLeadAgentRecipient ? s.leadContextByTeam[teamName] : undefined
   // );
-  const supportsAttachments = isLeadRecipient && !isCrossTeam && !!isTeamAlive;
+  const supportsAttachments =
+    !isCrossTeam && !!isTeamAlive && (isLeadRecipient || isOpenCodeRecipient);
   const canAttach = supportsAttachments && draft.canAddMore && !sending;
   const attachmentRestrictionReason = !supportsAttachments
     ? isCrossTeam
       ? 'File attachments are not supported for cross-team messages'
-      : !isLeadRecipient
-        ? 'Files can only be sent to the team lead'
-        : 'Team must be online to attach files'
+      : !isTeamAlive
+        ? 'Team must be online to attach files'
+        : !isLeadRecipient && !isOpenCodeRecipient
+          ? 'Files can be sent to the team lead or OpenCode teammates'
+          : isOpenCodeRecipient
+            ? 'Team must be online to attach files for OpenCode teammates'
+            : 'Team must be online to attach files'
     : sending
       ? 'Wait for current message to finish sending before adding files'
       : !draft.canAddMore
@@ -640,13 +649,9 @@ export const MessageComposer = ({
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="top">
-                  {!isTeamAlive
-                    ? 'Team must be online to attach files'
-                    : sending
-                      ? 'Wait for current message to finish sending'
-                      : !draft.canAddMore
-                        ? 'Maximum attachments reached'
-                        : 'Attach files (paste or drag & drop)'}
+                  {canAttach
+                    ? 'Attach files (paste or drag & drop)'
+                    : (attachmentRestrictionReason ?? 'Attachments are unavailable')}
                 </TooltipContent>
               </Tooltip>
             </>
@@ -943,7 +948,7 @@ export const MessageComposer = ({
             error={draft.attachmentError ?? fileRestrictionError}
             onDismissError={draft.clearAttachmentError}
             disabled={attachmentsBlocked}
-            disabledHint="File attachments are only supported when sending to the team lead while the team is online. Remove attachments or switch recipient."
+            disabledHint="File attachments are supported for the online team lead and online OpenCode teammates. Remove attachments or switch recipient."
           />
         ) : null}
       </div>
