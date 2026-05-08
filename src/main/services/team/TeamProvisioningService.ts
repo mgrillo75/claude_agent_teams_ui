@@ -72,7 +72,11 @@ import {
   stripCrossTeamPrefix,
 } from '@shared/constants/crossTeam';
 import { getMemberColorByName } from '@shared/constants/memberColors';
-import { DEFAULT_TOOL_APPROVAL_SETTINGS, type AttachmentPayload } from '@shared/types/team';
+import {
+  DEFAULT_TOOL_APPROVAL_SETTINGS,
+  type AttachmentMeta,
+  type AttachmentPayload,
+} from '@shared/types/team';
 import { resolveLanguageName } from '@shared/utils/agentLanguage';
 import { resolveAnthropicLaunchModel } from '@shared/utils/anthropicLaunchModel';
 import { getAnthropicDefaultTeamModel } from '@shared/utils/anthropicModelDefaults';
@@ -273,6 +277,7 @@ import {
   readBootstrapRuntimeState,
 } from './TeamBootstrapStateReader';
 import { TeamConfigReader } from './TeamConfigReader';
+import { TeamAttachmentStore } from './TeamAttachmentStore';
 import { TeamInboxReader } from './TeamInboxReader';
 import { TeamInboxWriter } from './TeamInboxWriter';
 import {
@@ -5558,7 +5563,8 @@ export class TeamProvisioningService {
     private readonly teamMetaStore: TeamMetaStore = new TeamMetaStore(),
     private readonly inboxWriter: TeamInboxWriter = new TeamInboxWriter(),
     private readonly openCodeTaskLogAttributionStore: OpenCodeTaskLogAttributionStore = new OpenCodeTaskLogAttributionStore(),
-    private readonly memberWorktreeManager: TeamMemberWorktreeManager = new TeamMemberWorktreeManager()
+    private readonly memberWorktreeManager: TeamMemberWorktreeManager = new TeamMemberWorktreeManager(),
+    private readonly attachmentStore: TeamAttachmentStore = new TeamAttachmentStore()
   ) {
     this.memberLogsFinder = new TeamMemberLogsFinder(
       this.configReader,
@@ -19972,6 +19978,76 @@ export class TeamProvisioningService {
     return { kind: 'native_member_noop', relayed: 0 };
   }
 
+  private async resolveOpenCodeInboxAttachmentPayloads(input: {
+    teamName: string;
+    message: InboxMessage & { messageId: string };
+  }): Promise<
+    | { ok: true; attachments?: AttachmentPayload[] }
+    | { ok: false; reason: string; diagnostics: string[] }
+  > {
+    const metas = input.message.attachments ?? [];
+    if (metas.length === 0) {
+      return { ok: true };
+    }
+
+    let fileDataById: Map<string, { data: string; mimeType: string }> | null = null;
+    const payloads: AttachmentPayload[] = [];
+    const missingIds: string[] = [];
+    for (const meta of metas) {
+      const inlinePayload = this.asOpenCodeAttachmentPayload(meta);
+      if (inlinePayload) {
+        payloads.push(inlinePayload);
+        continue;
+      }
+
+      if (!fileDataById) {
+        let fileData: Awaited<ReturnType<TeamAttachmentStore['getAttachments']>>;
+        try {
+          fileData = await this.attachmentStore.getAttachments(
+            input.teamName,
+            input.message.messageId
+          );
+        } catch (error) {
+          const reason = `opencode_inbox_attachment_payload_read_failed: ${getErrorMessage(error)}`;
+          return { ok: false, reason, diagnostics: [reason] };
+        }
+        fileDataById = new Map(
+          fileData.map((attachment) => [
+            attachment.id,
+            { data: attachment.data, mimeType: attachment.mimeType },
+          ])
+        );
+      }
+      const data = fileDataById.get(meta.id);
+      if (!data) {
+        missingIds.push(meta.id);
+        continue;
+      }
+      payloads.push({
+        ...meta,
+        mimeType: meta.mimeType || data.mimeType,
+        data: data.data,
+      });
+    }
+
+    if (missingIds.length > 0) {
+      const reason = `opencode_inbox_attachment_payload_unavailable: ${missingIds.join(', ')}`;
+      return { ok: false, reason, diagnostics: [reason] };
+    }
+
+    return { ok: true, attachments: payloads };
+  }
+
+  private asOpenCodeAttachmentPayload(meta: AttachmentMeta): AttachmentPayload | null {
+    const data = (meta as Partial<AttachmentPayload>).data;
+    return typeof data === 'string' && data.length > 0
+      ? {
+          ...meta,
+          data,
+        }
+      : null;
+  }
+
   async relayOpenCodeMemberInboxMessages(
     teamName: string,
     memberName: string,
@@ -20208,6 +20284,20 @@ export class TeamProvisioningService {
         const effectiveTaskRefs =
           existingRecord?.taskRefs ?? options.deliveryMetadata?.taskRefs ?? message.taskRefs ?? [];
         const effectiveSource = existingRecord?.source ?? options.source ?? 'watcher';
+        const attachmentPayloads = await this.resolveOpenCodeInboxAttachmentPayloads({
+          teamName,
+          message,
+        });
+        if (!attachmentPayloads.ok) {
+          result.failed += 1;
+          result.diagnostics = [...(result.diagnostics ?? []), ...attachmentPayloads.diagnostics];
+          result.lastDelivery = {
+            delivered: false,
+            reason: attachmentPayloads.reason,
+            diagnostics: attachmentPayloads.diagnostics,
+          };
+          break;
+        }
         result.attempted += 1;
         const delivery = await this.deliverOpenCodeMemberMessage(teamName, {
           memberName,
@@ -20217,7 +20307,7 @@ export class TeamProvisioningService {
           actionMode: effectiveActionMode ?? undefined,
           messageKind: message.messageKind,
           taskRefs: effectiveTaskRefs,
-          attachments: message.attachments,
+          attachments: attachmentPayloads.attachments,
           source: effectiveSource,
           inboxTimestamp: message.timestamp,
         });
