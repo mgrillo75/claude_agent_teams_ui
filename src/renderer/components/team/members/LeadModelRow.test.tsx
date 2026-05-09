@@ -55,6 +55,8 @@ vi.mock('@renderer/hooks/useTheme', () => ({
 
 vi.mock('@renderer/utils/teamModelCatalog', () => ({
   isAnthropicHaikuTeamModel: () => false,
+  isAnthropicSonnetTeamModel: (model: string | undefined) =>
+    model === 'sonnet' || model === 'claude-sonnet-4-6' || model === 'sonnet[1m]',
 }));
 
 vi.mock('../../ui/button', () => ({
@@ -78,9 +80,12 @@ vi.mock('../../ui/button', () => ({
     ),
 }));
 
-import { LeadModelRow } from './LeadModelRow';
+import { ANTHROPIC_LONG_CONTEXT_PRICING_URL, LeadModelRow } from './LeadModelRow';
 
-function renderLeadModelRow(): { host: HTMLDivElement; root: ReturnType<typeof createRoot> } {
+function renderLeadModelRow(overrides: Partial<React.ComponentProps<typeof LeadModelRow>> = {}): {
+  host: HTMLDivElement;
+  root: ReturnType<typeof createRoot>;
+} {
   const host = document.createElement('div');
   document.body.appendChild(host);
   const root = createRoot(host);
@@ -98,6 +103,7 @@ function renderLeadModelRow(): { host: HTMLDivElement; root: ReturnType<typeof c
         onLimitContextChange: () => undefined,
         syncModelsWithTeammates: true,
         onSyncModelsWithTeammatesChange: () => undefined,
+        ...overrides,
       })
     );
   });
@@ -123,6 +129,40 @@ describe('LeadModelRow', () => {
     expect(host.textContent).toContain('lead');
     expect(host.textContent).toContain('Team Lead');
     expect(stripe?.getAttribute('style')).toContain(expectedBorder);
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it('warns that unchecked 200K limit can put Sonnet on Anthropic Extra Usage', () => {
+    const { host, root } = renderLeadModelRow({
+      providerId: 'anthropic',
+      model: 'sonnet',
+      limitContext: false,
+    });
+
+    expect(host.textContent).toContain('Sonnet with 1M context can use Anthropic Extra Usage');
+    expect(host.textContent).toContain('Requests over 200K input tokens');
+    const docsLink = host.querySelector(`a[href="${ANTHROPIC_LONG_CONTEXT_PRICING_URL}"]`);
+
+    expect(docsLink?.textContent).toContain('Anthropic pricing docs');
+    expect(docsLink?.getAttribute('target')).toBe('_blank');
+    expect(docsLink?.getAttribute('rel')).toBe('noreferrer');
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it('does not show the Sonnet Extra Usage warning when 200K limit is enabled', () => {
+    const { host, root } = renderLeadModelRow({
+      providerId: 'anthropic',
+      model: 'sonnet',
+      limitContext: true,
+    });
+
+    expect(host.textContent).not.toContain('Anthropic Extra Usage');
 
     act(() => {
       root.unmount();

@@ -250,10 +250,10 @@
         width: 100%;
         align-items: baseline;
         justify-content: center;
-        gap: 6px;
+        gap: 4px;
       }
       #splash-status {
-        min-height: 16px;
+        min-height: 8px;
         font-family:
           ui-sans-serif,
           system-ui,
@@ -261,21 +261,21 @@
           BlinkMacSystemFont,
           'Segoe UI',
           sans-serif;
-        font-size: 12px;
+        font-size: 8px;
         font-weight: 500;
         color: rgba(212, 212, 216, 0.72);
-        line-height: 1.35;
+        line-height: 1.25;
         overflow-wrap: anywhere;
       }
       #splash-elapsed::before {
         content: '·';
-        margin-right: 6px;
+        margin-right: 4px;
         color: rgba(212, 212, 216, 0.34);
       }
       #splash-elapsed {
         font-family:
           ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
-        font-size: 11px;
+        font-size: 8px;
         font-weight: 500;
         color: rgba(212, 212, 216, 0.5);
         white-space: nowrap;
@@ -295,13 +295,17 @@
         line-height: 1.35;
       }
       #splash-timeline {
-        display: flex;
+        display: none;
         width: min(320px, 78vw);
-        max-height: 128px;
-        margin-top: 14px;
+        max-height: 58px;
+        margin-top: 8px;
         flex-direction: column;
         gap: 6px;
         overflow: hidden;
+      }
+      #splash.splash-status-error #splash-timeline,
+      #splash.splash-status-slow #splash-timeline {
+        display: flex;
       }
       .splash-step {
         display: grid;
@@ -494,6 +498,18 @@
       (function () {
         try {
           window.__claudeTeamsSplashStartedAt = performance.now();
+          window.__claudeTeamsSplashStaticTimer = window.setInterval(function () {
+            var elapsed = document.getElementById('splash-elapsed');
+            var splash = document.getElementById('splash');
+            if (!elapsed || !splash) {
+              window.clearInterval(window.__claudeTeamsSplashStaticTimer);
+              window.__claudeTeamsSplashStaticTimer = undefined;
+              return;
+            }
+            var startedAt = window.__claudeTeamsSplashStartedAt || performance.now();
+            var seconds = Math.max(0, Math.floor((performance.now() - startedAt) / 1000));
+            elapsed.textContent = seconds + 's';
+          }, 1000);
           var theme =
             localStorage.getItem('agent-teams-theme-cache') ||
             localStorage.getItem('claude-devtools-theme-cache');

@@ -239,6 +239,16 @@ export function isAnthropicHaikuTeamModel(model: string | undefined): boolean {
   return baseModel === 'haiku' || baseModel.startsWith('claude-haiku-');
 }
 
+export function isAnthropicSonnetTeamModel(model: string | undefined): boolean {
+  const trimmed = model?.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  const { baseModel } = splitOneMillionContextSuffix(trimmed);
+  return baseModel === 'sonnet' || baseModel.startsWith('claude-sonnet-');
+}
+
 export function getTeamProviderLabel(
   providerId: SupportedProviderId | undefined
 ): string | undefined {

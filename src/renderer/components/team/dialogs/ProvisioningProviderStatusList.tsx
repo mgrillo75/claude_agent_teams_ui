@@ -91,7 +91,9 @@ export function getProvisioningProviderBackendSummary(
         suffixes.push('runtime missing');
         break;
       case 'degraded':
-        suffixes.push('degraded');
+        if (inferredProviderId !== 'codex') {
+          suffixes.push('degraded');
+        }
         break;
       default:
         break;

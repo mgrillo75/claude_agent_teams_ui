@@ -570,7 +570,7 @@ describe('runProviderPrepareDiagnostics', () => {
     expect(result.details).toEqual(['5.4 Mini - verified', '5.4 - verified']);
   });
 
-  it('does not synthesize verified from a generic runtime preflight note alone', async () => {
+  it('treats launchable Codex compatibility as ready and suppresses generic preflight notes', async () => {
     const prepareProvisioning = vi.fn<
       (
         cwd?: string,
@@ -593,16 +593,13 @@ describe('runProviderPrepareDiagnostics', () => {
       prepareProvisioning,
     });
 
-    expect(result.status).toBe('notes');
-    expect(result.warnings).toEqual(['orchestrator-cli preflight check failed (exit code 1).']);
-    expect(result.details).toEqual([
-      'orchestrator-cli preflight check failed (exit code 1).',
-      '5.4 - compatible, deep verification pending...',
-    ]);
+    expect(result.status).toBe('ready');
+    expect(result.warnings).toEqual([]);
+    expect(result.details).toEqual(['5.4 - available for launch']);
     expect(result.modelResultsById).toEqual({
       'gpt-5.4': {
-        status: 'notes',
-        line: '5.4 - compatible, deep verification pending...',
+        status: 'ready',
+        line: '5.4 - available for launch',
         warningLine: null,
       },
     });

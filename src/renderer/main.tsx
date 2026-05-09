@@ -14,6 +14,7 @@ import type { AppStartupStatus, AppStartupStep } from '@shared/types/api';
 declare global {
   interface Window {
     __claudeTeamsUiDidInit?: boolean;
+    __claudeTeamsSplashStaticTimer?: number;
   }
 }
 
@@ -26,7 +27,7 @@ let startupTicker: number | undefined;
 
 const SLOW_STEP_MS = 7_000;
 const VERY_SLOW_STEP_MS = 14_000;
-const TIMELINE_STEP_LIMIT = 6;
+const TIMELINE_STEP_LIMIT = 3;
 
 function getStartupErrorText(status: AppStartupStatus): string {
   return status.error ? `Startup failed: ${status.error}` : 'Startup failed. Please restart.';
@@ -142,6 +143,12 @@ function updateStartupSplash(status: AppStartupStatus): void {
   renderStartupTimeline(status);
 }
 
+function stopStaticSplashTimer(): void {
+  if (window.__claudeTeamsSplashStaticTimer === undefined) return;
+  window.clearInterval(window.__claudeTeamsSplashStaticTimer);
+  window.__claudeTeamsSplashStaticTimer = undefined;
+}
+
 function startStartupTicker(): void {
   if (startupTicker !== undefined) return;
   startupTicker = window.setInterval(() => {
@@ -194,13 +201,16 @@ async function bootstrapRenderer(): Promise<void> {
       if (nextStatus.ready) {
         finished = true;
         cleanup();
+        stopStaticSplashTimer();
         stopStartupTicker();
         mountApp();
       } else if (nextStatus.error) {
         finished = true;
         cleanup();
+        stopStaticSplashTimer();
         stopStartupTicker();
       } else {
+        stopStaticSplashTimer();
         startStartupTicker();
       }
     };
@@ -210,6 +220,7 @@ async function bootstrapRenderer(): Promise<void> {
   } catch (error) {
     console.warn(`[startup] status bridge unavailable: ${String(error)}`);
     cleanup();
+    stopStaticSplashTimer();
     stopStartupTicker();
     mountApp();
   }

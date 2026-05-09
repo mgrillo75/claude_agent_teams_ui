@@ -2005,7 +2005,7 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
     );
   });
 
-  it('keeps missing models compatible when the runtime catalog is dynamic', async () => {
+  it('treats missing Codex models as launchable when the runtime catalog is dynamic', async () => {
     const svc = new TeamProvisioningService();
     vi.spyOn(svc as any, 'buildProvisioningEnv').mockResolvedValue({
       env: {
@@ -2033,11 +2033,75 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
     });
 
     expect(result).toEqual({
-      details: ['Selected model future-model is compatible. Deep verification pending.'],
+      details: ['Selected model future-model is available for launch.'],
       warnings: [],
       blockingMessages: [],
     });
     expect(spawnProbe).not.toHaveBeenCalled();
+  });
+
+  it('treats explicit Codex models as launchable when the runtime model list is unparsable', async () => {
+    execCliMock.mockImplementation(async (_binaryPath: string | null, args: string[]) => {
+      if (args[0] === 'model' && args[1] === 'list' && args.includes('codex')) {
+        return {
+          stdout: 'Codex model list is temporarily unavailable',
+          stderr: '',
+          exitCode: 0,
+        };
+      }
+      if (args[0] === 'runtime' && args[1] === 'status' && args.includes('codex')) {
+        return {
+          stdout: JSON.stringify({
+            providers: {
+              codex: {
+                runtimeCapabilities: {
+                  modelCatalog: { dynamic: false, source: 'runtime' },
+                  reasoningEffort: {
+                    supported: true,
+                    values: ['low', 'medium', 'high'],
+                    configPassthrough: false,
+                  },
+                },
+              },
+            },
+          }),
+          stderr: '',
+          exitCode: 0,
+        };
+      }
+      return defaultExecCliMockImplementation(_binaryPath, args);
+    });
+
+    const svc = new TeamProvisioningService();
+    vi.spyOn(svc as any, 'getCachedOrProbeResult').mockResolvedValue({
+      claudePath: '/fake/claude',
+      authSource: 'codex_runtime',
+    });
+    vi.spyOn(svc as any, 'buildProvisioningEnv').mockResolvedValue({
+      env: {
+        PATH: '/usr/bin',
+        SHELL: '/bin/zsh',
+      },
+      authSource: 'codex_runtime',
+      geminiRuntimeAuth: null,
+    });
+    const spawnProbe = vi.spyOn(svc as any, 'spawnProbe');
+
+    const result = await svc.prepareForProvisioning(tempRoot, {
+      forceFresh: true,
+      providerId: 'codex',
+      modelIds: ['gpt-5.5'],
+      modelVerificationMode: 'compatibility',
+    });
+
+    expect(result.ready).toBe(true);
+    expect(result.details).toEqual(['Selected model gpt-5.5 is available for launch.']);
+    expect(result.message).toBe('CLI is warmed up and ready to launch');
+    expect(spawnProbe).not.toHaveBeenCalled();
+    expect(vi.mocked(console.warn).mock.calls.map((call) => call.join(' '))).toEqual([
+      '[Service:TeamProvisioning] [codex] Failed to parse runtime model list for launch validation: No JSON object found in CLI output',
+    ]);
+    vi.mocked(console.warn).mockClear();
   });
 
   it('maps ANTHROPIC_AUTH_TOKEN into ANTHROPIC_API_KEY for headless preflight', async () => {

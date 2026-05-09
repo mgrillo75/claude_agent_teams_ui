@@ -14,13 +14,21 @@ import { getTeamColorSet } from '@renderer/constants/teamColors';
 import { useTheme } from '@renderer/hooks/useTheme';
 import { cn } from '@renderer/lib/utils';
 import { agentAvatarUrl } from '@renderer/utils/memberHelpers';
-import { isAnthropicHaikuTeamModel } from '@renderer/utils/teamModelCatalog';
+import {
+  isAnthropicHaikuTeamModel,
+  isAnthropicSonnetTeamModel,
+} from '@renderer/utils/teamModelCatalog';
 import { resolveTeamLeadColorName } from '@shared/utils/teamMemberColors';
 import { AlertTriangle, ChevronDown, ChevronRight, Info } from 'lucide-react';
 
 import { Button } from '../../ui/button';
 
 import type { EffortLevel, TeamProviderId } from '@shared/types';
+
+export const ANTHROPIC_SONNET_EXTRA_USAGE_WARNING =
+  'Sonnet with 1M context can use Anthropic Extra Usage. Requests over 200K input tokens are billed at premium long-context rates; enable Limit context to 200K tokens to avoid that billing path.';
+export const ANTHROPIC_LONG_CONTEXT_PRICING_URL =
+  'https://platform.claude.com/docs/en/about-claude/pricing';
 
 interface LeadModelRowProps {
   providerId: TeamProviderId;
@@ -61,6 +69,12 @@ export const LeadModelRow = ({
     : 'Default';
   const modelButtonAriaLabel = `${getTeamProviderLabel(providerId)} provider, ${modelButtonLabel}`;
   const hasModelIssue = Boolean(modelIssueText);
+  const showSonnetExtraUsageWarning =
+    providerId === 'anthropic' && !limitContext && isAnthropicSonnetTeamModel(model);
+  const warningMessages = [warningText?.trim() || null].filter((message): message is string =>
+    Boolean(message)
+  );
+  const hasWarnings = warningMessages.length > 0 || showSonnetExtraUsageWarning;
 
   return (
     <div
@@ -132,11 +146,29 @@ export const LeadModelRow = ({
           </Button>
         </div>
       </div>
-      {warningText ? (
+      {hasWarnings ? (
         <div className="md:col-span-3">
           <div className="bg-amber-500/8 ml-3 flex items-start gap-2 rounded-md border border-amber-500/25 px-3 py-2 text-[11px] leading-relaxed text-amber-200">
             <Info className="mt-0.5 size-3.5 shrink-0 text-amber-300" />
-            <p>{warningText}</p>
+            <div className="space-y-1">
+              {warningMessages.map((message) => (
+                <p key={message}>{message}</p>
+              ))}
+              {showSonnetExtraUsageWarning ? (
+                <p>
+                  {ANTHROPIC_SONNET_EXTRA_USAGE_WARNING}{' '}
+                  <a
+                    href={ANTHROPIC_LONG_CONTEXT_PRICING_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-medium text-amber-100 underline underline-offset-2 hover:text-white"
+                  >
+                    Read Anthropic pricing docs
+                  </a>
+                  .
+                </p>
+              ) : null}
+            </div>
           </div>
         </div>
       ) : null}

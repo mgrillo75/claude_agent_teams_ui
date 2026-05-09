@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { getVisibleTeamProviderModels } from '@renderer/utils/teamModelCatalog';
+import {
+  getVisibleTeamProviderModels,
+  isAnthropicSonnetTeamModel,
+} from '@renderer/utils/teamModelCatalog';
 
 describe('teamModelCatalog', () => {
   it('filters UI-disabled Codex models from provider badge lists', () => {
@@ -42,5 +45,14 @@ describe('teamModelCatalog', () => {
       'claude-sonnet-4-6',
       'claude-sonnet-4-6[1m]',
     ]);
+  });
+
+  it('detects Sonnet aliases with or without 1M suffix', () => {
+    expect(isAnthropicSonnetTeamModel('sonnet')).toBe(true);
+    expect(isAnthropicSonnetTeamModel('sonnet[1m]')).toBe(true);
+    expect(isAnthropicSonnetTeamModel('claude-sonnet-4-6')).toBe(true);
+    expect(isAnthropicSonnetTeamModel('claude-sonnet-4-6[1m]')).toBe(true);
+    expect(isAnthropicSonnetTeamModel('opus')).toBe(false);
+    expect(isAnthropicSonnetTeamModel('haiku')).toBe(false);
   });
 });

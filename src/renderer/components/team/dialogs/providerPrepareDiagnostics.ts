@@ -311,6 +311,7 @@ function isSuppressibleGenericPreflightWarning(detail: string): boolean {
   }
 
   return (
+    lower.includes('one-shot diagnostic') ||
     lower.includes('preflight check failed') ||
     (lower.includes('preflight check for `') && lower.includes('-p` did not complete')) ||
     lower.includes('preflight ping completed but did not return the expected pong')
@@ -413,6 +414,13 @@ function resolveModelResultFromBatch(
     /selected model .* is compatible\. deep verification pending\./i.test(entry)
   );
   if (hasCompatibilityLine) {
+    if (providerId !== 'opencode') {
+      return {
+        status: 'ready',
+        line: buildModelAvailableLine(providerId, modelId),
+        warningLine: null,
+      };
+    }
     return {
       status: 'notes',
       line: buildModelCompatibilityPendingLine(providerId, modelId),
@@ -452,6 +460,13 @@ function resolveModelResultFromBatch(
   }
 
   if (result.ready && (result.warnings?.length ?? 0) > 0 && !hasModelScopedEntries) {
+    if (providerId !== 'opencode') {
+      return {
+        status: 'ready',
+        line: buildModelAvailableLine(providerId, modelId),
+        warningLine: null,
+      };
+    }
     return {
       status: 'notes',
       line: buildModelCompatibilityPendingLine(providerId, modelId),

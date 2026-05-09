@@ -266,6 +266,33 @@ describe('ProvisioningProviderStatusList', () => {
     ).toBe('Codex native');
   });
 
+  it('does not show non-blocking Codex degraded backend state in provisioning summaries', () => {
+    expect(
+      getProvisioningProviderBackendSummary({
+        providerId: 'codex',
+        selectedBackendId: 'codex-native',
+        resolvedBackendId: 'codex-native',
+        backend: {
+          kind: 'codex-native',
+          label: 'Codex native',
+        },
+        availableBackends: [
+          {
+            id: 'codex-native',
+            label: 'Codex native',
+            description: 'Use codex exec JSON mode.',
+            selectable: false,
+            recommended: false,
+            available: true,
+            state: 'degraded',
+            audience: 'general',
+            statusMessage: 'Ready with degraded account verification.',
+          },
+        ],
+      })
+    ).toBe('Codex native');
+  });
+
   it('normalizes persisted legacy codex fallback summaries to Codex native', () => {
     expect(
       getProvisioningProviderBackendSummary({

@@ -1041,6 +1041,7 @@ interface AuthStatusCommandResponse {
 interface RuntimeProviderLaunchFacts {
   defaultModel: string | null;
   modelIds: Set<string>;
+  modelListParsed?: boolean;
   modelCatalog: CliProviderModelCatalog | null;
   runtimeCapabilities: CliProviderRuntimeCapabilities | null;
   providerStatus?:
@@ -1139,6 +1140,20 @@ function isCodexEffortRuntimeSupported(
 
   const reasoning = capabilities?.reasoningEffort;
   return reasoning?.configPassthrough === true && reasoning.values.includes(effort);
+}
+
+function hasAuthoritativeCodexLaunchCatalog(
+  facts: Pick<
+    RuntimeProviderLaunchFacts,
+    'modelIds' | 'modelListParsed' | 'modelCatalog' | 'runtimeCapabilities'
+  >
+): boolean {
+  if (facts.modelIds.size > 0 || facts.modelCatalog != null) {
+    return true;
+  }
+  return (
+    facts.modelListParsed === true && facts.runtimeCapabilities?.modelCatalog?.dynamic === false
+  );
 }
 
 function getAnthropicFastModeDefault(): boolean {
@@ -6117,11 +6132,13 @@ export class TeamProvisioningService {
 
     let defaultModel: string | null = null;
     let modelIds = new Set<string>();
+    let modelListParsed = false;
     if (modelListResult.status === 'fulfilled') {
       try {
         const parsed = extractJsonObjectFromCli<ProviderModelListCommandResponse>(
           modelListResult.value.stdout
         );
+        modelListParsed = true;
         const provider = parsed.providers?.[params.providerId];
         defaultModel =
           typeof provider?.defaultModel === 'string' && provider.defaultModel.trim().length > 0
@@ -6202,6 +6219,7 @@ export class TeamProvisioningService {
             })
           : defaultModel,
       modelIds,
+      modelListParsed,
       modelCatalog,
       runtimeCapabilities,
       providerStatus,
@@ -6397,6 +6415,10 @@ export class TeamProvisioningService {
     }
 
     if (params.facts.runtimeCapabilities?.modelCatalog?.dynamic === true) {
+      return;
+    }
+
+    if (!hasAuthoritativeCodexLaunchCatalog(params.facts)) {
       return;
     }
 
@@ -17152,9 +17174,18 @@ export class TeamProvisioningService {
 
     const dynamicCatalog = params.runtimeFacts.runtimeCapabilities?.modelCatalog?.dynamic === true;
     const hasAuthoritativeCatalog =
-      availableModels.size > 0 ||
-      params.runtimeFacts.modelCatalog != null ||
-      params.runtimeFacts.runtimeCapabilities?.modelCatalog?.dynamic === false;
+      params.providerId === 'codex'
+        ? hasAuthoritativeCodexLaunchCatalog(params.runtimeFacts)
+        : availableModels.size > 0 ||
+          params.runtimeFacts.modelCatalog != null ||
+          params.runtimeFacts.runtimeCapabilities?.modelCatalog?.dynamic === false;
+
+    if (params.providerId === 'codex' && (dynamicCatalog || !hasAuthoritativeCatalog)) {
+      return {
+        kind: 'available',
+        resolvedModelId: trimmedModelId,
+      };
+    }
 
     if (dynamicCatalog || !hasAuthoritativeCatalog) {
       return {
