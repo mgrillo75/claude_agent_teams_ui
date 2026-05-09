@@ -1,6 +1,9 @@
 import { api } from '@renderer/api';
 import { mergeTeamMessages } from '@renderer/utils/mergeTeamMessages';
-import { buildOpenCodeRuntimeDeliveryDiagnostics } from '@renderer/utils/openCodeRuntimeDeliveryDiagnostics';
+import {
+  buildOpenCodeRuntimeDeliveryDiagnostics,
+  isOpenCodeRuntimeDeliveryHardUxFailure,
+} from '@renderer/utils/openCodeRuntimeDeliveryDiagnostics';
 import { normalizePath } from '@renderer/utils/pathNormalize';
 import {
   buildTaskChangePresenceKey,
@@ -2425,7 +2428,10 @@ export interface TeamSlice {
   sendMessageDebugDetails: OpenCodeRuntimeDeliveryDebugDetails | null;
   lastSendMessageResult: SendMessageResult | null;
   clearSendMessageRuntimeDiagnostics: (messageId?: string | null) => void;
-  refreshSendMessageRuntimeDeliveryStatus: (teamName: string, messageId: string) => Promise<void>;
+  refreshSendMessageRuntimeDeliveryStatus: (
+    teamName: string,
+    input: string | { messageId: string; statusMessageId?: string | null }
+  ) => Promise<void>;
   reviewActionError: string | null;
   provisioningRuns: Record<string, TeamProvisioningProgress>;
   /** Synthetic TeamSummary snapshots for teams currently being provisioned (before config.json exists). */
@@ -4494,8 +4500,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       const result = await unwrapIpc('team:sendMessage', () =>
         api.teams.sendMessage(teamName, request)
       );
-      const runtimeDeliveryFailed =
-        result.runtimeDelivery?.attempted === true && result.runtimeDelivery.delivered === false;
+      const runtimeDeliveryFailed = isOpenCodeRuntimeDeliveryHardUxFailure(result.runtimeDelivery);
       const runtimeDeliveryDiagnostics = buildOpenCodeRuntimeDeliveryDiagnostics(result);
       const optimisticMessage: InboxMessage = {
         from: request.from ?? 'user',
@@ -4563,14 +4568,29 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
     });
   },
 
-  refreshSendMessageRuntimeDeliveryStatus: async (teamName: string, messageId: string) => {
-    const normalizedMessageId = messageId.trim();
+  refreshSendMessageRuntimeDeliveryStatus: async (teamName, input) => {
+    const normalizedMessageId = typeof input === 'string' ? input.trim() : input.messageId.trim();
+    const statusMessageId =
+      typeof input === 'string'
+        ? normalizedMessageId
+        : input.statusMessageId?.trim() || normalizedMessageId;
     if (!normalizedMessageId) return;
     if (get().sendMessageDebugDetails?.messageId !== normalizedMessageId) return;
-    const status = await unwrapIpc('team:getOpenCodeRuntimeDeliveryStatus', () =>
-      api.teams.getOpenCodeRuntimeDeliveryStatus(teamName, normalizedMessageId)
+    let status = await unwrapIpc('team:getOpenCodeRuntimeDeliveryStatus', () =>
+      api.teams.getOpenCodeRuntimeDeliveryStatus(teamName, statusMessageId)
     );
     if (!status) return;
+    if (statusMessageId !== normalizedMessageId) {
+      const blockerStillChecking =
+        status.userVisibleImpact?.state === 'checking' || status.responsePending === true;
+      if (!blockerStillChecking) {
+        const ownStatus = await unwrapIpc('team:getOpenCodeRuntimeDeliveryStatus', () =>
+          api.teams.getOpenCodeRuntimeDeliveryStatus(teamName, normalizedMessageId)
+        );
+        if (!ownStatus) return;
+        status = ownStatus;
+      }
+    }
     const diagnostics = buildOpenCodeRuntimeDeliveryDiagnostics({
       deliveredToInbox: true,
       messageId: normalizedMessageId,

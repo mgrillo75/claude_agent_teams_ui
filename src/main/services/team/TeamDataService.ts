@@ -497,6 +497,14 @@ export class TeamDataService {
     this.memberRuntimeAdvisoryService = service;
   }
 
+  invalidateMemberRuntimeAdvisory(teamName: string, memberName: string): void {
+    this.memberRuntimeAdvisoryService.invalidateMemberAdvisory(teamName, memberName);
+  }
+
+  invalidateTeamRuntimeAdvisories(teamName: string): void {
+    this.memberRuntimeAdvisoryService.invalidateTeamAdvisories(teamName);
+  }
+
   private async getMemberRuntimeAdvisoriesForSnapshot(
     teamName: string,
     members: readonly Pick<TeamMemberSnapshot, 'name' | 'removedAt'>[]

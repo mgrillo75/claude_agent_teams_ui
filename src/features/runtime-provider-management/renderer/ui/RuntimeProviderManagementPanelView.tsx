@@ -1321,7 +1321,7 @@ function ProviderModelList({
           <Input
             data-testid="runtime-provider-model-search"
             value={state.modelQuery}
-            disabled={disabled || state.modelsLoading}
+            disabled={disabled}
             onChange={(event) => actions.setModelQuery(event.target.value)}
             onClick={(event) => event.stopPropagation()}
             onKeyDown={(event) => event.stopPropagation()}

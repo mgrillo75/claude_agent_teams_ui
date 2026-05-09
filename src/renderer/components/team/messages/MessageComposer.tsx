@@ -19,6 +19,7 @@ import { isTeamProvisioningActive } from '@renderer/store/slices/teamSlice';
 import { serializeChipsWithText } from '@renderer/types/inlineChip';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
+import { isOpenCodeRuntimeDeliveryHardUxFailureFromDebugDetails } from '@renderer/utils/openCodeRuntimeDeliveryDiagnostics';
 import { nameColorSet } from '@renderer/utils/projectColor';
 import { getSuggestedSlashCommandsForProvider } from '@renderer/utils/providerSlashCommands';
 import { buildSlashCommandSuggestions } from '@renderer/utils/skillCommandSuggestions';
@@ -469,7 +470,9 @@ export const MessageComposer = ({
     if (!hasCompletionSignal) return;
 
     pendingSendRef.current = null;
-    const failed = sendError !== null || sendDebugDetails?.delivered === false;
+    const failed =
+      sendError !== null ||
+      isOpenCodeRuntimeDeliveryHardUxFailureFromDebugDetails(sendDebugDetails);
     if (failed) {
       if (!isPendingCurrentTeam) return;
       const currentDraftIsEmpty =

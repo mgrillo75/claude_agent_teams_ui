@@ -336,9 +336,21 @@ export class ChangeExtractorService {
     teamName: string,
     requests: TeamTaskChangeSummaryRequest[]
   ): Promise<TeamTaskChangeSummariesResponse> {
-    const cappedRequests = requests
-      .filter((request) => typeof request.taskId === 'string' && request.taskId.trim().length > 0)
-      .slice(0, TEAM_TASK_CHANGE_SUMMARY_BATCH_LIMIT);
+    const inputRequests = Array.isArray(requests) ? requests : [];
+    const seenTaskIds = new Set<string>();
+    const uniqueRequests: TeamTaskChangeSummaryRequest[] = [];
+    for (const request of inputRequests) {
+      if (!request || typeof request !== 'object') {
+        continue;
+      }
+      const taskId = typeof request.taskId === 'string' ? request.taskId.trim() : '';
+      if (!taskId || seenTaskIds.has(taskId)) {
+        continue;
+      }
+      seenTaskIds.add(taskId);
+      uniqueRequests.push({ ...request, taskId });
+    }
+    const cappedRequests = uniqueRequests.slice(0, TEAM_TASK_CHANGE_SUMMARY_BATCH_LIMIT);
     const items: TeamTaskChangeSummaryItem[] = cappedRequests.map((request) => ({
       taskId: request.taskId.trim(),
       changeSet: null,
@@ -379,7 +391,7 @@ export class ChangeExtractorService {
       teamName,
       items,
       computedAt: new Date().toISOString(),
-      truncated: requests.length > cappedRequests.length || undefined,
+      truncated: uniqueRequests.length > cappedRequests.length || undefined,
     };
   }
 

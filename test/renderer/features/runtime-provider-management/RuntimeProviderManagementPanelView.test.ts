@@ -721,6 +721,62 @@ describe('RuntimeProviderManagementPanelView', () => {
     expect(actions.useModelForNewTeams).not.toHaveBeenCalled();
   });
 
+  it('keeps the model search input enabled while model results are loading', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const actions = createActions();
+    const connectedProvider = {
+      ...createState().view!.providers[0],
+      state: 'connected' as const,
+      ownership: ['managed'] as const,
+      modelCount: 174,
+      actions: [
+        {
+          id: 'use' as const,
+          label: 'Use',
+          enabled: true,
+          disabledReason: null,
+          requiresSecret: false,
+          ownershipScope: 'runtime' as const,
+        },
+      ],
+    };
+
+    await act(async () => {
+      root.render(
+        React.createElement(RuntimeProviderManagementPanelView, {
+          state: createState({
+            view: {
+              ...createState().view!,
+              providers: [connectedProvider],
+            },
+            providers: [connectedProvider],
+            selectedProviderId: 'openrouter',
+            modelPickerProviderId: 'openrouter',
+            modelPickerMode: 'use',
+            modelQuery: 'claude',
+            modelsLoading: true,
+          }),
+          actions,
+          disabled: false,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const searchInput = host.querySelector(
+      '[data-testid="runtime-provider-model-search"]'
+    ) as HTMLInputElement | null;
+
+    expect(searchInput).not.toBeNull();
+    expect(searchInput?.disabled).toBe(false);
+    expect(searchInput?.value).toBe('claude');
+    expect(host.querySelector('[data-testid="runtime-provider-model-loading-skeleton"]')).not.toBe(
+      null
+    );
+  });
+
   it('keeps directory provider models visible when a model row is selected', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);

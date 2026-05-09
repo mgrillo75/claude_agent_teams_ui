@@ -59,6 +59,7 @@ import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron';
 
 const wrapReviewHandler = createIpcWrapper('IPC:review');
 const logger = createLogger('IPC:review');
+const TEAM_TASK_CHANGE_SUMMARY_IPC_UNIQUE_REQUEST_LIMIT = 201;
 
 // --- Module-level state ---
 
@@ -204,6 +205,37 @@ function sanitizeTaskChangeOptions(options?: unknown): TaskChangeRequestOptions 
   };
 }
 
+function sanitizeTeamTaskChangeSummaryRequests(requests: unknown): TeamTaskChangeSummaryRequest[] {
+  if (!Array.isArray(requests)) {
+    return [];
+  }
+
+  const sanitizedRequests: TeamTaskChangeSummaryRequest[] = [];
+  const seenTaskIds = new Set<string>();
+  for (const request of requests) {
+    if (sanitizedRequests.length >= TEAM_TASK_CHANGE_SUMMARY_IPC_UNIQUE_REQUEST_LIMIT) {
+      break;
+    }
+    if (!request || typeof request !== 'object') {
+      continue;
+    }
+    const raw = request as Record<string, unknown>;
+    if (typeof raw.taskId !== 'string') {
+      continue;
+    }
+    const taskId = raw.taskId.trim();
+    if (!taskId || seenTaskIds.has(taskId)) {
+      continue;
+    }
+    seenTaskIds.add(taskId);
+    sanitizedRequests.push({
+      taskId,
+      options: sanitizeTaskChangeOptions(raw.options),
+    });
+  }
+  return sanitizedRequests;
+}
+
 async function handleGetTaskChanges(
   _event: IpcMainInvokeEvent,
   teamName: string,
@@ -222,23 +254,7 @@ async function handleGetTeamTaskChangeSummaries(
   teamName: string,
   requests: unknown
 ): Promise<IpcResult<TeamTaskChangeSummariesResponse>> {
-  const sanitizedRequests: TeamTaskChangeSummaryRequest[] = Array.isArray(requests)
-    ? requests
-        .map((request): TeamTaskChangeSummaryRequest | null => {
-          if (!request || typeof request !== 'object') {
-            return null;
-          }
-          const raw = request as Record<string, unknown>;
-          if (typeof raw.taskId !== 'string' || raw.taskId.trim().length === 0) {
-            return null;
-          }
-          return {
-            taskId: raw.taskId.trim(),
-            options: sanitizeTaskChangeOptions(raw.options),
-          };
-        })
-        .filter((request): request is TeamTaskChangeSummaryRequest => request !== null)
-    : [];
+  const sanitizedRequests = sanitizeTeamTaskChangeSummaryRequests(requests);
 
   return wrapReviewHandler('getTeamTaskChangeSummaries', () =>
     getChangeExtractor().getTeamTaskChangeSummaries(teamName, sanitizedRequests)

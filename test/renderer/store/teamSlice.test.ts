@@ -477,7 +477,7 @@ describe('teamSlice actions', () => {
 
     expect(store.getState().lastSendMessageResult).toBe(result);
     expect(store.getState().sendMessageWarning).toBe(
-      'OpenCode runtime delivery is still being checked. Message was saved and will be retried if needed.'
+      'OpenCode delivery is still being checked. Message was saved and will be observed before retry if needed.'
     );
     expect(store.getState().sendMessageDebugDetails).toMatchObject({
       messageId: 'm-opencode-pending',
@@ -567,7 +567,7 @@ describe('teamSlice actions', () => {
 
     store.getState().clearSendMessageRuntimeDiagnostics('other-message');
     expect(store.getState().sendMessageWarning).toBe(
-      'OpenCode runtime delivery is still being checked. Message was saved and will be retried if needed.'
+      'OpenCode delivery is still being checked. Message was saved and will be observed before retry if needed.'
     );
     expect(store.getState().sendMessageDebugDetails?.messageId).toBe('m-opencode-pending');
 

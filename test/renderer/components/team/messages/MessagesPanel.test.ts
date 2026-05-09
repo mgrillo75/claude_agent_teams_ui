@@ -671,10 +671,10 @@ describe('MessagesPanel idle summary invariants', () => {
       await Promise.resolve();
     });
 
-    expect(storeState.refreshSendMessageRuntimeDeliveryStatus).toHaveBeenCalledWith(
-      'atlas-hq',
-      'user-send'
-    );
+    expect(storeState.refreshSendMessageRuntimeDeliveryStatus).toHaveBeenCalledWith('atlas-hq', {
+      messageId: 'user-send',
+      statusMessageId: 'user-send',
+    });
 
     await act(async () => {
       root.unmount();

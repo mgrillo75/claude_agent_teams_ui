@@ -199,9 +199,24 @@ import {
   type OpenCodeVisibleReplyProof,
 } from './opencode/delivery/OpenCodePromptDeliveryWatchdog';
 import {
-  isActionRequiredOpenCodeRuntimeDeliveryReason,
-  selectOpenCodeRuntimeDeliveryReason,
-} from './opencode/delivery/OpenCodeRuntimeDeliveryDiagnostics';
+  classifyOpenCodeRuntimeDeliveryReasonCode,
+  decideOpenCodeRuntimeDeliveryAdvisory,
+  isDeferredGenericOpenCodeRuntimeDeliveryReason,
+  isPotentialOpenCodeRuntimeDeliveryError,
+  toOpenCodeRuntimeDeliveryUserVisibleImpact,
+  type OpenCodeRuntimeDeliveryAdvisoryDecision,
+} from './opencode/delivery/OpenCodeRuntimeDeliveryAdvisoryPolicy';
+import { selectOpenCodeRuntimeDeliveryReason } from './opencode/delivery/OpenCodeRuntimeDeliveryDiagnostics';
+import {
+  getOpenCodeVisibleReplyInboxCandidates as resolveOpenCodeVisibleReplyInboxCandidates,
+  isOpenCodeLeadReplyRecipientAlias as isOpenCodeLeadReplyRecipientAliasValue,
+  isOpenCodeRecoveredVisibleReplyCandidate as isOpenCodeRecoveredVisibleReplyCandidateValue,
+  isOpenCodeVisibleReplyTimestampEligible as isOpenCodeVisibleReplyTimestampEligibleValue,
+  normalizeOpenCodeTaskRefsForComparison as normalizeOpenCodeTaskRefsForComparisonValue,
+  openCodeTaskRefKey as openCodeTaskRefKeyValue,
+  openCodeTaskRefsIncludeAll as openCodeTaskRefsIncludeAllValue,
+} from './opencode/delivery/OpenCodeRuntimeDeliveryProofMatching';
+import { OpenCodeRuntimeDeliveryProofReader } from './opencode/delivery/OpenCodeRuntimeDeliveryProofReader';
 import { createRuntimeDeliveryJournalStore } from './opencode/delivery/RuntimeDeliveryJournal';
 import {
   type RuntimeDeliveryDestinationPort,
@@ -483,6 +498,7 @@ import type {
   OpenCodeAppManagedBootstrapCandidate,
   OpenCodeBootstrapEvidenceSource,
   OpenCodeRuntimeDeliveryStatus,
+  OpenCodeRuntimeDeliveryUserVisibleImpact,
   PersistedTeamLaunchMemberState,
   PersistedTeamLaunchPhase,
   PersistedTeamLaunchSnapshot,
@@ -5333,6 +5349,7 @@ interface OpenCodeMemberInboxDelivery {
   queuedBehindMessageId?: string;
   reason?: string;
   diagnostics?: string[];
+  userVisibleImpact?: OpenCodeRuntimeDeliveryUserVisibleImpact;
 }
 
 type OpenCodeVisibleReplyCorrelation = NonNullable<
@@ -5478,8 +5495,10 @@ export class TeamProvisioningService {
     Promise<OpenCodeMemberInboxRelayResult>
   >();
   private readonly openCodePromptDeliveryWatchdogTimers = new Map<string, NodeJS.Timeout>();
+  private readonly openCodeRuntimeDeliveryAdvisoryReviewTimers = new Map<string, NodeJS.Timeout>();
   private readonly openCodeRuntimeDeliveryAdvisoryEventSentAt = new Map<string, number>();
   private readonly openCodeRuntimeDeliveryLeadNoticeSentAt = new Map<string, number>();
+  private readonly openCodeRuntimeDeliveryProofReader = new OpenCodeRuntimeDeliveryProofReader();
   private readonly openCodePromptDeliveryWatchdogQueue: {
     teamName: string;
     run: () => Promise<void>;
@@ -7306,12 +7325,7 @@ export class TeamProvisioningService {
     message: InboxMessage;
     ledgerRecord: OpenCodePromptDeliveryLedgerRecord;
   }): boolean {
-    const messageMs = Date.parse(input.message.timestamp);
-    const inboxMs = Date.parse(input.ledgerRecord.inboxTimestamp);
-    if (!Number.isFinite(messageMs) || !Number.isFinite(inboxMs)) {
-      return true;
-    }
-    return messageMs + 5_000 >= inboxMs;
+    return isOpenCodeVisibleReplyTimestampEligibleValue(input);
   }
 
   private isOpenCodeRecoveredVisibleReplyCandidate(input: {
@@ -7320,33 +7334,7 @@ export class TeamProvisioningService {
     from: string;
     requireTaskRefs: boolean;
   }): boolean {
-    const expectedFrom = input.from.trim().toLowerCase();
-    if (!expectedFrom || input.message.from.trim().toLowerCase() !== expectedFrom) {
-      return false;
-    }
-    if (input.message.source !== undefined && input.message.source !== 'runtime_delivery') {
-      return false;
-    }
-    if (
-      input.requireTaskRefs &&
-      !this.openCodeTaskRefsIncludeAll(input.message.taskRefs, input.ledgerRecord.taskRefs)
-    ) {
-      return false;
-    }
-    if (
-      !this.isOpenCodeVisibleReplyTimestampEligible({
-        message: input.message,
-        ledgerRecord: input.ledgerRecord,
-      })
-    ) {
-      return false;
-    }
-    return isOpenCodeVisibleReplySemanticallySufficient({
-      actionMode: input.ledgerRecord.actionMode,
-      taskRefs: input.ledgerRecord.taskRefs,
-      text: input.message.text,
-      summary: input.message.summary,
-    }).sufficient;
+    return isOpenCodeRecoveredVisibleReplyCandidateValue(input);
   }
 
   private async correlateOpenCodeRecoveredVisibleReply(input: {
@@ -7536,88 +7524,37 @@ export class TeamProvisioningService {
     replyRecipient?: string | null;
     includeUserFallbackForLeadRecipient?: boolean;
   }): Promise<string[]> {
-    const explicitRecipient = input.replyRecipient?.trim() || 'user';
-    const candidates = [explicitRecipient];
     const configuredLeadName = await this.readConfigForObservation(input.teamName)
       .then(
         (config) => config?.members?.find((member) => isLeadMember(member))?.name?.trim() || null
       )
       .catch(() => null);
-    const isConfiguredLeadRecipient =
-      Boolean(configuredLeadName) &&
-      configuredLeadName?.toLowerCase() === explicitRecipient.toLowerCase();
-
-    if (this.isOpenCodeLeadReplyRecipientAlias(explicitRecipient) || isConfiguredLeadRecipient) {
-      if (configuredLeadName) {
-        candidates.push(configuredLeadName);
-      }
-      candidates.push('lead');
-      candidates.push('team-lead');
-      if (input.includeUserFallbackForLeadRecipient) {
-        candidates.push('user');
-      }
-    }
-    return candidates
-      .filter((value): value is string => Boolean(value && value.trim()))
-      .filter(
-        (value, index, list) =>
-          list.findIndex((item) => item.toLowerCase() === value.toLowerCase()) === index
-      );
+    return resolveOpenCodeVisibleReplyInboxCandidates({
+      replyRecipient: input.replyRecipient,
+      configuredLeadName,
+      includeUserFallbackForLeadRecipient: input.includeUserFallbackForLeadRecipient,
+    });
   }
 
   private isOpenCodeLeadReplyRecipientAlias(value: string): boolean {
-    const normalized = value
-      .trim()
-      .toLowerCase()
-      .replace(/[\s_]+/g, '-');
-    return (
-      normalized === 'lead' ||
-      normalized === 'team-lead' ||
-      normalized === 'teamlead' ||
-      normalized === 'team-leader'
-    );
+    return isOpenCodeLeadReplyRecipientAliasValue(value);
   }
 
   private openCodeTaskRefsIncludeAll(
     actual: readonly TaskRef[] | undefined,
     expected: readonly TaskRef[] | undefined
   ): boolean {
-    const normalizedExpected = this.normalizeOpenCodeTaskRefsForComparison(expected);
-    if (normalizedExpected.length === 0) {
-      return true;
-    }
-    const actualKeys = new Set(
-      this.normalizeOpenCodeTaskRefsForComparison(actual).map((taskRef) =>
-        this.openCodeTaskRefKey(taskRef)
-      )
-    );
-    return normalizedExpected.every((taskRef) => actualKeys.has(this.openCodeTaskRefKey(taskRef)));
+    return openCodeTaskRefsIncludeAllValue(actual, expected);
   }
 
   private normalizeOpenCodeTaskRefsForComparison(
     taskRefs: readonly TaskRef[] | undefined
   ): TaskRef[] {
-    if (!Array.isArray(taskRefs)) {
-      return [];
-    }
-    const normalized: TaskRef[] = [];
-    for (const rawTaskRef of taskRefs as readonly unknown[]) {
-      if (!rawTaskRef || typeof rawTaskRef !== 'object') {
-        continue;
-      }
-      const taskRef = rawTaskRef as Record<string, unknown>;
-      const teamName = typeof taskRef.teamName === 'string' ? taskRef.teamName.trim() : '';
-      const taskId = typeof taskRef.taskId === 'string' ? taskRef.taskId.trim() : '';
-      const displayId = typeof taskRef.displayId === 'string' ? taskRef.displayId.trim() : '';
-      if (teamName && taskId && displayId) {
-        normalized.push({ teamName, taskId, displayId });
-      }
-    }
-    return normalized;
+    return normalizeOpenCodeTaskRefsForComparisonValue(taskRefs);
   }
 
   private openCodeTaskRefKey(taskRef: TaskRef): string {
-    return `${taskRef.teamName.trim()}\u0000${taskRef.taskId.trim()}\u0000${taskRef.displayId.trim()}`;
+    return openCodeTaskRefKeyValue(taskRef);
   }
 
   private async ensureOpenCodeVisibleReplyTaskRefs(input: {
@@ -8446,59 +8383,84 @@ export class TeamProvisioningService {
     const shouldNotifyTerminalFailure =
       event === 'opencode_prompt_delivery_terminal_failure' && record.status === 'failed_terminal';
     const shouldNotifyActionRequiredRetry =
-      !shouldNotifyTerminalFailure &&
-      this.shouldNotifyOpenCodeRuntimeDeliveryBeforeTerminal(record);
+      !shouldNotifyTerminalFailure && isPotentialOpenCodeRuntimeDeliveryError(record);
     if (shouldNotifyTerminalFailure || shouldNotifyActionRequiredRetry) {
-      void this.fireOpenCodeRuntimeDeliveryErrorNotification(record).catch((error) => {
+      void this.handleOpenCodeRuntimeDeliveryUserFacingSideEffects(record).catch((error) => {
         logger.warn(
-          `[${record.teamName}] Failed to fire OpenCode runtime delivery error notification for ${record.memberName}: ${getErrorMessage(error)}`
+          `[${record.teamName}] Failed to handle OpenCode runtime delivery advisory side effects for ${record.memberName}: ${getErrorMessage(error)}`
         );
       });
+    }
+  }
+
+  private async handleOpenCodeRuntimeDeliveryUserFacingSideEffects(
+    record: OpenCodePromptDeliveryLedgerRecord
+  ): Promise<void> {
+    const { record: latestRecord, decision } =
+      await this.decideOpenCodeRuntimeDeliveryUserFacingAdvisory(record);
+    if (decision.action === 'defer') {
+      this.emitOpenCodeRuntimeDeliveryAdvisoryEvent(latestRecord, decision);
+      this.scheduleOpenCodeRuntimeDeliveryAdvisoryReview(latestRecord, decision);
       return;
     }
-    if (this.shouldSurfaceOpenCodeRuntimeDeliveryAdvisory(record)) {
-      this.emitOpenCodeRuntimeDeliveryAdvisoryEvent(record);
+    if (decision.action === 'suppress') {
+      this.emitOpenCodeRuntimeDeliveryAdvisoryEvent(latestRecord, decision);
+      return;
     }
+
+    this.emitOpenCodeRuntimeDeliveryAdvisoryEvent(latestRecord, decision);
+    if (decision.severity !== 'error') {
+      return;
+    }
+
+    await this.fireOpenCodeRuntimeDeliveryErrorNotification(latestRecord, decision);
   }
 
-  private shouldSurfaceOpenCodeRuntimeDeliveryAdvisory(
+  private async decideOpenCodeRuntimeDeliveryUserFacingAdvisory(
     record: OpenCodePromptDeliveryLedgerRecord
-  ): boolean {
-    if (!selectOpenCodeRuntimeDeliveryReason(record)) {
-      return false;
+  ): Promise<{
+    record: OpenCodePromptDeliveryLedgerRecord;
+    decision: OpenCodeRuntimeDeliveryAdvisoryDecision;
+  }> {
+    const memberKey = record.memberName.trim().toLowerCase();
+    let recordsForMember: OpenCodePromptDeliveryLedgerRecord[] = [record];
+    try {
+      const laneRecords = await this.createOpenCodePromptDeliveryLedger(
+        record.teamName,
+        record.laneId
+      ).list();
+      recordsForMember = laneRecords.filter(
+        (candidate) => candidate.memberName.trim().toLowerCase() === memberKey
+      );
+    } catch {
+      recordsForMember = [record];
     }
-    if (record.status === 'failed_terminal') {
-      return true;
-    }
-    if (record.status === 'responded') {
-      return false;
-    }
-    return (
-      record.responseState === 'session_error' ||
-      record.responseState === 'tool_error' ||
-      record.responseState === 'permission_blocked' ||
-      record.responseState === 'reconcile_failed'
-    );
-  }
-
-  private shouldNotifyOpenCodeRuntimeDeliveryBeforeTerminal(
-    record: OpenCodePromptDeliveryLedgerRecord
-  ): boolean {
-    if (!this.shouldSurfaceOpenCodeRuntimeDeliveryAdvisory(record)) {
-      return false;
-    }
-    if (record.status === 'failed_terminal') {
-      return false;
-    }
-    return isActionRequiredOpenCodeRuntimeDeliveryReason(
-      selectOpenCodeRuntimeDeliveryReason(record)
-    );
+    const latestRecord = recordsForMember.find((candidate) => candidate.id === record.id) ?? record;
+    const recordsByMember = new Map<string, readonly OpenCodePromptDeliveryLedgerRecord[]>([
+      [memberKey, recordsForMember.length > 0 ? recordsForMember : [latestRecord]],
+    ]);
+    const activeMemberKeys = new Set([memberKey]);
+    const proofIndex = await this.openCodeRuntimeDeliveryProofReader
+      .readProofIndex({
+        teamName: latestRecord.teamName,
+        activeMemberKeys,
+        recordsByMember,
+      })
+      .catch(() => null);
+    return {
+      record: latestRecord,
+      decision: decideOpenCodeRuntimeDeliveryAdvisory({
+        record: latestRecord,
+        proof: proofIndex?.getSnapshot(latestRecord.memberName, latestRecord),
+      }),
+    };
   }
 
   private async fireOpenCodeRuntimeDeliveryErrorNotification(
-    record: OpenCodePromptDeliveryLedgerRecord
+    record: OpenCodePromptDeliveryLedgerRecord,
+    decision: OpenCodeRuntimeDeliveryAdvisoryDecision
   ): Promise<void> {
-    const reason = this.selectOpenCodeRuntimeDeliveryNotificationReason(record);
+    const reason = decision.reason;
     if (!reason) {
       return;
     }
@@ -8536,8 +8498,6 @@ export class TeamProvisioningService {
       );
     }
 
-    this.emitOpenCodeRuntimeDeliveryAdvisoryEvent(record);
-
     await this.notifyLeadAboutOpenCodeRuntimeDeliveryError({
       record,
       reason,
@@ -8546,7 +8506,8 @@ export class TeamProvisioningService {
   }
 
   private emitOpenCodeRuntimeDeliveryAdvisoryEvent(
-    record: OpenCodePromptDeliveryLedgerRecord
+    record: OpenCodePromptDeliveryLedgerRecord,
+    decision?: OpenCodeRuntimeDeliveryAdvisoryDecision
   ): void {
     try {
       this.memberRuntimeAdvisoryInvalidator?.(record.teamName, record.memberName);
@@ -8556,7 +8517,7 @@ export class TeamProvisioningService {
       );
     }
 
-    const reasonKey = this.getOpenCodeRuntimeDeliveryAdvisoryReasonKey(record);
+    const reasonKey = this.getOpenCodeRuntimeDeliveryAdvisoryReasonKey(record, decision);
     const eventKey = `opencode_runtime_delivery_error:${record.teamName}:${record.memberName}:${record.id}:${reasonKey}`;
     const now = Date.now();
     this.pruneOpenCodeRuntimeDeliveryAdvisoryEventDedupe(now);
@@ -8623,10 +8584,14 @@ export class TeamProvisioningService {
   }
 
   private getOpenCodeRuntimeDeliveryAdvisoryReasonKey(
-    record: OpenCodePromptDeliveryLedgerRecord
+    record: OpenCodePromptDeliveryLedgerRecord,
+    decision?: OpenCodeRuntimeDeliveryAdvisoryDecision
   ): string {
     const reason =
-      selectOpenCodeRuntimeDeliveryReason(record) ?? record.responseState ?? record.status;
+      decision?.reason ??
+      selectOpenCodeRuntimeDeliveryReason(record) ??
+      record.responseState ??
+      record.status;
     const normalized = reason
       .toLowerCase()
       .replace(/https?:\/\/\S+/g, '')
@@ -8634,6 +8599,31 @@ export class TeamProvisioningService {
       .replace(/^-+|-+$/g, '')
       .slice(0, 96);
     return normalized || 'unknown';
+  }
+
+  private scheduleOpenCodeRuntimeDeliveryAdvisoryReview(
+    record: OpenCodePromptDeliveryLedgerRecord,
+    decision: OpenCodeRuntimeDeliveryAdvisoryDecision
+  ): void {
+    const reviewAt = Date.parse(decision.nextReviewAt ?? '');
+    if (!Number.isFinite(reviewAt)) {
+      return;
+    }
+    const delayMs = Math.max(250, reviewAt - Date.now());
+    const timerKey = `${record.teamName}:${record.laneId}:${record.id}`;
+    const existing = this.openCodeRuntimeDeliveryAdvisoryReviewTimers.get(timerKey);
+    if (existing) {
+      clearTimeout(existing);
+    }
+    const timer = setTimeout(() => {
+      this.openCodeRuntimeDeliveryAdvisoryReviewTimers.delete(timerKey);
+      void this.handleOpenCodeRuntimeDeliveryUserFacingSideEffects(record).catch((error) => {
+        logger.warn(
+          `[${record.teamName}] Failed to refresh deferred OpenCode runtime delivery advisory for ${record.memberName}: ${getErrorMessage(error)}`
+        );
+      });
+    }, delayMs);
+    this.openCodeRuntimeDeliveryAdvisoryReviewTimers.set(timerKey, timer);
   }
 
   private async notifyLeadAboutOpenCodeRuntimeDeliveryError(input: {
@@ -8680,12 +8670,6 @@ export class TeamProvisioningService {
         this.openCodeRuntimeDeliveryLeadNoticeSentAt.delete(key);
       }
     }
-  }
-
-  private selectOpenCodeRuntimeDeliveryNotificationReason(
-    record: OpenCodePromptDeliveryLedgerRecord
-  ): string | null {
-    return selectOpenCodeRuntimeDeliveryReason(record);
   }
 
   async scanOpenCodePromptDeliveryWatchdog(teamName: string): Promise<number> {
@@ -12256,7 +12240,9 @@ export class TeamProvisioningService {
         .catch(() => []);
       const record = records.find((candidate) => candidate.inboxMessageId === normalizedMessageId);
       if (record) {
-        return this.toOpenCodeRuntimeDeliveryStatus(record);
+        const { record: latestRecord, decision } =
+          await this.decideOpenCodeRuntimeDeliveryUserFacingAdvisory(record);
+        return this.toOpenCodeRuntimeDeliveryStatus(latestRecord, decision);
       }
     }
     return null;
@@ -12395,13 +12381,75 @@ export class TeamProvisioningService {
     });
   }
 
+  buildOpenCodeRuntimeDeliveryUserVisibleImpact(input: {
+    delivered?: boolean;
+    responsePending?: boolean;
+    acceptanceUnknown?: boolean;
+    responseState?: OpenCodeMemberInboxDelivery['responseState'];
+    ledgerStatus?: OpenCodePromptDeliveryStatus;
+    reason?: string;
+    diagnostics?: string[];
+    queuedBehindMessageId?: string;
+    policyImpact?: OpenCodeRuntimeDeliveryUserVisibleImpact;
+  }): OpenCodeRuntimeDeliveryUserVisibleImpact {
+    if (input.policyImpact) {
+      return input.policyImpact;
+    }
+    if (
+      input.responsePending === true ||
+      input.acceptanceUnknown === true ||
+      Boolean(input.queuedBehindMessageId)
+    ) {
+      return {
+        state: 'checking',
+        reasonCode: input.reason
+          ? classifyOpenCodeRuntimeDeliveryReasonCode(input.reason)
+          : undefined,
+        message: input.reason,
+      };
+    }
+    if (input.delivered === false) {
+      const reason = input.reason ?? input.diagnostics?.find((diagnostic) => diagnostic.trim());
+      if (
+        input.ledgerStatus === 'failed_terminal' &&
+        isDeferredGenericOpenCodeRuntimeDeliveryReason(reason)
+      ) {
+        return {
+          state: 'checking',
+          reasonCode: classifyOpenCodeRuntimeDeliveryReasonCode(reason),
+          message: reason,
+        };
+      }
+      return {
+        state: 'error',
+        reasonCode: classifyOpenCodeRuntimeDeliveryReasonCode(reason),
+        message: reason,
+      };
+    }
+    return input.policyImpact ?? { state: 'none' };
+  }
+
   private toOpenCodeRuntimeDeliveryStatus(
-    record: OpenCodePromptDeliveryLedgerRecord
+    record: OpenCodePromptDeliveryLedgerRecord,
+    decision?: OpenCodeRuntimeDeliveryAdvisoryDecision
   ): OpenCodeRuntimeDeliveryStatus {
     const failed = record.status === 'failed_terminal';
     const responded =
       record.status === 'responded' &&
       Boolean(record.inboxReadCommittedAt || record.visibleReplyMessageId);
+    const policyImpact = decision
+      ? toOpenCodeRuntimeDeliveryUserVisibleImpact(decision)
+      : undefined;
+    const userVisibleImpact = this.buildOpenCodeRuntimeDeliveryUserVisibleImpact({
+      delivered: !failed,
+      responsePending: !failed && !responded,
+      acceptanceUnknown: record.acceptanceUnknown,
+      responseState: record.responseState,
+      ledgerStatus: record.status,
+      reason: record.lastReason ?? undefined,
+      diagnostics: record.diagnostics,
+      policyImpact,
+    });
     return {
       messageId: record.inboxMessageId,
       providerId: 'opencode',
@@ -12415,6 +12463,7 @@ export class TeamProvisioningService {
       acceptanceUnknown: record.acceptanceUnknown,
       reason: record.lastReason ?? undefined,
       diagnostics: record.diagnostics,
+      userVisibleImpact,
     };
   }
 

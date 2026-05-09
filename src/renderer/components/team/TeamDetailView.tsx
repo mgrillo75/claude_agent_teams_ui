@@ -53,6 +53,7 @@ import {
   type TaskChangeRequestOptions,
 } from '@renderer/utils/taskChangeRequest';
 import { buildPendingRuntimeSummaryCopy } from '@renderer/utils/teamLaunchSummaryCopy';
+import { shouldClearPendingReplyForOpenCodeRuntimeDelivery } from '@renderer/utils/openCodeRuntimeDeliveryDiagnostics';
 import { stripAgentBlocks } from '@shared/constants/agentBlocks';
 import { deriveContextMetrics } from '@shared/utils/contextMetrics';
 import { isLeadAgentType, isLeadMember } from '@shared/utils/leadDetection';
@@ -3024,8 +3025,7 @@ export const TeamDetailView = memo(function TeamDetailView({
                           taskRefs,
                         });
                         if (
-                          result?.runtimeDelivery?.attempted === true &&
-                          result.runtimeDelivery.delivered === false
+                          shouldClearPendingReplyForOpenCodeRuntimeDelivery(result?.runtimeDelivery)
                         ) {
                           setPendingRepliesByMember((prev) => {
                             if (prev[member] !== sentAtMs) return prev;

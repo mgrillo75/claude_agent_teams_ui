@@ -3056,8 +3056,10 @@ async function handleSendMessage(
           ledgerStatus: delivery.ledgerStatus,
           visibleReplyMessageId: delivery.visibleReplyMessageId,
           visibleReplyCorrelation: delivery.visibleReplyCorrelation,
+          queuedBehindMessageId: delivery.queuedBehindMessageId,
           reason: delivery.reason,
           diagnostics: delivery.diagnostics,
+          userVisibleImpact: provisioning.buildOpenCodeRuntimeDeliveryUserVisibleImpact(delivery),
         };
         if (
           !delivery.delivered &&
@@ -3078,6 +3080,11 @@ async function handleSendMessage(
           delivered: false,
           reason,
           diagnostics: [reason],
+          userVisibleImpact: provisioning.buildOpenCodeRuntimeDeliveryUserVisibleImpact({
+            delivered: false,
+            reason,
+            diagnostics: [reason],
+          }),
         };
         logger.warn(
           `OpenCode runtime delivery after sendMessage crashed for teammate "${memberName}": ${reason}`

@@ -755,6 +755,7 @@ export interface SendMessageResult {
     queuedBehindMessageId?: string;
     reason?: string;
     diagnostics?: string[];
+    userVisibleImpact?: OpenCodeRuntimeDeliveryUserVisibleImpact;
   };
 }
 
@@ -853,6 +854,16 @@ export interface MemberRuntimeAdvisory {
     | 'unknown';
   message?: string;
   statusCode?: number;
+}
+
+export type OpenCodeRuntimeDeliveryUserVisibleState = 'none' | 'checking' | 'warning' | 'error';
+
+export interface OpenCodeRuntimeDeliveryUserVisibleImpact {
+  state: OpenCodeRuntimeDeliveryUserVisibleState;
+  reasonCode?: MemberRuntimeAdvisory['reasonCode'];
+  message?: string;
+  observedAt?: string;
+  nextReviewAt?: string;
 }
 
 export interface TeamProcess {

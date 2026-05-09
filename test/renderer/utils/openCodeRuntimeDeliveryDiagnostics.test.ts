@@ -3,6 +3,61 @@ import { describe, expect, it } from 'vitest';
 import { buildOpenCodeRuntimeDeliveryDiagnostics } from '../../../src/renderer/utils/openCodeRuntimeDeliveryDiagnostics';
 
 describe('openCodeRuntimeDeliveryDiagnostics', () => {
+  it('honors user-visible checking impact over raw terminal delivery facts', () => {
+    const diagnostics = buildOpenCodeRuntimeDeliveryDiagnostics({
+      deliveredToInbox: true,
+      messageId: 'msg-empty',
+      runtimeDelivery: {
+        providerId: 'opencode',
+        attempted: true,
+        delivered: false,
+        responsePending: false,
+        responseState: 'empty_assistant_turn',
+        ledgerStatus: 'failed_terminal',
+        reason: 'empty_assistant_turn',
+        diagnostics: ['empty_assistant_turn'],
+        userVisibleImpact: {
+          state: 'checking',
+          reasonCode: 'backend_error',
+          message: 'empty_assistant_turn',
+          nextReviewAt: '2026-05-09T12:00:00.000Z',
+        },
+      },
+    });
+
+    expect(diagnostics.warning).toBe(
+      'OpenCode delivery is still being checked. Message was saved and will be observed before retry if needed.'
+    );
+    expect(diagnostics.debugDetails).toMatchObject({
+      messageId: 'msg-empty',
+      statusMessageId: 'msg-empty',
+      userVisibleState: 'checking',
+      userVisibleNextReviewAt: '2026-05-09T12:00:00.000Z',
+    });
+  });
+
+  it('honors user-visible none impact over raw terminal delivery facts', () => {
+    const diagnostics = buildOpenCodeRuntimeDeliveryDiagnostics({
+      deliveredToInbox: true,
+      messageId: 'msg-proven',
+      runtimeDelivery: {
+        providerId: 'opencode',
+        attempted: true,
+        delivered: false,
+        responsePending: false,
+        responseState: 'empty_assistant_turn',
+        ledgerStatus: 'failed_terminal',
+        reason: 'empty_assistant_turn',
+        diagnostics: ['empty_assistant_turn'],
+        userVisibleImpact: {
+          state: 'none',
+        },
+      },
+    });
+
+    expect(diagnostics).toEqual({ warning: null, debugDetails: null });
+  });
+
   it('surfaces terminal empty assistant turn in the compact failed warning', () => {
     const diagnostics = buildOpenCodeRuntimeDeliveryDiagnostics({
       deliveredToInbox: true,

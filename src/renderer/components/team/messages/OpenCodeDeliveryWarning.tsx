@@ -19,9 +19,12 @@ export const OpenCodeDeliveryWarning = ({
   debugDetails,
   pendingDelayMs = 10_000,
 }: OpenCodeDeliveryWarningProps): JSX.Element | null => {
-  const detailsKey = `${warning ?? ''}:${debugDetails?.messageId ?? ''}`;
+  const detailsKey = `${warning ?? ''}:${debugDetails?.messageId ?? ''}:${debugDetails?.statusMessageId ?? ''}:${debugDetails?.userVisibleState ?? ''}`;
   const delayPendingWarning =
-    debugDetails?.responsePending === true && debugDetails.delivered !== false;
+    debugDetails?.userVisibleState === 'checking' ||
+    (!debugDetails?.userVisibleState &&
+      debugDetails?.responsePending === true &&
+      debugDetails.delivered !== false);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [pendingVisibleKey, setPendingVisibleKey] = useState<string | null>(() =>
@@ -118,6 +121,8 @@ export const OpenCodeDeliveryWarning = ({
           <span className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1">
             <span className="text-[var(--color-text-muted)]">messageId</span>
             <span className="break-all">{debugDetails.messageId}</span>
+            <span className="text-[var(--color-text-muted)]">statusMessageId</span>
+            <span className="break-all">{debugDetails.statusMessageId}</span>
             <span className="text-[var(--color-text-muted)]">providerId</span>
             <span>{debugDetails.providerId}</span>
             <span className="text-[var(--color-text-muted)]">delivered</span>
@@ -128,8 +133,22 @@ export const OpenCodeDeliveryWarning = ({
             <span>{debugDetails.responseState ?? 'null'}</span>
             <span className="text-[var(--color-text-muted)]">ledgerStatus</span>
             <span>{debugDetails.ledgerStatus ?? 'null'}</span>
+            <span className="text-[var(--color-text-muted)]">visibleReplyMessageId</span>
+            <span className="break-all">{debugDetails.visibleReplyMessageId ?? 'null'}</span>
+            <span className="text-[var(--color-text-muted)]">visibleReplyCorrelation</span>
+            <span>{debugDetails.visibleReplyCorrelation ?? 'null'}</span>
+            <span className="text-[var(--color-text-muted)]">queuedBehindMessageId</span>
+            <span className="break-all">{debugDetails.queuedBehindMessageId ?? 'null'}</span>
             <span className="text-[var(--color-text-muted)]">acceptanceUnknown</span>
             <span>{String(debugDetails.acceptanceUnknown)}</span>
+            <span className="text-[var(--color-text-muted)]">userVisibleState</span>
+            <span>{debugDetails.userVisibleState ?? 'null'}</span>
+            <span className="text-[var(--color-text-muted)]">userVisibleReasonCode</span>
+            <span>{debugDetails.userVisibleReasonCode ?? 'null'}</span>
+            <span className="text-[var(--color-text-muted)]">userVisibleNextReviewAt</span>
+            <span>{debugDetails.userVisibleNextReviewAt ?? 'null'}</span>
+            <span className="text-[var(--color-text-muted)]">userVisibleMessage</span>
+            <span>{debugDetails.userVisibleMessage ?? 'null'}</span>
             <span className="text-[var(--color-text-muted)]">reason</span>
             <span>{debugDetails.reason ?? 'null'}</span>
             <span className="text-[var(--color-text-muted)]">diagnostics</span>

@@ -170,10 +170,7 @@ describe('TeamMemberRuntimeAdvisoryService', () => {
     ['codex_native_timeout', 'Codex native exec timed out after 120000ms.'],
     ['network_error', 'Fetch failed because the network connection timed out.'],
     ['provider_overloaded', 'Service unavailable: provider temporarily unavailable (503).'],
-    [
-      'protocol_proof_missing',
-      'OpenCode created a reply without the required taskRefs metadata.',
-    ],
+    ['protocol_proof_missing', 'OpenCode created a reply without the required taskRefs metadata.'],
     ['backend_error', 'Unexpected backend blew up during request processing.'],
   ] as const)('classifies %s retry causes from api_error messages', async (expected, message) => {
     const service = new TeamMemberRuntimeAdvisoryService({} as never);
@@ -372,6 +369,7 @@ describe('TeamMemberRuntimeAdvisoryService', () => {
     const teamName = 'relay-works';
     const laneId = 'secondary:opencode:jack';
     const nowIso = new Date().toISOString();
+    const oldIso = new Date(Date.now() - 3 * 60 * 1000).toISOString();
     const laneDir = path.join(
       tmpDir,
       'teams',
@@ -396,7 +394,7 @@ describe('TeamMemberRuntimeAdvisoryService', () => {
       path.join(laneDir, 'opencode-prompt-delivery-ledger.json'),
       JSON.stringify({
         schemaVersion: 1,
-        updatedAt: nowIso,
+        updatedAt: oldIso,
         data: [
           {
             id: 'opencode-prompt:proof-missing',
@@ -406,7 +404,7 @@ describe('TeamMemberRuntimeAdvisoryService', () => {
             runId: 'run-1',
             runtimeSessionId: 'ses-1',
             inboxMessageId: 'msg-1',
-            inboxTimestamp: nowIso,
+            inboxTimestamp: oldIso,
             source: 'watcher',
             messageKind: null,
             replyRecipient: 'team-lead',
@@ -419,11 +417,11 @@ describe('TeamMemberRuntimeAdvisoryService', () => {
             maxAttempts: 3,
             acceptanceUnknown: false,
             nextAttemptAt: null,
-            lastAttemptAt: nowIso,
-            lastObservedAt: nowIso,
-            acceptedAt: nowIso,
-            respondedAt: nowIso,
-            failedAt: nowIso,
+            lastAttemptAt: oldIso,
+            lastObservedAt: oldIso,
+            acceptedAt: oldIso,
+            respondedAt: oldIso,
+            failedAt: oldIso,
             inboxReadCommittedAt: null,
             inboxReadCommitError: null,
             prePromptCursor: null,
@@ -438,8 +436,8 @@ describe('TeamMemberRuntimeAdvisoryService', () => {
             visibleReplyCorrelation: null,
             lastReason: 'non_visible_tool_without_task_progress',
             diagnostics: ['non_visible_tool_without_task_progress'],
-            createdAt: nowIso,
-            updatedAt: nowIso,
+            createdAt: oldIso,
+            updatedAt: oldIso,
           },
         ],
       }),
@@ -866,10 +864,7 @@ describe('TeamMemberRuntimeAdvisoryService', () => {
     ]);
 
     expect(logsFinder.findRecentMemberLogFileRefsByMember).toHaveBeenCalledTimes(1);
-    expect(logsFinder.findMemberLogs.mock.calls.map((call) => call[1])).toEqual([
-      'Alice',
-      'Bob',
-    ]);
+    expect(logsFinder.findMemberLogs.mock.calls.map((call) => call[1])).toEqual(['Alice', 'Bob']);
     expect(Array.from(advisories.keys())).toEqual(['Alice', 'Bob']);
   });
 

@@ -70,11 +70,24 @@ parentPort?.on('message', async (msg: TeamDataWorkerRequest) => {
       case 'invalidateTeamConfig': {
         TeamConfigReader.invalidateTeam(msg.payload.teamName);
         teamDataService.invalidateMessageFeed(msg.payload.teamName);
+        teamDataService.invalidateTeamRuntimeAdvisories(msg.payload.teamName);
         respond({ id: msg.id, ok: true, result: null, diag: buildDiag() });
         break;
       }
       case 'invalidateTeamMessageFeed': {
         teamDataService.invalidateMessageFeed(msg.payload.teamName);
+        respond({ id: msg.id, ok: true, result: null, diag: buildDiag() });
+        break;
+      }
+      case 'invalidateMemberRuntimeAdvisory': {
+        if (msg.payload.memberName) {
+          teamDataService.invalidateMemberRuntimeAdvisory(
+            msg.payload.teamName,
+            msg.payload.memberName
+          );
+        } else {
+          teamDataService.invalidateTeamRuntimeAdvisories(msg.payload.teamName);
+        }
         respond({ id: msg.id, ok: true, result: null, diag: buildDiag() });
         break;
       }

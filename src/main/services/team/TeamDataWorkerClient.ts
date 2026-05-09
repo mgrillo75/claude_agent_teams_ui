@@ -106,6 +106,11 @@ function summarizeWorkerRequest(request: TeamDataWorkerRequest): Record<string, 
       return {
         teamName: request.payload.teamName,
       };
+    case 'invalidateMemberRuntimeAdvisory':
+      return {
+        teamName: request.payload.teamName,
+        memberName: request.payload.memberName,
+      };
     case 'findLogsForTask':
       return {
         teamName: request.payload.teamName,
@@ -299,6 +304,16 @@ export class TeamDataWorkerClient {
     if (!SAFE_NAME_RE.test(teamName)) return;
     this.clearMessagesPageInFlightForTeam(teamName);
     this.postBestEffort('invalidateTeamMessageFeed', { teamName });
+  }
+
+  invalidateMemberRuntimeAdvisory(teamName: string, memberName?: string): void {
+    if (!SAFE_NAME_RE.test(teamName)) return;
+    if (memberName !== undefined && !SAFE_NAME_RE.test(memberName)) return;
+    this.clearTeamDataInFlightForTeam(teamName);
+    this.postBestEffort('invalidateMemberRuntimeAdvisory', {
+      teamName,
+      ...(memberName ? { memberName } : {}),
+    });
   }
 
   private clearMessagesPageInFlightForTeam(teamName: string): void {

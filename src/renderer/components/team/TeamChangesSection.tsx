@@ -4,28 +4,21 @@ import { api } from '@renderer/api';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { useStore } from '@renderer/store';
 import { resolveTaskChangePresenceFromResult } from '@renderer/utils/taskChangePresence';
-import {
-  buildTaskChangeRequestOptions,
-  canDisplayTaskChangesForOptions,
-  type TaskChangeRequestOptions,
-} from '@renderer/utils/taskChangeRequest';
 import { deriveTaskDisplayId } from '@shared/utils/taskIdentity';
 import { AlertTriangle, FileDiff, GitCompareArrows, Loader2, RefreshCw } from 'lucide-react';
 
 import { FileIcon } from './editor/FileIcon';
 import { CollapsibleTeamSection } from './CollapsibleTeamSection';
+import {
+  buildTeamChangeRequestPlan,
+  buildTeamChangesTasksFingerprint,
+  getTeamChangeTaskTimeMs,
+  TEAM_CHANGES_MAX_RENDERED_FILE_ROWS,
+} from './teamChangesRequestPlan';
 
-import type {
-  FileChangeSummary,
-  TaskChangeSetV2,
-  TeamTaskChangeSummaryRequest,
-  TeamTaskWithKanban,
-} from '@shared/types';
+import type { FileChangeSummary, TaskChangeSetV2, TeamTaskWithKanban } from '@shared/types';
 
 const TEAM_CHANGES_AUTO_REFRESH_MS = 30_000;
-const TEAM_CHANGES_MAX_REQUESTS = 120;
-const TEAM_CHANGES_UNKNOWN_SCAN_LIMIT = 32;
-const TEAM_CHANGES_MAX_RENDERED_FILE_ROWS = 300;
 
 interface TeamChangesSectionProps {
   teamName: string;
@@ -33,28 +26,10 @@ interface TeamChangesSectionProps {
   onViewChanges: (taskId: string, filePath?: string) => void;
 }
 
-interface TeamChangeCandidate {
-  task: TeamTaskWithKanban;
-  options: TaskChangeRequestOptions;
-  priority: number;
-  isUnknownScan: boolean;
-}
-
-interface TeamChangeRequestPlan {
-  requests: TeamTaskChangeSummaryRequest[];
-  requestOptionsByTaskId: Map<string, TaskChangeRequestOptions>;
-  eligibleCount: number;
-  requestedCount: number;
-  deferredCount: number;
-  nextUnknownScanCursor: number;
-}
-
 interface TeamChangeSummaryState {
   taskId: string;
   changeSet: TaskChangeSetV2 | null;
   error?: string;
-  options: TaskChangeRequestOptions;
-  loadedAt: number;
 }
 
 interface TeamChangeStats {
@@ -63,103 +38,10 @@ interface TeamChangeStats {
   deferredCount: number;
 }
 
-function getTaskTimeMs(task: TeamTaskWithKanban): number {
-  const value = task.updatedAt ?? task.createdAt;
-  if (!value) return 0;
-  const ms = new Date(value).getTime();
-  return Number.isFinite(ms) ? ms : 0;
-}
-
-function compareCandidateRecency(a: TeamChangeCandidate, b: TeamChangeCandidate): number {
-  const priorityDelta = a.priority - b.priority;
-  if (priorityDelta !== 0) return priorityDelta;
-  return getTaskTimeMs(b.task) - getTaskTimeMs(a.task);
-}
-
-function rotateCandidates<T>(items: T[], cursor: number): T[] {
-  if (items.length === 0) return items;
-  const start = cursor % items.length;
-  if (start === 0) return items;
-  return [...items.slice(start), ...items.slice(0, start)];
-}
-
-function buildTeamChangeRequestPlan(
-  tasks: TeamTaskWithKanban[],
-  unknownScanCursor: number,
-  forceFresh: boolean
-): TeamChangeRequestPlan {
-  const primary: TeamChangeCandidate[] = [];
-  const active: TeamChangeCandidate[] = [];
-  const unknown: TeamChangeCandidate[] = [];
-  const seenTaskIds = new Set<string>();
-
-  for (const task of tasks) {
-    if (!task.id || task.status === 'deleted' || seenTaskIds.has(task.id)) {
-      continue;
-    }
-    seenTaskIds.add(task.id);
-
-    const options = buildTaskChangeRequestOptions(task, { summaryOnly: true });
-    const presence = task.changePresence ?? 'unknown';
-    const canDisplay = canDisplayTaskChangesForOptions(options);
-    if (!canDisplay && presence !== 'has_changes' && presence !== 'needs_attention') {
-      continue;
-    }
-
-    if (presence === 'has_changes') {
-      primary.push({ task, options, priority: 0, isUnknownScan: false });
-      continue;
-    }
-    if (presence === 'needs_attention') {
-      primary.push({ task, options, priority: 1, isUnknownScan: false });
-      continue;
-    }
-    if (options.stateBucket === 'active' && options.status === 'in_progress') {
-      active.push({ task, options, priority: 2, isUnknownScan: false });
-      continue;
-    }
-    if (presence === 'unknown') {
-      unknown.push({ task, options, priority: 3, isUnknownScan: true });
-    }
-  }
-
-  primary.sort(compareCandidateRecency);
-  active.sort(compareCandidateRecency);
-  unknown.sort(compareCandidateRecency);
-
-  const unknownWindow = rotateCandidates(unknown, unknownScanCursor).slice(
-    0,
-    TEAM_CHANGES_UNKNOWN_SCAN_LIMIT
-  );
-  const selected = [...primary, ...active, ...unknownWindow].slice(0, TEAM_CHANGES_MAX_REQUESTS);
-  const requestOptionsByTaskId = new Map<string, TaskChangeRequestOptions>();
-  const requests = selected.map((candidate) => {
-    const options = {
-      ...candidate.options,
-      summaryOnly: true,
-      forceFresh: forceFresh ? true : candidate.options.forceFresh,
-    };
-    requestOptionsByTaskId.set(candidate.task.id, options);
-    return {
-      taskId: candidate.task.id,
-      options,
-    };
-  });
-  const eligibleCount = primary.length + active.length + unknown.length;
-  const nextUnknownScanCursor =
-    unknown.length > 0
-      ? (unknownScanCursor + Math.min(TEAM_CHANGES_UNKNOWN_SCAN_LIMIT, unknown.length)) %
-        unknown.length
-      : 0;
-
-  return {
-    requests,
-    requestOptionsByTaskId,
-    eligibleCount,
-    requestedCount: requests.length,
-    deferredCount: Math.max(0, eligibleCount - requests.length),
-    nextUnknownScanCursor,
-  };
+interface TeamChangesLoadOptions {
+  forceFresh?: boolean;
+  showSpinner?: boolean;
+  preserveOnError?: boolean;
 }
 
 function getTaskChangeContributors(
@@ -199,21 +81,6 @@ function getTaskSummaryBadge(changeSet: TaskChangeSetV2 | null): string | undefi
   return undefined;
 }
 
-function buildTasksFingerprint(tasks: TeamTaskWithKanban[]): string {
-  return tasks
-    .map((task) =>
-      [
-        task.id,
-        task.status,
-        task.owner ?? '',
-        task.updatedAt ?? '',
-        task.changePresence ?? 'unknown',
-        task.workIntervals?.length ?? 0,
-      ].join(':')
-    )
-    .join('|');
-}
-
 export const TeamChangesSection = memo(function TeamChangesSection({
   teamName,
   tasks,
@@ -233,12 +100,17 @@ export const TeamChangesSection = memo(function TeamChangesSection({
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [queuedRefreshTick, setQueuedRefreshTick] = useState(0);
   const hasLoadedRef = useRef(false);
   const requestSeqRef = useRef(0);
+  const activeRequestSeqRef = useRef<number | null>(null);
+  const queuedRefreshOptionsRef = useRef<TeamChangesLoadOptions | null>(null);
+  const sectionOpenRef = useRef(sectionOpen);
   const unknownScanCursorRef = useRef(0);
   const lastRequestedTasksFingerprintRef = useRef<string | null>(null);
-  const tasksFingerprint = useMemo(() => buildTasksFingerprint(tasks), [tasks]);
+  const tasksFingerprint = useMemo(() => buildTeamChangesTasksFingerprint(tasks), [tasks]);
   const taskMap = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
+  sectionOpenRef.current = sectionOpen;
 
   const visibleSummaries = useMemo(() => {
     return Object.values(summariesByTaskId)
@@ -250,7 +122,7 @@ export const TeamChangesSection = memo(function TeamChangesSection({
             (entry.summary.changeSet?.files.length ?? 0) > 0 ||
             (entry.summary.changeSet?.warnings.length ?? 0) > 0)
       )
-      .sort((a, b) => getTaskTimeMs(b.task) - getTaskTimeMs(a.task));
+      .sort((a, b) => getTeamChangeTaskTimeMs(b.task) - getTeamChangeTaskTimeMs(a.task));
   }, [summariesByTaskId, taskMap]);
 
   const totalFiles = visibleSummaries.reduce(
@@ -265,13 +137,24 @@ export const TeamChangesSection = memo(function TeamChangesSection({
       forceFresh = false,
       showSpinner = false,
       preserveOnError = true,
-    }: {
-      forceFresh?: boolean;
-      showSpinner?: boolean;
-      preserveOnError?: boolean;
-    } = {}): Promise<void> => {
+    }: TeamChangesLoadOptions = {}): Promise<void> => {
+      if (activeRequestSeqRef.current !== null) {
+        const previous = queuedRefreshOptionsRef.current;
+        queuedRefreshOptionsRef.current = {
+          forceFresh: Boolean(previous?.forceFresh || forceFresh),
+          showSpinner: Boolean(previous?.showSpinner || showSpinner),
+          preserveOnError: previous
+            ? Boolean(previous.preserveOnError && preserveOnError)
+            : preserveOnError,
+        };
+        requestSeqRef.current += 1;
+        return;
+      }
+
       const plan = buildTeamChangeRequestPlan(tasks, unknownScanCursorRef.current, forceFresh);
       unknownScanCursorRef.current = plan.nextUnknownScanCursor;
+      const requestSeq = requestSeqRef.current + 1;
+      requestSeqRef.current = requestSeq;
       setStats({
         eligibleCount: plan.eligibleCount,
         requestedCount: plan.requestedCount,
@@ -281,16 +164,17 @@ export const TeamChangesSection = memo(function TeamChangesSection({
 
       if (plan.requests.length === 0) {
         setSummariesByTaskId({});
+        setLoading(false);
+        setRefreshing(false);
         return;
       }
 
-      const requestSeq = requestSeqRef.current + 1;
-      requestSeqRef.current = requestSeq;
       if (showSpinner) {
         setLoading(true);
       } else {
         setRefreshing(true);
       }
+      activeRequestSeqRef.current = requestSeq;
 
       try {
         const response = await api.review.getTeamTaskChangeSummaries(teamName, plan.requests);
@@ -312,7 +196,7 @@ export const TeamChangesSection = memo(function TeamChangesSection({
         setSummariesByTaskId((previous) => {
           const next: Record<string, TeamChangeSummaryState> = {};
           for (const [taskId, summary] of Object.entries(previous)) {
-            if (currentTaskIds.has(taskId)) {
+            if (currentTaskIds.has(taskId) && plan.eligibleTaskIds.has(taskId)) {
               next[taskId] = summary;
             }
           }
@@ -323,8 +207,6 @@ export const TeamChangesSection = memo(function TeamChangesSection({
               taskId: item.taskId,
               changeSet: item.changeSet,
               error: item.error,
-              options,
-              loadedAt: Date.now(),
             };
           }
           return next;
@@ -338,7 +220,17 @@ export const TeamChangesSection = memo(function TeamChangesSection({
         }
         setError(err instanceof Error ? err.message : 'Failed to load team changes');
       } finally {
-        if (requestSeqRef.current === requestSeq) {
+        const hasQueuedRefresh = queuedRefreshOptionsRef.current !== null;
+        if (activeRequestSeqRef.current === requestSeq) {
+          activeRequestSeqRef.current = null;
+        }
+        if (hasQueuedRefresh && activeRequestSeqRef.current === null && sectionOpenRef.current) {
+          setQueuedRefreshTick((value) => value + 1);
+        }
+        const shouldStopIndicators =
+          requestSeqRef.current === requestSeq ||
+          (!hasQueuedRefresh && activeRequestSeqRef.current === null);
+        if (shouldStopIndicators) {
           setLoading(false);
           setRefreshing(false);
         }
@@ -350,12 +242,26 @@ export const TeamChangesSection = memo(function TeamChangesSection({
   useEffect(() => {
     hasLoadedRef.current = false;
     requestSeqRef.current += 1;
+    activeRequestSeqRef.current = null;
+    queuedRefreshOptionsRef.current = null;
     unknownScanCursorRef.current = 0;
     lastRequestedTasksFingerprintRef.current = null;
     setSummariesByTaskId({});
     setError(null);
     setStats({ eligibleCount: 0, requestedCount: 0, deferredCount: 0 });
   }, [teamName]);
+
+  useEffect(() => {
+    if (!sectionOpen) {
+      requestSeqRef.current += 1;
+      activeRequestSeqRef.current = null;
+      queuedRefreshOptionsRef.current = null;
+      hasLoadedRef.current = false;
+      lastRequestedTasksFingerprintRef.current = null;
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [sectionOpen]);
 
   useEffect(() => {
     if (!sectionOpen || hasLoadedRef.current) {
@@ -378,11 +284,26 @@ export const TeamChangesSection = memo(function TeamChangesSection({
   }, [loadSummaries, sectionOpen, tasksFingerprint]);
 
   useEffect(() => {
+    if (!sectionOpen || activeRequestSeqRef.current !== null) {
+      return;
+    }
+    const options = queuedRefreshOptionsRef.current;
+    if (!options) {
+      return;
+    }
+    queuedRefreshOptionsRef.current = null;
+    void loadSummaries(options);
+  }, [loadSummaries, queuedRefreshTick, sectionOpen]);
+
+  useEffect(() => {
     if (!sectionOpen) {
       return;
     }
 
     const timer = window.setInterval(() => {
+      if (activeRequestSeqRef.current !== null || queuedRefreshOptionsRef.current !== null) {
+        return;
+      }
       void loadSummaries({ showSpinner: false, preserveOnError: true });
     }, TEAM_CHANGES_AUTO_REFRESH_MS);
 

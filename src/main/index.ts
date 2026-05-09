@@ -964,14 +964,25 @@ function wireFileWatcherEvents(context: ServiceContext): void {
         if (detail === 'config.json') {
           TeamConfigReader.invalidateTeam(teamName);
           getTeamDataWorkerClient().invalidateTeamConfig(teamName);
+          teamDataService?.invalidateTeamRuntimeAdvisories(teamName);
+          getTeamDataWorkerClient().invalidateMemberRuntimeAdvisory(teamName);
         } else if (detail === 'team.meta.json' || detail === 'members.meta.json') {
           TeamConfigReader.invalidateListTeamsCache();
           getTeamDataWorkerClient().invalidateTeamConfig(teamName);
+          teamDataService?.invalidateTeamRuntimeAdvisories(teamName);
+          getTeamDataWorkerClient().invalidateMemberRuntimeAdvisory(teamName);
         }
       }
 
       if (row.type === 'task') {
         TeamTaskReader.invalidateAllTasksCache();
+        teamDataService?.invalidateTeamRuntimeAdvisories(teamName);
+        getTeamDataWorkerClient().invalidateMemberRuntimeAdvisory(teamName);
+      }
+
+      if (row.type === 'member-advisory') {
+        teamDataService?.invalidateTeamRuntimeAdvisories(teamName);
+        getTeamDataWorkerClient().invalidateMemberRuntimeAdvisory(teamName);
       }
 
       memberWorkSyncFeature?.noteTeamChange(row as TeamChangeEvent);
@@ -1279,7 +1290,8 @@ async function initializeServices(): Promise<void> {
   teamDataService.setMemberRuntimeAdvisoryService(teamMemberRuntimeAdvisoryService);
   teamProvisioningService = new TeamProvisioningService();
   teamProvisioningService.setMemberRuntimeAdvisoryInvalidator((teamName, memberName) => {
-    teamMemberRuntimeAdvisoryService.invalidateMemberAdvisory(teamName, memberName);
+    teamDataService?.invalidateMemberRuntimeAdvisory(teamName, memberName);
+    getTeamDataWorkerClient().invalidateMemberRuntimeAdvisory(teamName, memberName);
   });
   publishStartupStatus({
     phase: 'runtime',
@@ -1413,13 +1425,23 @@ async function initializeServices(): Promise<void> {
       if (event.detail === 'config.json') {
         TeamConfigReader.invalidateTeam(event.teamName);
         getTeamDataWorkerClient().invalidateTeamConfig(event.teamName);
+        teamDataService?.invalidateTeamRuntimeAdvisories(event.teamName);
+        getTeamDataWorkerClient().invalidateMemberRuntimeAdvisory(event.teamName);
       } else if (event.detail === 'team.meta.json' || event.detail === 'members.meta.json') {
         TeamConfigReader.invalidateListTeamsCache();
         getTeamDataWorkerClient().invalidateTeamConfig(event.teamName);
+        teamDataService?.invalidateTeamRuntimeAdvisories(event.teamName);
+        getTeamDataWorkerClient().invalidateMemberRuntimeAdvisory(event.teamName);
       }
     }
     if (event.type === 'task') {
       TeamTaskReader.invalidateAllTasksCache();
+      teamDataService?.invalidateTeamRuntimeAdvisories(event.teamName);
+      getTeamDataWorkerClient().invalidateMemberRuntimeAdvisory(event.teamName);
+    }
+    if (event.type === 'member-advisory') {
+      teamDataService?.invalidateTeamRuntimeAdvisories(event.teamName);
+      getTeamDataWorkerClient().invalidateMemberRuntimeAdvisory(event.teamName);
     }
     if (
       teamDataService &&

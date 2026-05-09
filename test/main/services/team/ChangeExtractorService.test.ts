@@ -384,6 +384,40 @@ describe('ChangeExtractorService', () => {
     });
   });
 
+  it('deduplicates team task change summary requests before loading', async () => {
+    const { service } = createService({ logPaths: [] });
+    const getTaskChanges = vi
+      .spyOn(service, 'getTaskChanges')
+      .mockImplementation(async (_teamName, taskId) => makeTaskChangeResult(taskId, { taskId }));
+
+    const response = await service.getTeamTaskChangeSummaries(TEAM_NAME, [
+      { taskId: 'task-1', options: SUMMARY_OPTIONS },
+      { taskId: 'task-1', options: SUMMARY_OPTIONS },
+      { taskId: ' task-2 ', options: SUMMARY_OPTIONS },
+    ]);
+
+    expect(response.items.map((item) => item.taskId)).toEqual(['task-1', 'task-2']);
+    expect(response.truncated).toBeUndefined();
+    expect(getTaskChanges).toHaveBeenCalledTimes(2);
+  });
+
+  it('ignores malformed team task change summary requests', async () => {
+    const { service } = createService({ logPaths: [] });
+    const getTaskChanges = vi
+      .spyOn(service, 'getTaskChanges')
+      .mockImplementation(async (_teamName, taskId) => makeTaskChangeResult(taskId, { taskId }));
+
+    const response = await service.getTeamTaskChangeSummaries(TEAM_NAME, [
+      null,
+      { taskId: '' },
+      { taskId: 'task-1', options: SUMMARY_OPTIONS },
+      { taskId: 42 },
+    ] as unknown as Parameters<typeof service.getTeamTaskChangeSummaries>[1]);
+
+    expect(response.items.map((item) => item.taskId)).toEqual(['task-1']);
+    expect(getTaskChanges).toHaveBeenCalledTimes(1);
+  });
+
   it('does not reuse detailed task-change cache across different scope inputs', async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'change-extractor-service-'));
     setClaudeBasePathOverride(tmpDir);

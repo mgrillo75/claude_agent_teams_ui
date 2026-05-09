@@ -48,6 +48,11 @@ export interface InvalidateTeamMessageFeedPayload {
   teamName: string;
 }
 
+export interface InvalidateMemberRuntimeAdvisoryPayload {
+  teamName: string;
+  memberName?: string;
+}
+
 export interface TeamDataWorkerDiag {
   op: TeamDataWorkerRequest['op'];
   teamName?: string;
@@ -64,7 +69,12 @@ export type TeamDataWorkerRequest =
   | { id: string; op: 'getMemberActivityMeta'; payload: GetMemberActivityMetaPayload }
   | { id: string; op: 'findLogsForTask'; payload: FindLogsForTaskPayload }
   | { id: string; op: 'invalidateTeamConfig'; payload: InvalidateTeamConfigPayload }
-  | { id: string; op: 'invalidateTeamMessageFeed'; payload: InvalidateTeamMessageFeedPayload };
+  | { id: string; op: 'invalidateTeamMessageFeed'; payload: InvalidateTeamMessageFeedPayload }
+  | {
+      id: string;
+      op: 'invalidateMemberRuntimeAdvisory';
+      payload: InvalidateMemberRuntimeAdvisoryPayload;
+    };
 
 export type TeamDataWorkerResponse =
   | {

@@ -27,6 +27,7 @@ import { buildReplyBlock } from '@renderer/utils/agentMessageFormatting';
 import { removeChipTokenFromText } from '@renderer/utils/chipUtils';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
+import { isOpenCodeRuntimeDeliveryHardUxFailure } from '@renderer/utils/openCodeRuntimeDeliveryDiagnostics';
 import {
   extractTaskRefsFromText,
   stripEncodedTaskReferenceMetadata,
@@ -292,10 +293,7 @@ export const SendMessageDialog = ({
       )
     )
       .then((result) => {
-        if (
-          result?.runtimeDelivery?.attempted === true &&
-          result.runtimeDelivery.delivered === false
-        ) {
+        if (isOpenCodeRuntimeDeliveryHardUxFailure(result?.runtimeDelivery)) {
           return;
         }
         textDraft.clearDraft();
