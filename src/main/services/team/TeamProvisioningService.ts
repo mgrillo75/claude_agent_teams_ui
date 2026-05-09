@@ -872,6 +872,10 @@ const HANDLED_STREAM_JSON_TYPES = new Set([
   'user',
   'assistant',
   'control_request',
+  // Claude Code can emit informational rate-limit allowance snapshots as
+  // top-level stream-json events. They are not errors; actionable retry/error
+  // diagnostics still arrive through system/api_retry and remain handled below.
+  'rate_limit_event',
   'result',
   'system',
 ]);

@@ -7,6 +7,7 @@ import { promisify } from 'util';
 import { describe, expect, it } from 'vitest';
 
 import { CodexBinaryResolver } from '@main/services/infrastructure/codexAppServer/CodexBinaryResolver';
+import { ClaudeBinaryResolver } from '@main/services/team/ClaudeBinaryResolver';
 import { execCli, killProcessTree, spawnCli } from '@main/utils/childProcess';
 
 const execFileAsync = promisify(execFile);
@@ -42,6 +43,7 @@ const AGENT_CLI_SPECS: AgentCliSpec[] = [
     command: 'claude',
     overrideEnv: 'CLAUDE_CLI_PATH',
     versionPattern: /\b\d+\.\d+\.\d+\b.*Claude Code/i,
+    resolver: () => ClaudeBinaryResolver.resolve(),
   },
 ];
 
