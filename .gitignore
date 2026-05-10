@@ -50,3 +50,5 @@ remotion/*
 
 .home/
 .board-task-log-freshness/
+
+.serena/
