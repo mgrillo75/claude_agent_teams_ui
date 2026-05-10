@@ -78,6 +78,12 @@ interface MemberDraftRowProps {
   infoText?: string | null;
   disableGeminiOption?: boolean;
   modelIssueText?: string | null;
+  modelIssueReasonByProvider?: Partial<
+    Record<TeamProviderId, Partial<Record<string, string | null | undefined>>>
+  >;
+  modelUnavailableReasonByProvider?: Partial<
+    Record<TeamProviderId, Partial<Record<string, string | null | undefined>>>
+  >;
   showWorktreeIsolationControls?: boolean;
   worktreeIsolationDisabledReason?: string | null;
   onWorktreeIsolationChange?: (id: string, enabled: boolean) => void;
@@ -128,6 +134,8 @@ export const MemberDraftRow = ({
   infoText,
   disableGeminiOption = false,
   modelIssueText,
+  modelIssueReasonByProvider,
+  modelUnavailableReasonByProvider,
   showWorktreeIsolationControls = false,
   worktreeIsolationDisabledReason,
   onWorktreeIsolationChange,
@@ -226,7 +234,19 @@ export const MemberDraftRow = ({
       : undefined;
   const worktreeIsolationDisabled =
     isRemoved || Boolean(worktreeIsolationDisabledReason && member.isolation !== 'worktree');
-  const hasModelIssue = Boolean(modelIssueText);
+  const effectiveModelKey = effectiveModel?.trim() ?? '';
+  const selectedModelIssueText =
+    effectiveModelKey && modelIssueReasonByProvider?.[effectiveProviderId]?.[effectiveModelKey]
+      ? modelIssueReasonByProvider[effectiveProviderId]?.[effectiveModelKey]
+      : null;
+  const selectedModelUnavailableText =
+    effectiveModelKey &&
+    modelUnavailableReasonByProvider?.[effectiveProviderId]?.[effectiveModelKey]
+      ? modelUnavailableReasonByProvider[effectiveProviderId]?.[effectiveModelKey]
+      : null;
+  const currentModelIssueText =
+    modelIssueText ?? selectedModelUnavailableText ?? selectedModelIssueText ?? null;
+  const hasModelIssue = Boolean(currentModelIssueText);
   const hasCustomProviderOrModel =
     !forceInheritedModelSettings && Boolean(member.providerId || member.model?.trim());
   const showSonnetExtraUsageWarning =
@@ -353,11 +373,15 @@ export const MemberDraftRow = ({
                   </Button>
                 </span>
               </TooltipTrigger>
-              {modelTooltipText || modelIssueText ? (
+              {modelTooltipText || currentModelIssueText ? (
                 <TooltipContent side="top" className="max-w-64 text-xs leading-relaxed">
-                  {modelIssueText ? <p className="text-red-300">{modelIssueText}</p> : null}
+                  {currentModelIssueText ? (
+                    <p className="text-red-300">{currentModelIssueText}</p>
+                  ) : null}
                   {modelTooltipText ? (
-                    <p className={modelIssueText ? 'mt-1 border-t border-white/10 pt-1' : ''}>
+                    <p
+                      className={currentModelIssueText ? 'mt-1 border-t border-white/10 pt-1' : ''}
+                    >
                       {modelTooltipText}
                     </p>
                   ) : null}
@@ -524,8 +548,14 @@ export const MemberDraftRow = ({
                 }}
                 id={`member-${member.id}-model`}
                 disableGeminiOption={disableGeminiOption}
-                modelIssueReasonByValue={
-                  effectiveModel?.trim() ? { [effectiveModel.trim()]: modelIssueText } : undefined
+                modelIssueReasonByValue={{
+                  ...(modelIssueReasonByProvider?.[effectiveProviderId] ?? {}),
+                  ...(effectiveModelKey && modelIssueText
+                    ? { [effectiveModelKey]: modelIssueText }
+                    : {}),
+                }}
+                modelUnavailableReasonByValue={
+                  modelUnavailableReasonByProvider?.[effectiveProviderId]
                 }
               />
               <EffortLevelSelector

@@ -643,7 +643,7 @@ describe('RuntimeProviderManagementPanelView', () => {
     expect(host.textContent).toContain('Not recommended');
     expect(host.textContent).toContain('Unavailable in OpenCode');
     expect(host.textContent).toContain('Tested');
-    expect(host.textContent).toContain('Recommended with limits');
+    expect(host.textContent).toContain('Tested with limits');
     expect(host.textContent).toContain('Recommended only');
     expect(host.textContent).not.toContain('Set OpenCode default');
     expect(
@@ -687,8 +687,11 @@ describe('RuntimeProviderManagementPanelView', () => {
     expect((host.textContent ?? '').indexOf('opencode/big-pickle')).toBeLessThan(
       (host.textContent ?? '').indexOf('minimax-m2.5-free')
     );
+    expect((host.textContent ?? '').indexOf('mistralai/codestral-2508')).toBeLessThan(
+      (host.textContent ?? '').indexOf('minimax-m2.5-free')
+    );
     expect((host.textContent ?? '').indexOf('minimax-m2.5-free')).toBeLessThan(
-      (host.textContent ?? '').indexOf('mistralai/codestral-2508')
+      (host.textContent ?? '').indexOf('qwen/qwen3-coder-plus')
     );
     expect((host.textContent ?? '').indexOf('qwen/qwen3-coder-plus')).toBeLessThan(
       (host.textContent ?? '').indexOf('openrouter/openai/gpt-oss-20b:free')

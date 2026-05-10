@@ -35,6 +35,9 @@ export {
 
 type SupportedProviderId = CliProviderId | TeamProviderId;
 
+export const OPENCODE_OPENAI_AUTH_UNAVAILABLE_REASON =
+  'OpenCode OpenAI provider authentication failed. Reconnect OpenAI in provider settings, then refresh runtime status.';
+
 export type TeamModelRuntimeProviderStatus = Pick<
   CliProviderStatus,
   | 'providerId'
@@ -47,6 +50,9 @@ export type TeamModelRuntimeProviderStatus = Pick<
   | 'backend'
   | 'authenticated'
   | 'supported'
+  | 'detailMessage'
+  | 'availableBackends'
+  | 'externalRuntimeDiagnostics'
 > &
   Partial<Pick<CliProviderStatus, 'verificationState' | 'statusMessage'>>;
 
@@ -59,6 +65,58 @@ export interface TeamProviderModelVerificationCounts {
   checkedCount: number;
   totalCount: number;
   verifying: boolean;
+}
+
+export function getOpenCodeOpenAiRouteAuthUnavailableReason(
+  providerId: SupportedProviderId | undefined,
+  model: string | undefined,
+  providerStatus?: TeamModelRuntimeProviderStatus | null
+): string | null {
+  if (
+    providerId !== 'opencode' ||
+    !model?.trim().toLowerCase().startsWith('openai/') ||
+    !providerStatus
+  ) {
+    return null;
+  }
+
+  const openAiBackends = (providerStatus.availableBackends ?? []).filter((backend) =>
+    [backend.id, backend.label, backend.description].some((value) => /\bopenai\b/i.test(value))
+  );
+  const backendRequiresAuth = openAiBackends.some(
+    (backend) =>
+      backend.state === 'authentication-required' ||
+      (!backend.available &&
+        [backend.statusMessage, backend.detailMessage].some((value) =>
+          /auth|token|api key|401|403/i.test(value ?? '')
+        ))
+  );
+  if (backendRequiresAuth) {
+    return OPENCODE_OPENAI_AUTH_UNAVAILABLE_REASON;
+  }
+
+  const diagnosticText = [
+    providerStatus.statusMessage,
+    providerStatus.detailMessage,
+    ...openAiBackends.flatMap((backend) => [backend.statusMessage, backend.detailMessage]),
+    ...(providerStatus.externalRuntimeDiagnostics ?? [])
+      .filter((diagnostic) => /\bopenai\b/i.test(diagnostic.label))
+      .flatMap((diagnostic) => [diagnostic.statusMessage, diagnostic.detailMessage]),
+  ]
+    .map((value) => value?.trim() ?? '')
+    .filter(Boolean)
+    .join('\n');
+
+  if (
+    /\bopenai\b/i.test(diagnosticText) &&
+    /token refresh failed|token.*invalid|invalid.*token|not[_\s-]?authenticated|not authenticated|unauthorized|forbidden|\b401\b|\b403\b|invalid api key|api key.*invalid|authentication required/i.test(
+      diagnosticText
+    )
+  ) {
+    return OPENCODE_OPENAI_AUTH_UNAVAILABLE_REASON;
+  }
+
+  return null;
 }
 
 export function getTeamModelUiDisabledReason(
@@ -277,6 +335,10 @@ function getRuntimeModelAvailability(
   if (!visibleModels.includes(model)) {
     return null;
   }
+  const runtimeAvailability = getModelAvailabilityMap(providerStatus).get(model)?.status ?? null;
+  if (runtimeAvailability === 'unavailable') {
+    return 'unavailable';
+  }
   return 'available';
 }
 
@@ -360,7 +422,11 @@ export function getAvailableTeamProviderModelOptions(
     ...visibleModels.map((model) => {
       const catalogOption = getRuntimeCatalogModelOption(providerId, model, providerStatus);
       if (catalogOption) {
-        return catalogOption;
+        return {
+          ...catalogOption,
+          availabilityStatus: getRuntimeModelAvailability(providerId, model, providerStatus),
+          availabilityReason: getRuntimeModelAvailabilityReason(model, providerStatus),
+        };
       }
       return {
         value: model,
@@ -464,6 +530,15 @@ export function getTeamModelSelectionError(
     return `Model "${trimmed}" is disabled. ${disabledReason}`;
   }
 
+  const dynamicUnavailableReason = getOpenCodeOpenAiRouteAuthUnavailableReason(
+    providerId,
+    trimmed,
+    providerStatus
+  );
+  if (dynamicUnavailableReason) {
+    return `Model "${trimmed}" is not available for the current ${getTeamProviderLabel(providerId) ?? providerId} runtime. ${dynamicUnavailableReason}`;
+  }
+
   if (providerId === 'anthropic') {
     return isTeamModelAvailableForUi(providerId, trimmed, providerStatus)
       ? null
@@ -481,6 +556,12 @@ export function getTeamModelSelectionError(
   const visibleModels = getVisibleRuntimeModels(providerId, providerStatus);
   if (!visibleModels.includes(trimmed)) {
     return `Model "${trimmed}" is not available for the current ${getTeamProviderLabel(providerId) ?? providerId} runtime. Pick one of the listed models or use Default.`;
+  }
+
+  const availability = getRuntimeModelAvailability(providerId, trimmed, providerStatus);
+  if (availability !== 'available') {
+    const reason = getRuntimeModelAvailabilityReason(trimmed, providerStatus);
+    return `Model "${trimmed}" is not available for the current ${getTeamProviderLabel(providerId) ?? providerId} runtime.${reason ? ` ${reason}` : ''} Pick one of the listed models or use Default.`;
   }
 
   return null;

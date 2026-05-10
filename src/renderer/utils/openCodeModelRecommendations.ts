@@ -26,9 +26,7 @@ const PASSED_GAUNTLET_WITH_LIMITS_REASON =
 
 const OPENCODE_TEAM_RECOMMENDED_MODELS = new Set<string>(['opencode/big-pickle']);
 
-const OPENCODE_TEAM_RECOMMENDED_WITH_LIMITS_MODELS = new Set<string>([
-  'opencode/minimax-m2.5-free',
-]);
+const OPENCODE_TEAM_RECOMMENDED_WITH_LIMITS_MODELS = new Set<string>([]);
 
 const OPENCODE_TEAM_TESTED_MODELS = new Set<string>([
   'openrouter/anthropic/claude-haiku-4.5',
@@ -54,7 +52,14 @@ const OPENCODE_TEAM_TESTED_MODELS = new Set<string>([
   'openrouter/z-ai/glm-5.1',
 ]);
 
-const OPENCODE_TEAM_TESTED_WITH_LIMITS_MODELS = new Set<string>([]);
+const OPENCODE_TEAM_TESTED_WITH_LIMITS_MODELS = new Set<string>(['opencode/minimax-m2.5-free']);
+
+const OPENCODE_TEAM_TESTED_WITH_LIMITS_REASONS = new Map<string, string>([
+  [
+    'opencode/minimax-m2.5-free',
+    'This exact free model route passed simple OpenCode Agent Teams provider stress, but a deeper repeated gauntlet hit duplicate or missing reply tokens. Keep it below Recommended until a clean repeated gauntlet passes.',
+  ],
+]);
 
 const OPENCODE_TEAM_UNAVAILABLE_MODELS = new Map<string, string>([
   [
@@ -1254,7 +1259,9 @@ export function getOpenCodeTeamModelRecommendation(
     return {
       level: 'tested-with-limits',
       label: 'Tested with limits',
-      reason: PASSED_FREE_ROUTE_REAL_AGENT_TEAMS_E2E_REASON,
+      reason:
+        OPENCODE_TEAM_TESTED_WITH_LIMITS_REASONS.get(normalizedModelId) ??
+        PASSED_FREE_ROUTE_REAL_AGENT_TEAMS_E2E_REASON,
     };
   }
 

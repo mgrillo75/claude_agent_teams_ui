@@ -114,6 +114,12 @@ export interface MembersEditorSectionProps {
   memberInfoById?: Record<string, string | null | undefined>;
   disableGeminiOption?: boolean;
   memberModelIssueById?: Record<string, string | null | undefined>;
+  modelIssueReasonByProvider?: Partial<
+    Record<TeamProviderId, Partial<Record<string, string | null | undefined>>>
+  >;
+  modelUnavailableReasonByProvider?: Partial<
+    Record<TeamProviderId, Partial<Record<string, string | null | undefined>>>
+  >;
   disableAddMember?: boolean;
   addMemberLockReason?: string;
   showWorktreeIsolationControls?: boolean;
@@ -153,6 +159,8 @@ export const MembersEditorSection = ({
   memberInfoById,
   disableGeminiOption = false,
   memberModelIssueById,
+  modelIssueReasonByProvider,
+  modelUnavailableReasonByProvider,
   disableAddMember = false,
   addMemberLockReason,
   showWorktreeIsolationControls = false,
@@ -428,6 +436,8 @@ export const MembersEditorSection = ({
                 infoText={memberInfoById?.[member.id] ?? null}
                 disableGeminiOption={disableGeminiOption}
                 modelIssueText={memberModelIssueById?.[member.id] ?? null}
+                modelIssueReasonByProvider={modelIssueReasonByProvider}
+                modelUnavailableReasonByProvider={modelUnavailableReasonByProvider}
               />
             ))}
             {softDeleteMembers && removedMembers.length > 0 ? (

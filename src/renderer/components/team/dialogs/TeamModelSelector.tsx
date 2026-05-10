@@ -20,12 +20,8 @@ import {
   isGeminiUiFrozen,
 } from '@renderer/utils/geminiUiFreeze';
 import {
-  compareOpenCodeTeamModelRecommendations,
-  getOpenCodeTeamModelRecommendation,
-  isOpenCodeTeamModelRecommended,
-} from '@renderer/utils/openCodeModelRecommendations';
-import {
   getAvailableTeamProviderModelOptions,
+  getOpenCodeOpenAiRouteAuthUnavailableReason,
   getTeamModelUiDisabledReason,
   isTeamProviderModelVerificationPending,
   normalizeTeamModelForUi,
@@ -41,6 +37,11 @@ import {
   isAnthropicHaikuTeamModel,
 } from '@renderer/utils/teamModelCatalog';
 import { extractProviderScopedBaseModel } from '@renderer/utils/teamModelContext';
+import {
+  compareTeamModelRecommendations,
+  getTeamModelRecommendation,
+  isTeamModelRecommended,
+} from '@renderer/utils/teamModelRecommendations';
 import { resolveAnthropicLaunchModel } from '@shared/utils/anthropicLaunchModel';
 import { getAnthropicDefaultTeamModel } from '@shared/utils/anthropicModelDefaults';
 import { isTeamProviderId } from '@shared/utils/teamProvider';
@@ -156,6 +157,7 @@ export interface TeamModelSelectorProps {
   providerDisabledReasonById?: Partial<Record<TeamProviderId, string | null | undefined>>;
   providerDisabledBadgeLabelById?: Partial<Record<TeamProviderId, string | null | undefined>>;
   modelIssueReasonByValue?: Partial<Record<string, string | null | undefined>>;
+  modelUnavailableReasonByValue?: Partial<Record<string, string | null | undefined>>;
 }
 
 export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
@@ -168,6 +170,7 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
   providerDisabledReasonById,
   providerDisabledBadgeLabelById,
   modelIssueReasonByValue,
+  modelUnavailableReasonByValue,
 }) => {
   const multimodelEnabled = useStore((s) => s.appConfig?.general?.multimodelEnabled ?? true);
   const [recommendedOnly, setRecommendedOnly] = useState(false);
@@ -315,7 +318,7 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
   const hasRecommendedOpenCodeModels = useMemo(
     () =>
       effectiveProviderId === 'opencode' &&
-      modelOptions.some((option) => isOpenCodeTeamModelRecommended(option.value)),
+      modelOptions.some((option) => isTeamModelRecommended(effectiveProviderId, option.value)),
     [effectiveProviderId, modelOptions]
   );
 
@@ -335,10 +338,7 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
       if (!normalizedModelQuery) {
         return true;
       }
-      const modelRecommendation =
-        effectiveProviderId === 'opencode'
-          ? getOpenCodeTeamModelRecommendation(option.value)
-          : null;
+      const modelRecommendation = getTeamModelRecommendation(effectiveProviderId, option.value);
       return [
         option.value,
         option.label,
@@ -358,10 +358,14 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
     const concreteOptions = modelOptions
       .filter((option) => option.value.trim().length > 0)
       .map((option, index) => ({ option, index }))
-      .filter(({ option }) => !recommendedOnly || isOpenCodeTeamModelRecommended(option.value))
+      .filter(
+        ({ option }) =>
+          !recommendedOnly || isTeamModelRecommended(effectiveProviderId, option.value)
+      )
       .filter(({ option }) => matchesModelQuery(option))
       .sort((left, right) => {
-        const recommendationOrder = compareOpenCodeTeamModelRecommendations(
+        const recommendationOrder = compareTeamModelRecommendations(
+          effectiveProviderId,
           left.option.value,
           right.option.value
         );
@@ -517,25 +521,44 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
                       opt.value === '' ? 'available' : (opt.availabilityStatus ?? 'available');
                     const availabilityReason =
                       opt.value === '' ? null : (opt.availabilityReason ?? null);
+                    const runtimeUnavailableReason =
+                      opt.value !== '' && availabilityStatus === 'unavailable'
+                        ? (availabilityReason ?? 'Unavailable in current runtime')
+                        : null;
                     const modelIssueReason =
                       opt.value === '' ? null : (modelIssueReasonByValue?.[opt.value] ?? null);
-                    const hasModelIssue = Boolean(modelIssueReason);
+                    const modelUnavailableReason =
+                      opt.value === ''
+                        ? null
+                        : (modelUnavailableReasonByValue?.[opt.value] ??
+                          getOpenCodeOpenAiRouteAuthUnavailableReason(
+                            effectiveProviderId,
+                            opt.value,
+                            runtimeProviderStatus
+                          ) ??
+                          runtimeUnavailableReason);
+                    const hasModelIssue = Boolean(modelIssueReason || modelUnavailableReason);
                     const modelSelectable =
                       activeProviderSelectable &&
+                      !modelUnavailableReason &&
                       !modelDisabledReason &&
                       (opt.value === '' ||
                         availabilityStatus == null ||
                         availabilityStatus === 'available');
                     const modelStatusMessage =
-                      modelIssueReason ?? modelDisabledReason ?? availabilityReason ?? null;
+                      modelUnavailableReason ??
+                      modelIssueReason ??
+                      modelDisabledReason ??
+                      availabilityReason ??
+                      null;
                     const sourceBadgeLabel =
                       effectiveProviderId === 'opencode' && opt.value !== ''
                         ? opt.badgeLabel?.trim() || null
                         : null;
-                    const modelRecommendation =
-                      effectiveProviderId === 'opencode'
-                        ? getOpenCodeTeamModelRecommendation(opt.value)
-                        : null;
+                    const modelRecommendation = getTeamModelRecommendation(
+                      effectiveProviderId,
+                      opt.value
+                    );
 
                     return (
                       <button
@@ -637,10 +660,10 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
                           {hasModelIssue && (
                             <span
                               className="flex items-center justify-center gap-1 text-[10px] font-normal text-red-300"
-                              title={modelIssueReason ?? undefined}
+                              title={modelStatusMessage ?? undefined}
                             >
                               <AlertTriangle className="size-3 shrink-0" />
-                              <span>Issue</span>
+                              <span>{modelUnavailableReason ? 'Unavailable' : 'Issue'}</span>
                               <TooltipProvider delayDuration={200}>
                                 <Tooltip>
                                   <TooltipTrigger
@@ -650,7 +673,7 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
                                     <Info className="size-3 shrink-0 opacity-50 transition-opacity hover:opacity-80" />
                                   </TooltipTrigger>
                                   <TooltipContent side="top" className="max-w-[240px] text-xs">
-                                    {modelIssueReason}
+                                    {modelStatusMessage}
                                   </TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>

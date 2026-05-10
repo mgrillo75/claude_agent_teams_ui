@@ -2,7 +2,7 @@ import { createHash } from 'crypto';
 import { mkdtemp, mkdir, rm, stat, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import * as path from 'path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import {
   shouldIgnoreLogSourceWatcherPath,
@@ -12,6 +12,9 @@ import {
 import type { TeamMemberLogsFinder } from '../../../../src/main/services/team/TeamMemberLogsFinder';
 import type { TeamChangeEvent } from '../../../../src/shared/types';
 
+const originalChokidarUsePolling = process.env.CHOKIDAR_USEPOLLING;
+const originalChokidarInterval = process.env.CHOKIDAR_INTERVAL;
+
 function safeTaskIdSegment(taskId: string): string {
   return `task-id-${createHash('sha256').update(taskId).digest('hex').slice(0, 32)}`;
 }
@@ -19,10 +22,28 @@ function safeTaskIdSegment(taskId: string): string {
 describe('TeamLogSourceTracker', () => {
   let tempDir: string | null = null;
 
+  beforeAll(() => {
+    process.env.CHOKIDAR_USEPOLLING = '1';
+    process.env.CHOKIDAR_INTERVAL = '25';
+  });
+
   afterEach(async () => {
     if (tempDir) {
       await rm(tempDir, { recursive: true, force: true });
       tempDir = null;
+    }
+  });
+
+  afterAll(() => {
+    if (originalChokidarUsePolling === undefined) {
+      delete process.env.CHOKIDAR_USEPOLLING;
+    } else {
+      process.env.CHOKIDAR_USEPOLLING = originalChokidarUsePolling;
+    }
+    if (originalChokidarInterval === undefined) {
+      delete process.env.CHOKIDAR_INTERVAL;
+    } else {
+      process.env.CHOKIDAR_INTERVAL = originalChokidarInterval;
     }
   });
 

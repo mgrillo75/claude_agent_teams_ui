@@ -110,6 +110,7 @@ import {
   buildProviderPrepareRuntimeStatusSignature,
 } from './providerPrepareRequestSignature';
 import {
+  getShortLivedProviderPrepareModelIssueReasons,
   getShortLivedProviderPrepareModelResults,
   storeShortLivedProviderPrepareModelResults,
 } from './providerPrepareShortLivedCache';
@@ -682,6 +683,45 @@ export const CreateTeamDialog = ({
       selectedProviderId,
     ]
   );
+  const shortLivedModelIssueReasons = useMemo(() => {
+    const modelIssueReasonByProvider: Partial<Record<TeamProviderId, Record<string, string>>> = {};
+    const modelUnavailableReasonByProvider: Partial<
+      Record<TeamProviderId, Record<string, string>>
+    > = {};
+
+    for (const providerId of selectedMemberProviders) {
+      const backendSummary = runtimeBackendSummaryByProvider.get(providerId) ?? null;
+      const cacheKey = buildProviderPrepareModelCacheKey({
+        cwd: effectiveCwd,
+        providerId,
+        backendSummary,
+        limitContext: effectiveAnthropicRuntimeLimitContext,
+        runtimeStatusSignature: prepareRuntimeStatusSignature,
+      });
+      const issueReasons = getShortLivedProviderPrepareModelIssueReasons({
+        providerId,
+        cacheKey,
+      });
+      if (Object.keys(issueReasons.modelIssueReasonByValue).length > 0) {
+        modelIssueReasonByProvider[providerId] = issueReasons.modelIssueReasonByValue;
+      }
+      if (Object.keys(issueReasons.modelUnavailableReasonByValue).length > 0) {
+        modelUnavailableReasonByProvider[providerId] = issueReasons.modelUnavailableReasonByValue;
+      }
+    }
+
+    return {
+      modelIssueReasonByProvider,
+      modelUnavailableReasonByProvider,
+    };
+  }, [
+    effectiveAnthropicRuntimeLimitContext,
+    effectiveCwd,
+    prepareChecks,
+    prepareRuntimeStatusSignature,
+    runtimeBackendSummaryByProvider,
+    selectedMemberProviders,
+  ]);
 
   useEffect(() => {
     if (multimodelEnabled) {
@@ -1860,6 +1900,10 @@ export const CreateTeamDialog = ({
               leadModelIssueText={leadModelIssueText}
               memberWarningById={teammateRuntimeCompatibility.memberWarningById}
               memberModelIssueById={memberModelIssueById}
+              modelIssueReasonByProvider={shortLivedModelIssueReasons.modelIssueReasonByProvider}
+              modelUnavailableReasonByProvider={
+                shortLivedModelIssueReasons.modelUnavailableReasonByProvider
+              }
               headerTop={
                 <div className="flex items-center gap-2">
                   <Checkbox

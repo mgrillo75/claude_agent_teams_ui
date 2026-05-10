@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   __resetShortLivedProviderPrepareCacheForTests,
+  getShortLivedProviderPrepareModelIssueReasons,
   getShortLivedProviderPrepareModelResults,
   storeShortLivedProviderPrepareModelResults,
 } from '@renderer/components/team/dialogs/providerPrepareShortLivedCache';
@@ -42,6 +43,17 @@ describe('providerPrepareShortLivedCache', () => {
         warningLine: null,
       },
     });
+    expect(
+      getShortLivedProviderPrepareModelIssueReasons({
+        providerId: 'opencode',
+        cacheKey: 'key-1',
+      })
+    ).toEqual({
+      modelIssueReasonByValue: {
+        'opencode/nemotron-3-super-free': 'timed out',
+      },
+      modelUnavailableReasonByValue: {},
+    });
   });
 
   it('expires cached OpenCode results after the short-lived TTL', () => {
@@ -68,6 +80,100 @@ describe('providerPrepareShortLivedCache', () => {
     ).toEqual({});
   });
 
+  it('stores short-lived OpenCode failed model results as blocking unavailable issues', () => {
+    storeShortLivedProviderPrepareModelResults({
+      providerId: 'opencode',
+      cacheKey: 'key-4',
+      modelResultsById: {
+        'openai/gpt-5.4': {
+          status: 'failed',
+          line: 'GPT-5.4 - unavailable - OpenCode provider authentication failed',
+          warningLine: null,
+        },
+      },
+    });
+
+    expect(
+      getShortLivedProviderPrepareModelResults({
+        providerId: 'opencode',
+        cacheKey: 'key-4',
+      })
+    ).toEqual({});
+    expect(
+      getShortLivedProviderPrepareModelIssueReasons({
+        providerId: 'opencode',
+        cacheKey: 'key-4',
+      })
+    ).toEqual({
+      modelIssueReasonByValue: {},
+      modelUnavailableReasonByValue: {
+        'openai/gpt-5.4': 'OpenCode provider authentication failed',
+      },
+    });
+  });
+
+  it('clears a short-lived issue when a later result verifies the same model', () => {
+    storeShortLivedProviderPrepareModelResults({
+      providerId: 'opencode',
+      cacheKey: 'key-5',
+      modelResultsById: {
+        'openai/gpt-5.4': {
+          status: 'failed',
+          line: 'GPT-5.4 - unavailable - OpenCode provider authentication failed',
+          warningLine: null,
+        },
+      },
+    });
+    storeShortLivedProviderPrepareModelResults({
+      providerId: 'opencode',
+      cacheKey: 'key-5',
+      modelResultsById: {
+        'openai/gpt-5.4': {
+          status: 'ready',
+          line: 'GPT-5.4 - verified',
+          warningLine: null,
+        },
+      },
+    });
+
+    expect(
+      getShortLivedProviderPrepareModelIssueReasons({
+        providerId: 'opencode',
+        cacheKey: 'key-5',
+      })
+    ).toEqual({
+      modelIssueReasonByValue: {},
+      modelUnavailableReasonByValue: {},
+    });
+  });
+
+  it('expires short-lived OpenCode issues after the issue TTL', () => {
+    vi.useFakeTimers();
+    storeShortLivedProviderPrepareModelResults({
+      providerId: 'opencode',
+      cacheKey: 'key-6',
+      modelResultsById: {
+        'openai/gpt-5.4': {
+          status: 'failed',
+          line: 'GPT-5.4 - unavailable - OpenCode provider authentication failed',
+          warningLine: null,
+        },
+      },
+    });
+
+    vi.advanceTimersByTime(90_001);
+
+    expect(
+      getShortLivedProviderPrepareModelIssueReasons({
+        providerId: 'opencode',
+        cacheKey: 'key-6',
+      })
+    ).toEqual({
+      modelIssueReasonByValue: {},
+      modelUnavailableReasonByValue: {},
+    });
+  });
+
   it('does not store short-lived cache for non-OpenCode providers', () => {
     storeShortLivedProviderPrepareModelResults({
       providerId: 'codex',
@@ -87,5 +193,14 @@ describe('providerPrepareShortLivedCache', () => {
         cacheKey: 'key-3',
       })
     ).toEqual({});
+    expect(
+      getShortLivedProviderPrepareModelIssueReasons({
+        providerId: 'codex',
+        cacheKey: 'key-3',
+      })
+    ).toEqual({
+      modelIssueReasonByValue: {},
+      modelUnavailableReasonByValue: {},
+    });
   });
 });

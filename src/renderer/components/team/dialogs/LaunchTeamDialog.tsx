@@ -115,6 +115,7 @@ import {
   buildProviderPrepareRuntimeStatusSignature,
 } from './providerPrepareRequestSignature';
 import {
+  getShortLivedProviderPrepareModelIssueReasons,
   getShortLivedProviderPrepareModelResults,
   storeShortLivedProviderPrepareModelResults,
 } from './providerPrepareShortLivedCache';
@@ -1417,6 +1418,53 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
       selectedProviderId,
     ]
   );
+  const shortLivedModelIssueReasons = useMemo(() => {
+    const modelIssueReasonByProvider: Partial<Record<TeamProviderId, Record<string, string>>> = {};
+    const modelUnavailableReasonByProvider: Partial<
+      Record<TeamProviderId, Record<string, string>>
+    > = {};
+
+    if (!isLaunchMode) {
+      return {
+        modelIssueReasonByProvider,
+        modelUnavailableReasonByProvider,
+      };
+    }
+
+    for (const providerId of selectedMemberProviders) {
+      const backendSummary = runtimeBackendSummaryByProvider.get(providerId) ?? null;
+      const cacheKey = buildProviderPrepareModelCacheKey({
+        cwd: effectiveCwd,
+        providerId,
+        backendSummary,
+        limitContext: effectiveAnthropicRuntimeLimitContext,
+        runtimeStatusSignature: prepareRuntimeStatusSignature,
+      });
+      const issueReasons = getShortLivedProviderPrepareModelIssueReasons({
+        providerId,
+        cacheKey,
+      });
+      if (Object.keys(issueReasons.modelIssueReasonByValue).length > 0) {
+        modelIssueReasonByProvider[providerId] = issueReasons.modelIssueReasonByValue;
+      }
+      if (Object.keys(issueReasons.modelUnavailableReasonByValue).length > 0) {
+        modelUnavailableReasonByProvider[providerId] = issueReasons.modelUnavailableReasonByValue;
+      }
+    }
+
+    return {
+      modelIssueReasonByProvider,
+      modelUnavailableReasonByProvider,
+    };
+  }, [
+    effectiveAnthropicRuntimeLimitContext,
+    effectiveCwd,
+    isLaunchMode,
+    prepareChecks,
+    prepareRuntimeStatusSignature,
+    runtimeBackendSummaryByProvider,
+    selectedMemberProviders,
+  ]);
 
   // Clear stale provisioning error when dialog opens
   useEffect(() => {
@@ -2563,6 +2611,12 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
                   memberInfoById={memberWorktreeContinuationInfoById}
                   leadModelIssueText={leadModelIssueText}
                   memberModelIssueById={memberModelIssueById}
+                  modelIssueReasonByProvider={
+                    shortLivedModelIssueReasons.modelIssueReasonByProvider
+                  }
+                  modelUnavailableReasonByProvider={
+                    shortLivedModelIssueReasons.modelUnavailableReasonByProvider
+                  }
                   softDeleteMembers
                   disableGeminiOption={isGeminiUiFrozen()}
                   headerBottom={

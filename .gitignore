@@ -49,3 +49,4 @@ eslint-fix/
 remotion/*
 
 .home/
+.board-task-log-freshness/

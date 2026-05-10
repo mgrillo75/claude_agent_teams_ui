@@ -26,10 +26,12 @@ describe('getOpenCodeTeamModelRecommendation', () => {
   });
 
   it('marks models that passed real OpenCode Agent Teams smoke E2E as tested', () => {
-    expect(getOpenCodeTeamModelRecommendation('openrouter/mistralai/codestral-2508')).toMatchObject({
-      level: 'tested',
-      label: 'Tested',
-    });
+    expect(getOpenCodeTeamModelRecommendation('openrouter/mistralai/codestral-2508')).toMatchObject(
+      {
+        level: 'tested',
+        label: 'Tested',
+      }
+    );
     expect(
       getOpenCodeTeamModelRecommendation(' OPENROUTER/GOOGLE/GEMINI-3-FLASH-PREVIEW ')
     ).toMatchObject({
@@ -101,10 +103,11 @@ describe('getOpenCodeTeamModelRecommendation', () => {
 
   it('keeps similarly named models distinct when real E2E disagreed', () => {
     expect(getOpenCodeTeamModelRecommendation('opencode/minimax-m2.5-free')).toMatchObject({
-      level: 'recommended-with-limits',
-      label: 'Recommended with limits',
+      level: 'tested-with-limits',
+      label: 'Tested with limits',
+      reason: expect.stringContaining('duplicate or missing reply tokens'),
     });
-    expect(isOpenCodeTeamModelRecommended('opencode/minimax-m2.5-free')).toBe(true);
+    expect(isOpenCodeTeamModelRecommended('opencode/minimax-m2.5-free')).toBe(false);
     expect(
       getOpenCodeTeamModelRecommendation('openrouter/minimax/minimax-m2.5:free')
     ).toMatchObject({
@@ -815,9 +818,9 @@ describe('getOpenCodeTeamModelRecommendation', () => {
       [...models].sort((left, right) => compareOpenCodeTeamModelRecommendations(left, right))
     ).toEqual([
       'opencode/big-pickle',
-      'opencode/minimax-m2.5-free',
       'openrouter/mistralai/codestral-2508',
       'openrouter/anthropic/claude-sonnet-4.6',
+      'opencode/minimax-m2.5-free',
       'openrouter/qwen/qwen3-coder-plus',
       'openrouter/openai/gpt-oss-20b:free',
     ]);

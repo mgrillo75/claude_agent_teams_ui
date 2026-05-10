@@ -46,6 +46,8 @@ interface LeadModelRowProps {
   warningText?: string | null;
   disableGeminiOption?: boolean;
   modelIssueText?: string | null;
+  modelIssueReasonByValue?: Partial<Record<string, string | null | undefined>>;
+  modelUnavailableReasonByValue?: Partial<Record<string, string | null | undefined>>;
   showAnthropicContextLimit?: boolean;
   disableAnthropicContextLimit?: boolean;
 }
@@ -64,6 +66,8 @@ export const LeadModelRow = ({
   warningText,
   disableGeminiOption = false,
   modelIssueText,
+  modelIssueReasonByValue,
+  modelUnavailableReasonByValue,
   showAnthropicContextLimit = providerId === 'anthropic',
   disableAnthropicContextLimit,
 }: LeadModelRowProps): React.JSX.Element => {
@@ -74,7 +78,17 @@ export const LeadModelRow = ({
     ? getProviderScopedTeamModelLabel(providerId, model.trim())
     : 'Default';
   const modelButtonAriaLabel = `${getTeamProviderLabel(providerId)} provider, ${modelButtonLabel}`;
-  const hasModelIssue = Boolean(modelIssueText);
+  const selectedModelIssueText =
+    model.trim() && modelIssueReasonByValue?.[model.trim()]
+      ? modelIssueReasonByValue[model.trim()]
+      : null;
+  const selectedModelUnavailableText =
+    model.trim() && modelUnavailableReasonByValue?.[model.trim()]
+      ? modelUnavailableReasonByValue[model.trim()]
+      : null;
+  const currentModelIssueText =
+    modelIssueText ?? selectedModelUnavailableText ?? selectedModelIssueText ?? null;
+  const hasModelIssue = Boolean(currentModelIssueText);
   const showSonnetExtraUsageWarning =
     providerId === 'anthropic' &&
     !limitContext &&
@@ -179,7 +193,11 @@ export const LeadModelRow = ({
             onValueChange={onModelChange}
             id="lead-model"
             disableGeminiOption={disableGeminiOption}
-            modelIssueReasonByValue={model.trim() ? { [model.trim()]: modelIssueText } : undefined}
+            modelIssueReasonByValue={{
+              ...(modelIssueReasonByValue ?? {}),
+              ...(model.trim() && modelIssueText ? { [model.trim()]: modelIssueText } : {}),
+            }}
+            modelUnavailableReasonByValue={modelUnavailableReasonByValue}
           />
           <EffortLevelSelector
             value={effort ?? ''}
