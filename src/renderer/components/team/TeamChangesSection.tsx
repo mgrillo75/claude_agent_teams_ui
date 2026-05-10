@@ -28,23 +28,56 @@ interface RenderedTeamChangeSummary {
   fileBudget: number;
 }
 
+function getChangeSetFiles(changeSet: TaskChangeSetV2 | null): FileChangeSummary[] {
+  if (!Array.isArray(changeSet?.files)) {
+    return [];
+  }
+  return changeSet.files.filter((file): file is FileChangeSummary =>
+    Boolean(
+      file &&
+      typeof file === 'object' &&
+      typeof (file as Partial<FileChangeSummary>).filePath === 'string'
+    )
+  );
+}
+
+function getChangeSetWarnings(changeSet: TaskChangeSetV2): string[] {
+  return Array.isArray(changeSet.warnings)
+    ? changeSet.warnings.filter((warning): warning is string => typeof warning === 'string')
+    : [];
+}
+
 function getTaskChangeContributors(
   task: TeamTaskWithKanban,
   changeSet: TaskChangeSetV2 | null
 ): string[] {
   const names = new Set<string>();
-  for (const contributor of changeSet?.scope.contributors ?? []) {
-    if (contributor.memberName) names.add(contributor.memberName);
+  const contributors = Array.isArray(changeSet?.scope?.contributors)
+    ? changeSet.scope.contributors
+    : [];
+  for (const contributor of contributors) {
+    const memberName =
+      contributor && typeof contributor.memberName === 'string' ? contributor.memberName : '';
+    if (memberName) names.add(memberName);
   }
-  for (const name of changeSet?.scope.memberNames ?? []) {
-    names.add(name);
+  const memberNames = Array.isArray(changeSet?.scope?.memberNames)
+    ? changeSet.scope.memberNames
+    : [];
+  for (const name of memberNames) {
+    if (typeof name === 'string' && name) names.add(name);
   }
-  if (changeSet?.scope.primaryMemberName) {
+  if (
+    typeof changeSet?.scope?.primaryMemberName === 'string' &&
+    changeSet.scope.primaryMemberName
+  ) {
     names.add(changeSet.scope.primaryMemberName);
   }
-  for (const file of changeSet?.files ?? []) {
-    for (const name of file.ledgerSummary?.memberNames ?? []) {
-      names.add(name);
+  for (const file of getChangeSetFiles(changeSet)) {
+    const fileMemberNames = Array.isArray(file.ledgerSummary?.memberNames)
+      ? file.ledgerSummary.memberNames
+      : [];
+    for (const name of fileMemberNames) {
+      if (typeof name === 'string' && name) names.add(name);
     }
   }
   if (names.size === 0 && task.owner) {
@@ -54,8 +87,14 @@ function getTaskChangeContributors(
 }
 
 function getVisibleFileName(file: FileChangeSummary): string {
-  const value = file.relativePath || file.filePath;
+  const value = getVisibleFilePath(file);
   return value.split(/[\\/]/).pop() ?? value;
+}
+
+function getVisibleFilePath(file: FileChangeSummary): string {
+  return typeof file.relativePath === 'string' && file.relativePath.trim() !== ''
+    ? file.relativePath
+    : file.filePath;
 }
 
 function getTaskSummaryBadge(changeSet: TaskChangeSetV2 | null): string | undefined {
@@ -75,7 +114,7 @@ function getTaskChangeDiagnosticMessages(changeSet: TaskChangeSetV2): string[] {
   const messages =
     status.diagnostics.length > 0
       ? status.diagnostics.map((diagnostic) => diagnostic.message)
-      : changeSet.warnings;
+      : getChangeSetWarnings(changeSet);
   return [...new Set(messages.filter((message) => message.trim().length > 0))];
 }
 
@@ -102,7 +141,7 @@ export const TeamChangesSection = memo(function TeamChangesSection({
         return (
           Boolean(entry.task) &&
           (Boolean(entry.summary.error) ||
-            (changeSet?.files.length ?? 0) > 0 ||
+            getChangeSetFiles(changeSet).length > 0 ||
             (changeSet ? getTaskChangeDiagnosticMessages(changeSet).length > 0 : false))
         );
       })
@@ -110,7 +149,7 @@ export const TeamChangesSection = memo(function TeamChangesSection({
   }, [summariesByTaskId, taskMap]);
 
   const totalFiles = visibleSummaries.reduce(
-    (sum, entry) => sum + (entry.summary.changeSet?.files.length ?? 0),
+    (sum, entry) => sum + getChangeSetFiles(entry.summary.changeSet).length,
     0
   );
   const hiddenFileRows = Math.max(0, totalFiles - TEAM_CHANGES_MAX_RENDERED_FILE_ROWS);
@@ -119,7 +158,7 @@ export const TeamChangesSection = memo(function TeamChangesSection({
     const entries: RenderedTeamChangeSummary[] = [];
     let remainingFileRows = TEAM_CHANGES_MAX_RENDERED_FILE_ROWS;
     for (const entry of visibleSummaries) {
-      const files = entry.summary.changeSet?.files ?? [];
+      const files = getChangeSetFiles(entry.summary.changeSet);
       const fileBudget = Math.max(0, remainingFileRows);
       const visibleFiles = files.slice(0, fileBudget);
       entries.push({ ...entry, visibleFiles, fileBudget });
@@ -167,19 +206,12 @@ export const TeamChangesSection = memo(function TeamChangesSection({
       }
       contentClassName="pl-2.5"
     >
-      {loading && visibleSummaries.length === 0 ? (
-        <div className="flex items-center gap-2 py-2 text-xs text-[var(--color-text-muted)]">
-          <Loader2 size={14} className="animate-spin" />
-          Loading changes...
-        </div>
-      ) : error ? (
-        <p className="text-xs text-red-400">{error}</p>
-      ) : visibleSummaries.length > 0 ? (
+      {visibleSummaries.length > 0 ? (
         <div className="space-y-2">
           <div className="max-h-[360px] space-y-2 overflow-y-auto pr-1">
             {renderedSummaries.map(({ summary, task, visibleFiles, fileBudget }) => {
               const changeSet = summary.changeSet;
-              const files = changeSet?.files ?? [];
+              const files = getChangeSetFiles(changeSet);
               const reviewability = changeSet
                 ? classifyTaskChangeReviewability(changeSet).reviewability
                 : 'unknown';
@@ -267,9 +299,9 @@ export const TeamChangesSection = memo(function TeamChangesSection({
                             type="button"
                             className="min-w-0 flex-1 truncate text-left font-mono text-[var(--color-text-secondary)] transition-colors hover:text-[var(--color-text)]"
                             onClick={() => onViewChanges(task.id, file.filePath)}
-                            title={file.relativePath || file.filePath}
+                            title={getVisibleFilePath(file)}
                           >
-                            {file.relativePath || file.filePath}
+                            {getVisibleFilePath(file)}
                           </button>
                           <span className="flex shrink-0 items-center gap-1.5">
                             {file.linesAdded > 0 ? (
@@ -310,18 +342,26 @@ export const TeamChangesSection = memo(function TeamChangesSection({
           </div>
 
           <div className="flex flex-wrap items-center gap-2 text-[10px] text-[var(--color-text-muted)]">
-            {refreshing ? (
+            {loading || refreshing ? (
               <span className="inline-flex items-center gap-1">
                 <Loader2 size={11} className="animate-spin" />
                 Refreshing
               </span>
             ) : null}
+            {error ? <span className="text-red-400">Refresh failed: {error}</span> : null}
             {hiddenFileRows > 0 ? <span>{hiddenFileRows} file rows hidden</span> : null}
             {stats.deferredCount > 0 ? (
               <span>{stats.deferredCount} tasks deferred this pass</span>
             ) : null}
           </div>
         </div>
+      ) : loading || refreshing ? (
+        <div className="flex items-center gap-2 py-2 text-xs text-[var(--color-text-muted)]">
+          <Loader2 size={14} className="animate-spin" />
+          {loading ? 'Loading changes...' : 'Refreshing changes...'}
+        </div>
+      ) : error ? (
+        <p className="text-xs text-red-400">{error}</p>
       ) : (
         <div className="space-y-1 py-1">
           <p className="text-xs text-[var(--color-text-muted)]">No file changes recorded</p>

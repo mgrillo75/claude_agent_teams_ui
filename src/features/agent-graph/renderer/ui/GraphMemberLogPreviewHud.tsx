@@ -113,11 +113,11 @@ function resolveEmptyText(
   loading: boolean,
   error: string | null
 ): string {
-  if (loading && !preview) return 'Loading logs';
-  if (error && !preview) return 'Logs unavailable';
   if (preview?.warnings.some((warning) => warning.code === 'codex_member_wide_not_supported')) {
     return 'Unsupported provider';
   }
+  if (loading && (!preview || preview.items.length === 0)) return 'Loading logs';
+  if (error && (!preview || preview.items.length === 0)) return 'Logs unavailable';
   return 'No recent logs';
 }
 

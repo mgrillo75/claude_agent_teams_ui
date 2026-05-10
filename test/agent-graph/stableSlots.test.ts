@@ -193,7 +193,7 @@ describe('stable slot layout', () => {
     });
   });
 
-  it('uses three grid columns for six owners in rows layout', () => {
+  it('uses two grid columns for six owners in rows layout', () => {
     const { nodes, layout } = buildSixOwnerGraph();
     const snapshot = getSnapshot(nodes, {
       ...layout,
@@ -202,8 +202,8 @@ describe('stable slot layout', () => {
     });
 
     expect(snapshot.ownerSlotLayoutKind).toBe('grid-under-lead');
-    expect(snapshot.memberSlotFrames.map((frame) => frame.ringIndex)).toEqual([0, 0, 0, 1, 1, 1]);
-    expect(snapshot.memberSlotFrames.map((frame) => frame.sectorIndex)).toEqual([0, 1, 2, 0, 1, 2]);
+    expect(snapshot.memberSlotFrames.map((frame) => frame.ringIndex)).toEqual([0, 0, 1, 1, 2, 2]);
+    expect(snapshot.memberSlotFrames.map((frame) => frame.sectorIndex)).toEqual([0, 1, 0, 1, 0, 1]);
   });
 
   it('packs eight radial owners into row-orbit rows without crossing the lead exclusion', () => {

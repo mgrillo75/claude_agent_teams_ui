@@ -10,9 +10,15 @@ import {
   buildTeamChangesTasksFingerprint,
 } from './teamChangesRequestPlan';
 
-import type { TaskChangeSetV2, TeamTaskWithKanban } from '@shared/types';
+import type {
+  TaskChangePresenceState,
+  TaskChangeSetV2,
+  TeamTaskChangeSummaryItem,
+  TeamTaskWithKanban,
+} from '@shared/types';
 
 const TEAM_CHANGES_AUTO_REFRESH_MS = 30_000;
+const TEAM_CHANGES_ERROR_AUTO_RETRY_COOLDOWN_MS = 120_000;
 
 export interface TeamChangeSummaryState {
   taskId: string;
@@ -47,6 +53,89 @@ interface UseTeamChangesSummariesResult {
   refresh: () => void;
 }
 
+function normalizeTeamChangeSummaryItem(item: unknown): TeamTaskChangeSummaryItem | null {
+  if (!item || typeof item !== 'object') {
+    return null;
+  }
+
+  const candidate = item as Partial<TeamTaskChangeSummaryItem>;
+  const taskId = typeof candidate.taskId === 'string' ? candidate.taskId.trim() : '';
+  if (!taskId) {
+    return null;
+  }
+
+  const changeSet =
+    candidate.changeSet &&
+    typeof candidate.changeSet === 'object' &&
+    !Array.isArray(candidate.changeSet)
+      ? candidate.changeSet
+      : null;
+  const error = typeof candidate.error === 'string' ? candidate.error : undefined;
+  return {
+    taskId,
+    changeSet,
+    ...(error ? { error } : {}),
+  };
+}
+
+function getSafeResponseItems(response: unknown): TeamTaskChangeSummaryItem[] {
+  if (
+    !response ||
+    typeof response !== 'object' ||
+    !Array.isArray((response as { items?: unknown }).items)
+  ) {
+    throw new Error('Team changes response was malformed.');
+  }
+  return (response as { items: unknown[] }).items
+    .map(normalizeTeamChangeSummaryItem)
+    .filter((item): item is TeamTaskChangeSummaryItem => item !== null);
+}
+
+function hasSafeFileSummaries(changeSet: TaskChangeSetV2): boolean {
+  return changeSet.files.every(
+    (file) =>
+      file &&
+      typeof file === 'object' &&
+      typeof file.filePath === 'string' &&
+      file.filePath.trim().length > 0
+  );
+}
+
+function isMinimalPresenceChangeSet(changeSet: TaskChangeSetV2): boolean {
+  return Boolean(
+    Array.isArray(changeSet.files) &&
+    hasSafeFileSummaries(changeSet) &&
+    Array.isArray(changeSet.warnings) &&
+    Number.isFinite(changeSet.totalFiles) &&
+    Number(changeSet.totalFiles) >= 0 &&
+    typeof changeSet.computedAt === 'string' &&
+    changeSet.computedAt.trim().length > 0 &&
+    changeSet.scope &&
+    typeof changeSet.scope === 'object' &&
+    !Array.isArray(changeSet.scope)
+  );
+}
+
+function resolveCacheablePresenceFromChangeSet(
+  changeSet: TaskChangeSetV2
+): Exclude<TaskChangePresenceState, 'unknown'> | null {
+  if (!isMinimalPresenceChangeSet(changeSet)) {
+    return null;
+  }
+
+  const nextPresence = resolveTaskChangePresenceFromResult(changeSet);
+  if (nextPresence === 'has_changes' || nextPresence === 'needs_attention') {
+    return nextPresence;
+  }
+  if (
+    nextPresence === 'no_changes' &&
+    (changeSet.confidence === 'high' || changeSet.confidence === 'medium')
+  ) {
+    return nextPresence;
+  }
+  return null;
+}
+
 export function useTeamChangesSummaries({
   teamName,
   tasks,
@@ -71,6 +160,7 @@ export function useTeamChangesSummaries({
   const requestSeqRef = useRef(0);
   const activeRequestSeqRef = useRef<number | null>(null);
   const queuedRefreshOptionsRef = useRef<TeamChangesLoadOptions | null>(null);
+  const autoRefreshBlockedUntilRef = useRef(0);
   const sectionOpenRef = useRef(sectionOpen);
   const unknownScanCursorRef = useRef(0);
   const lastRequestedTasksFingerprintRef = useRef<string | null>(null);
@@ -81,11 +171,16 @@ export function useTeamChangesSummaries({
   sectionOpenRef.current = sectionOpen;
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
       mountedRef.current = false;
       requestSeqRef.current += 1;
       activeRequestSeqRef.current = null;
       queuedRefreshOptionsRef.current = null;
+      autoRefreshBlockedUntilRef.current = 0;
+      hasLoadedRef.current = false;
+      unknownScanCursorRef.current = 0;
+      lastRequestedTasksFingerprintRef.current = null;
     };
   }, []);
 
@@ -95,6 +190,12 @@ export function useTeamChangesSummaries({
       showSpinner = false,
       preserveOnError = true,
     }: TeamChangesLoadOptions = {}): Promise<void> => {
+      if (forceFresh) {
+        autoRefreshBlockedUntilRef.current = 0;
+      } else if (autoRefreshBlockedUntilRef.current > Date.now()) {
+        return;
+      }
+
       if (activeRequestSeqRef.current !== null || queuedRefreshOptionsRef.current !== null) {
         const previous = queuedRefreshOptionsRef.current;
         queuedRefreshOptionsRef.current = {
@@ -104,7 +205,6 @@ export function useTeamChangesSummaries({
             ? Boolean(previous.preserveOnError && preserveOnError)
             : preserveOnError,
         };
-        requestSeqRef.current += 1;
         if (activeRequestSeqRef.current === null && sectionOpenRef.current) {
           setQueuedRefreshTick((value) => value + 1);
         }
@@ -124,6 +224,7 @@ export function useTeamChangesSummaries({
 
       if (plan.requests.length === 0) {
         setSummariesByTaskId({});
+        autoRefreshBlockedUntilRef.current = 0;
         setLoading(false);
         setRefreshing(false);
         return;
@@ -143,16 +244,22 @@ export function useTeamChangesSummaries({
         if (!mountedRef.current || requestSeqRef.current !== requestSeq) {
           return;
         }
+        if (queuedRefreshOptionsRef.current !== null) {
+          return;
+        }
+        autoRefreshBlockedUntilRef.current = 0;
+        const responseItems = getSafeResponseItems(response);
 
         const currentTaskIds = new Set(tasks.map((task) => task.id));
-        for (const item of response.items) {
+        for (const item of responseItems) {
           const changeSet = item.changeSet;
           const options = plan.requestOptionsByTaskId.get(item.taskId);
           if (!changeSet || !options) continue;
 
-          const nextPresence = resolveTaskChangePresenceFromResult(changeSet);
+          const nextPresence = resolveCacheablePresenceFromChangeSet(changeSet);
+          if (!nextPresence) continue;
           recordTaskChangePresence(teamName, item.taskId, options, nextPresence);
-          setSelectedTeamTaskChangePresence(teamName, item.taskId, nextPresence ?? 'unknown');
+          setSelectedTeamTaskChangePresence(teamName, item.taskId, nextPresence);
         }
 
         setSummariesByTaskId((previous) => {
@@ -162,7 +269,7 @@ export function useTeamChangesSummaries({
               next[taskId] = summary;
             }
           }
-          for (const item of response.items) {
+          for (const item of responseItems) {
             const options = plan.requestOptionsByTaskId.get(item.taskId);
             if (!options) continue;
             next[item.taskId] = {
@@ -177,6 +284,8 @@ export function useTeamChangesSummaries({
         if (!mountedRef.current || requestSeqRef.current !== requestSeq) {
           return;
         }
+        queuedRefreshOptionsRef.current = null;
+        autoRefreshBlockedUntilRef.current = Date.now() + TEAM_CHANGES_ERROR_AUTO_RETRY_COOLDOWN_MS;
         if (!preserveOnError) {
           setSummariesByTaskId({});
         }
@@ -208,6 +317,7 @@ export function useTeamChangesSummaries({
     requestSeqRef.current += 1;
     activeRequestSeqRef.current = null;
     queuedRefreshOptionsRef.current = null;
+    autoRefreshBlockedUntilRef.current = 0;
     unknownScanCursorRef.current = 0;
     lastRequestedTasksFingerprintRef.current = null;
     setSummariesByTaskId({});
@@ -220,6 +330,7 @@ export function useTeamChangesSummaries({
       requestSeqRef.current += 1;
       activeRequestSeqRef.current = null;
       queuedRefreshOptionsRef.current = null;
+      autoRefreshBlockedUntilRef.current = 0;
       hasLoadedRef.current = false;
       lastRequestedTasksFingerprintRef.current = null;
       setSummariesByTaskId({});

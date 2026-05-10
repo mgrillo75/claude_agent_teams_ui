@@ -14,6 +14,11 @@ const PREVIEW_CACHE_TTL_MS = 3_500;
 const DEFAULT_MAX_ITEMS = 3;
 const DEFAULT_TEXT_LIMIT = 200;
 
+interface PendingReloadOptions {
+  forceRefresh: boolean;
+  background: boolean;
+}
+
 function normalizeMemberName(value: string): string {
   return value.trim().toLowerCase();
 }
@@ -65,15 +70,79 @@ function mergeMemberPreviews(
   return next;
 }
 
+function hasUnloadedMemberPreview(
+  memberNames: readonly string[],
+  previewsByMember: ReadonlyMap<string, MemberLogPreviewMember>
+): boolean {
+  return memberNames.some((memberName) => !previewsByMember.has(normalizeMemberName(memberName)));
+}
+
+function hasEmptyOrUnloadedMemberPreview(
+  memberNames: readonly string[],
+  previewsByMember: ReadonlyMap<string, MemberLogPreviewMember>
+): boolean {
+  return memberNames.some((memberName) => {
+    const preview = previewsByMember.get(normalizeMemberName(memberName));
+    return !preview || preview.items.length === 0;
+  });
+}
+
+function hasInFlightMemberPreviewRequest(
+  memberNames: readonly string[],
+  activeRequestKeyByMember: ReadonlyMap<string, string>,
+  inFlightRequests: ReadonlyMap<string, unknown>
+): boolean {
+  return memberNames.some((memberName) => {
+    const activeRequestKey = activeRequestKeyByMember.get(normalizeMemberName(memberName));
+    return activeRequestKey ? inFlightRequests.has(activeRequestKey) : false;
+  });
+}
+
+function hasPendingLoadingReload(
+  pendingReload: PendingReloadOptions | null,
+  memberNames: readonly string[],
+  previewsByMember: ReadonlyMap<string, MemberLogPreviewMember>
+): boolean {
+  return (
+    pendingReload?.forceRefresh === true &&
+    hasEmptyOrUnloadedMemberPreview(memberNames, previewsByMember)
+  );
+}
+
+function hasActiveMemberPreviewRequest(
+  memberNames: readonly string[],
+  requestKey: string,
+  activeRequestKeyByMember: ReadonlyMap<string, string>
+): boolean {
+  return memberNames.some(
+    (memberName) => activeRequestKeyByMember.get(normalizeMemberName(memberName)) === requestKey
+  );
+}
+
+function hasVisibleActiveMemberPreviewRequest(
+  requestedMemberNames: readonly string[],
+  visibleMemberNames: readonly string[],
+  requestKey: string,
+  activeRequestKeyByMember: ReadonlyMap<string, string>
+): boolean {
+  const visibleMemberNameSet = new Set(visibleMemberNames.map(normalizeMemberName));
+  return requestedMemberNames.some((memberName) => {
+    const normalizedMemberName = normalizeMemberName(memberName);
+    return (
+      visibleMemberNameSet.has(normalizedMemberName) &&
+      activeRequestKeyByMember.get(normalizedMemberName) === requestKey
+    );
+  });
+}
+
 function laneIdForMember(
   memberName: string,
   laneIdsByMember: Readonly<Record<string, string>>
 ): string {
-  return (
-    laneIdsByMember[memberName]?.trim() ??
-    laneIdsByMember[normalizeMemberName(memberName)]?.trim() ??
-    ''
-  );
+  const directLaneId = laneIdsByMember[memberName]?.trim();
+  if (directLaneId) return directLaneId;
+  const normalizedLaneId = laneIdsByMember[normalizeMemberName(memberName)]?.trim();
+  return normalizedLaneId || '';
 }
 
 function buildMemberCacheKey(input: {
@@ -90,6 +159,24 @@ function buildMemberCacheKey(input: {
     input.maxItemsPerMember,
     input.textLimit,
   ]);
+}
+
+function buildLaneIdsKey(laneIdsByMember: Readonly<Record<string, string>>): string {
+  const laneEntriesByMember = new Map<string, string>();
+  for (const [memberName, laneId] of Object.entries(laneIdsByMember)) {
+    const normalizedMemberName = normalizeMemberName(memberName);
+    const trimmedLaneId = laneId.trim();
+    if (!normalizedMemberName || !trimmedLaneId || laneEntriesByMember.has(normalizedMemberName)) {
+      continue;
+    }
+    laneEntriesByMember.set(normalizedMemberName, trimmedLaneId);
+  }
+  return JSON.stringify(
+    Array.from(laneEntriesByMember.entries()).sort((left, right) => {
+      const byMember = left[0].localeCompare(right[0]);
+      return byMember !== 0 ? byMember : left[1].localeCompare(right[1]);
+    })
+  );
 }
 
 function buildLaneIdsForMembers(
@@ -168,6 +255,10 @@ export function useGraphMemberLogPreviews(input: {
     }
     return result;
   }, [input.memberNames]);
+  const laneKey = useMemo(
+    () => buildLaneIdsKey(buildLaneIdsForMembers(memberNames, laneIdsByMember)),
+    [laneIdsByMember, memberNames]
+  );
   const memberKey = useMemo(
     () =>
       memberNames
@@ -186,25 +277,42 @@ export function useGraphMemberLogPreviews(input: {
   const inFlightRef = useRef(new Map<string, Promise<Map<string, MemberLogPreviewMember>>>());
   const activeRequestKeyByMemberRef = useRef(new Map<string, string>());
   const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingReloadRef = useRef<PendingReloadOptions | null>(null);
+  const requestGenerationRef = useRef(0);
   const teamNameRef = useRef(input.teamName);
+  const laneKeyRef = useRef(laneKey);
+  const memberNamesRef = useRef(memberNames);
+  const mountedRef = useRef(true);
 
-  useEffect(() => {
-    previewsByMemberRef.current = previewsByMember;
-  }, [previewsByMember]);
+  previewsByMemberRef.current = previewsByMember;
+  memberNamesRef.current = memberNames;
+
+  const clearScheduledReload = useCallback((): void => {
+    if (reloadTimerRef.current) {
+      clearTimeout(reloadTimerRef.current);
+      reloadTimerRef.current = null;
+    }
+    pendingReloadRef.current = null;
+  }, []);
 
   useEffect(() => {
     if (teamNameRef.current !== input.teamName) {
       teamNameRef.current = input.teamName;
+      laneKeyRef.current = laneKey;
+      requestGenerationRef.current += 1;
+      clearScheduledReload();
       cacheRef.current.clear();
       inFlightRef.current.clear();
       activeRequestKeyByMemberRef.current.clear();
-      setPreviewsByMember(new Map());
+      const emptyPreviews = new Map<string, MemberLogPreviewMember>();
+      previewsByMemberRef.current = emptyPreviews;
+      setPreviewsByMember(emptyPreviews);
     }
     if (!enabled || memberNames.length === 0) {
       setLoading(false);
     }
     setError(null);
-  }, [enabled, input.teamName, memberKey, memberNames.length]);
+  }, [clearScheduledReload, enabled, input.teamName, laneKey, memberKey, memberNames.length]);
 
   const loadPreviews = useCallback(
     async (options?: { forceRefresh?: boolean; background?: boolean }): Promise<void> => {
@@ -221,6 +329,7 @@ export function useGraphMemberLogPreviews(input: {
       const membersToRequest: string[] = [];
       const cachedMembers: MemberLogPreviewMember[] = [];
       let hasMissingPreview = false;
+      let hasEmptyOrMissingPreviewForForceRefresh = false;
 
       for (const memberName of memberNames) {
         const cacheKey = buildMemberCacheKey({
@@ -238,8 +347,12 @@ export function useGraphMemberLogPreviews(input: {
           membersToRequest.push(memberName);
         }
         const normalizedMemberName = normalizeMemberName(memberName);
-        if (!cached && !previewsByMemberRef.current.has(normalizedMemberName)) {
+        const existingPreview = previewsByMemberRef.current.get(normalizedMemberName);
+        if (!cached && !existingPreview) {
           hasMissingPreview = true;
+        }
+        if (options?.forceRefresh && (!existingPreview || existingPreview.items.length === 0)) {
+          hasEmptyOrMissingPreviewForForceRefresh = true;
         }
       }
 
@@ -263,11 +376,31 @@ export function useGraphMemberLogPreviews(input: {
         forceRefresh: options?.forceRefresh,
       });
       const requestTeamName = input.teamName;
+      const requestGeneration = requestGenerationRef.current;
       for (const memberName of membersToRequest) {
         activeRequestKeyByMemberRef.current.set(normalizeMemberName(memberName), requestKey);
       }
+      const requestStillActive = (): boolean =>
+        mountedRef.current &&
+        teamNameRef.current === requestTeamName &&
+        requestGenerationRef.current === requestGeneration &&
+        hasActiveMemberPreviewRequest(
+          membersToRequest,
+          requestKey,
+          activeRequestKeyByMemberRef.current
+        );
+      const requestStillVisible = (): boolean =>
+        mountedRef.current &&
+        teamNameRef.current === requestTeamName &&
+        requestGenerationRef.current === requestGeneration &&
+        hasVisibleActiveMemberPreviewRequest(
+          membersToRequest,
+          memberNamesRef.current,
+          requestKey,
+          activeRequestKeyByMemberRef.current
+        );
 
-      if (!options?.background && hasMissingPreview) {
+      if ((!options?.background && hasMissingPreview) || hasEmptyOrMissingPreviewForForceRefresh) {
         setLoading(true);
         setError(null);
       }
@@ -288,31 +421,39 @@ export function useGraphMemberLogPreviews(input: {
             .then((response) => {
               const normalized = normalizeMemberLogPreviewResponse(response);
               const members = memberMapFromResponse(normalized.members);
-              for (const member of members.values()) {
-                cacheRef.current.set(
-                  buildMemberCacheKey({
-                    teamName: input.teamName,
-                    memberName: member.memberName,
-                    laneIdsByMember,
-                    maxItemsPerMember,
-                    textLimit,
-                  }),
-                  {
-                    expiresAt: Date.now() + PREVIEW_CACHE_TTL_MS,
-                    member,
-                  }
-                );
+              if (
+                mountedRef.current &&
+                teamNameRef.current === requestTeamName &&
+                requestGenerationRef.current === requestGeneration
+              ) {
+                for (const member of members.values()) {
+                  cacheRef.current.set(
+                    buildMemberCacheKey({
+                      teamName: input.teamName,
+                      memberName: member.memberName,
+                      laneIdsByMember,
+                      maxItemsPerMember,
+                      textLimit,
+                    }),
+                    {
+                      expiresAt: Date.now() + PREVIEW_CACHE_TTL_MS,
+                      member,
+                    }
+                  );
+                }
               }
               return members;
             })
             .finally(() => {
-              inFlightRef.current.delete(requestKey);
+              if (inFlightRef.current.get(requestKey) === request) {
+                inFlightRef.current.delete(requestKey);
+              }
             });
           inFlightRef.current.set(requestKey, request);
         }
 
         const members = await request;
-        if (teamNameRef.current !== requestTeamName) {
+        if (!requestStillActive()) {
           return;
         }
         const currentMembers = Array.from(members.values()).filter((member) => {
@@ -324,70 +465,129 @@ export function useGraphMemberLogPreviews(input: {
         if (currentMembers.length > 0) {
           setPreviewsByMember((current) => mergeMemberPreviews(current, currentMembers));
         }
-        setError(null);
+        if (requestStillVisible()) {
+          setError(null);
+        }
       } catch (loadError) {
-        if (teamNameRef.current !== requestTeamName) {
+        if (!requestStillVisible()) {
           return;
         }
         setError(
           loadError instanceof Error ? loadError.message : 'Failed to load graph log previews'
         );
       } finally {
-        if (teamNameRef.current === requestTeamName) {
+        if (
+          requestStillVisible() &&
+          !hasInFlightMemberPreviewRequest(
+            memberNamesRef.current,
+            activeRequestKeyByMemberRef.current,
+            inFlightRef.current
+          ) &&
+          !hasPendingLoadingReload(
+            pendingReloadRef.current,
+            memberNamesRef.current,
+            previewsByMemberRef.current
+          )
+        ) {
           setLoading(false);
         }
       }
     },
     [enabled, input.teamName, laneIdsByMember, maxItemsPerMember, memberNames, textLimit]
   );
+  const loadPreviewsRef = useRef(loadPreviews);
+  loadPreviewsRef.current = loadPreviews;
+
+  const scheduleReload = useCallback(
+    (options?: { forceRefresh?: boolean; background?: boolean }) => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      if (memberNamesRef.current.length === 0) return;
+
+      if (
+        options?.forceRefresh === true &&
+        hasEmptyOrUnloadedMemberPreview(memberNamesRef.current, previewsByMemberRef.current)
+      ) {
+        setLoading(true);
+        setError(null);
+      }
+
+      const current = pendingReloadRef.current;
+      pendingReloadRef.current = {
+        forceRefresh: (current?.forceRefresh ?? false) || options?.forceRefresh === true,
+        background: (current?.background ?? true) && options?.background === true,
+      };
+
+      if (reloadTimerRef.current) {
+        clearTimeout(reloadTimerRef.current);
+      }
+      reloadTimerRef.current = setTimeout(() => {
+        reloadTimerRef.current = null;
+        const pending = pendingReloadRef.current;
+        pendingReloadRef.current = null;
+        void loadPreviewsRef.current({
+          background: pending?.background,
+          forceRefresh: pending?.forceRefresh,
+        });
+      }, LIVE_RELOAD_DEBOUNCE_MS);
+    },
+    []
+  );
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      clearScheduledReload();
+    };
+  }, [clearScheduledReload]);
 
   useEffect(() => {
     if (!enabled || memberNames.length === 0) {
+      clearScheduledReload();
       setLoading(false);
       setError(null);
       return;
     }
-    if (reloadTimerRef.current) {
-      clearTimeout(reloadTimerRef.current);
+    const hasUnloadedPreview = hasUnloadedMemberPreview(memberNames, previewsByMemberRef.current);
+    const laneKeyChanged = laneKeyRef.current !== laneKey;
+    laneKeyRef.current = laneKey;
+    if (hasUnloadedPreview) {
+      setLoading(true);
+      setError(null);
     }
-    reloadTimerRef.current = setTimeout(() => {
-      reloadTimerRef.current = null;
-      void loadPreviews();
-    }, LIVE_RELOAD_DEBOUNCE_MS);
-    return () => {
-      if (reloadTimerRef.current) {
-        clearTimeout(reloadTimerRef.current);
-        reloadTimerRef.current = null;
-      }
-    };
-  }, [enabled, loadPreviews, memberKey, memberNames.length]);
+    scheduleReload({ forceRefresh: hasUnloadedPreview || laneKeyChanged });
+  }, [
+    clearScheduledReload,
+    enabled,
+    input.teamName,
+    laneKey,
+    memberKey,
+    memberNames.length,
+    scheduleReload,
+  ]);
 
   useEffect(() => {
     if (!enabled) return;
 
-    const scheduleReload = (forceRefresh: boolean): void => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
-      if (memberNames.length === 0) return;
-      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
-      reloadTimerRef.current = setTimeout(() => {
-        reloadTimerRef.current = null;
-        void loadPreviews({ background: true, forceRefresh });
-      }, LIVE_RELOAD_DEBOUNCE_MS);
-    };
-
     const unsubscribe = api.teams.onTeamChange?.((_event: unknown, event: TeamChangeEvent) => {
       if (event.teamName !== input.teamName) return;
       if (event.type === 'log-source-change') {
-        scheduleReload(true);
+        scheduleReload({ background: true, forceRefresh: true });
+        return;
+      }
+      if (event.type === 'tool-activity') {
+        scheduleReload({ background: true, forceRefresh: true });
         return;
       }
       if (event.type === 'task-log-change') {
-        scheduleReload(true);
+        scheduleReload({ background: true, forceRefresh: true });
       }
     });
 
     const handleVisibilityChange = (): void => {
-      if (document.visibilityState === 'visible') scheduleReload(false);
+      if (document.visibilityState === 'visible') {
+        scheduleReload({ background: true, forceRefresh: true });
+      }
     };
 
     if (typeof document !== 'undefined') {
@@ -395,16 +595,12 @@ export function useGraphMemberLogPreviews(input: {
     }
 
     return () => {
-      if (reloadTimerRef.current) {
-        clearTimeout(reloadTimerRef.current);
-        reloadTimerRef.current = null;
-      }
       if (typeof document !== 'undefined') {
         document.removeEventListener('visibilitychange', handleVisibilityChange);
       }
       if (typeof unsubscribe === 'function') unsubscribe();
     };
-  }, [enabled, input.teamName, loadPreviews, memberNames.length]);
+  }, [enabled, input.teamName, scheduleReload]);
 
   return { previewsByMember, loading, error, reload: loadPreviews };
 }

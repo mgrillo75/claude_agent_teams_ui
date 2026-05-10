@@ -1926,9 +1926,10 @@ export const CreateTeamDialog = ({
                       <Info className="mt-0.5 size-3.5 shrink-0 text-sky-400" />
                       <p className="text-[11px] leading-relaxed text-sky-300">
                         Only the team lead (main process) will be started &mdash; no teammates will
-                        be spawned. Works like a regular Claude session but with access to the task
-                        board for planning. Saves tokens by avoiding teammate coordination overhead.
-                        You can add members later from the team settings.
+                        be spawned. Works like a regular agent session in your chosen runtime
+                        (Claude Code, Codex, OpenCode, Gemini) but with access to the task board for
+                        planning. Saves tokens by avoiding teammate coordination overhead. You can
+                        add members later from the team settings.
                       </p>
                     </div>
                   ) : null}

@@ -72,13 +72,15 @@ const basePreviewsByMember = new Map<string, MemberLogPreviewMember>([
   ],
 ]);
 let mockedPreviewsByMember = basePreviewsByMember;
+let mockedLoading = false;
+let mockedError: string | null = null;
 
 vi.mock('@features/agent-graph/renderer/hooks/useGraphMemberLogPreviews', () => ({
   buildGraphLogPreviewLaneIdsByMember: () => ({ alice: 'secondary:opencode:alice' }),
   useGraphMemberLogPreviews: () => ({
     previewsByMember: mockedPreviewsByMember,
-    loading: false,
-    error: null,
+    loading: mockedLoading,
+    error: mockedError,
     reload: vi.fn(),
   }),
 }));
@@ -114,6 +116,8 @@ describe('GraphMemberLogPreviewHud', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-04-03T00:01:00.000Z'));
     mockedPreviewsByMember = basePreviewsByMember;
+    mockedLoading = false;
+    mockedError = null;
   });
 
   afterEach(() => {
@@ -639,6 +643,89 @@ describe('GraphMemberLogPreviewHud', () => {
 
     expect(host.textContent).toContain('Unsupported provider');
     expect(host.textContent).toContain('No recent logs');
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it('shows loading for empty previews while preserving unsupported provider text', async () => {
+    const codexNode: GraphNode = {
+      id: 'member:alpha-team:codex-dev',
+      kind: 'member',
+      label: 'codex-dev',
+      state: 'idle',
+      domainRef: { kind: 'member', teamName: 'alpha-team', memberName: 'codex-dev' },
+    };
+    const quietNode: GraphNode = {
+      id: 'member:alpha-team:quiet-dev',
+      kind: 'member',
+      label: 'quiet-dev',
+      state: 'idle',
+      domainRef: { kind: 'member', teamName: 'alpha-team', memberName: 'quiet-dev' },
+    };
+    mockedLoading = true;
+    mockedPreviewsByMember = new Map<string, MemberLogPreviewMember>([
+      [
+        'codex-dev',
+        {
+          memberName: 'codex-dev',
+          items: [],
+          coverage: [{ provider: 'codex_native_trace', status: 'skipped' }],
+          warnings: [
+            {
+              code: 'codex_member_wide_not_supported',
+              message: 'Codex member-wide native trace is not available in this variant yet.',
+            },
+          ],
+          truncated: false,
+          overflowCount: 0,
+          generatedAt: '2026-04-03T00:00:00.000Z',
+        },
+      ],
+      [
+        'quiet-dev',
+        {
+          memberName: 'quiet-dev',
+          items: [],
+          coverage: [{ provider: 'claude_transcript', status: 'skipped' }],
+          warnings: [],
+          truncated: false,
+          overflowCount: 0,
+          generatedAt: '2026-04-03T00:00:00.000Z',
+        },
+      ],
+    ]);
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <GraphMemberLogPreviewHud
+          teamName="alpha-team"
+          nodes={[codexNode, quietNode]}
+          getLogWorldRect={(ownerNodeId) => ({
+            left: ownerNodeId.includes('quiet') ? 360 : 40,
+            top: 80,
+            right: ownerNodeId.includes('quiet') ? 620 : 300,
+            bottom: 372,
+            width: 260,
+            height: 292,
+          })}
+          getCameraZoom={() => 1}
+          worldToScreen={(x, y) => ({ x, y })}
+          getViewportSize={() => ({ width: 1200, height: 800 })}
+          focusNodeIds={null}
+        />
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Unsupported provider');
+    expect(host.textContent).toContain('Loading logs');
+    expect(host.textContent).not.toContain('No recent logs');
 
     act(() => {
       root.unmount();

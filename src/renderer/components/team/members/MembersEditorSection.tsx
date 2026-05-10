@@ -4,6 +4,7 @@ import { Button } from '@renderer/components/ui/button';
 import { Checkbox } from '@renderer/components/ui/checkbox';
 import { Label } from '@renderer/components/ui/label';
 import { CUSTOM_ROLE, NO_ROLE, PRESET_ROLES } from '@renderer/constants/teamRoles';
+import { cn } from '@renderer/lib/utils';
 import { getParticipantAvatarUrlByIndex } from '@renderer/utils/memberAvatarCatalog';
 import { isTeamEffortLevel } from '@shared/utils/effortLevels';
 import { normalizeOptionalTeamProviderId } from '@shared/utils/teamProvider';
@@ -365,26 +366,6 @@ export const MembersEditorSection = ({
       {headerExtra}
       {!hideContent && (
         <>
-          {showWorktreeIsolationControls ? (
-            <div
-              className="flex items-center gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-2"
-              title={worktreeIsolationDisabledReason ?? undefined}
-            >
-              <Checkbox
-                id={worktreeDefaultControlId}
-                checked={teammateWorktreeDefault}
-                disabled={Boolean(worktreeIsolationDisabledReason && !teammateWorktreeDefault)}
-                onCheckedChange={(checked) => updateTeammateWorktreeDefault(checked === true)}
-              />
-              <Label
-                htmlFor={worktreeDefaultControlId}
-                className="flex min-w-0 cursor-pointer items-center gap-1.5 text-xs font-normal text-[var(--color-text-secondary)]"
-              >
-                <GitBranch className="size-3.5 shrink-0" />
-                <span className="truncate">Run teammates in separate worktrees</span>
-              </Label>
-            </div>
-          ) : null}
           {disableAddMember && addMemberLockReason ? (
             <p className="text-[11px] text-[var(--color-text-muted)]">{addMemberLockReason}</p>
           ) : null}
@@ -396,98 +377,126 @@ export const MembersEditorSection = ({
               onClose={toggleJsonEditor}
             />
           ) : null}
-          <div className="space-y-2">
-            {activeMembers.map((member, index) => (
-              <MemberDraftRow
-                key={member.id}
-                member={member}
-                index={index}
-                avatarSrc={getParticipantAvatarUrlByIndex(index + 1)}
-                resolvedColor={memberColorMap.get(member.id)}
-                nameError={validateMemberName?.(member.name) ?? null}
-                onNameChange={updateMemberName}
-                onRoleChange={updateMemberRole}
-                onCustomRoleChange={updateMemberCustomRole}
-                onRemove={removeMember}
-                showWorkflow={showWorkflow}
-                onWorkflowChange={showWorkflow ? updateMemberWorkflow : undefined}
-                onWorkflowChipsChange={showWorkflow ? updateMemberWorkflowChips : undefined}
-                onProviderChange={updateMemberProvider}
-                onModelChange={updateMemberModel}
-                onEffortChange={updateMemberEffort}
-                showWorktreeIsolationControls={showWorktreeIsolationControls}
-                worktreeIsolationDisabledReason={worktreeIsolationDisabledReason}
-                onWorktreeIsolationChange={updateMemberIsolation}
-                inheritedProviderId={inheritedProviderId}
-                inheritedModel={inheritedModel}
-                inheritedEffort={inheritedEffort}
-                limitContext={limitContext}
-                forceInheritedModelSettings={forceInheritedModelSettings}
-                draftKeyPrefix={draftKeyPrefix}
-                projectPath={projectPath}
-                mentionSuggestions={mentionSuggestions}
-                taskSuggestions={taskSuggestions}
-                teamSuggestions={teamSuggestions}
-                lockProviderModel={lockProviderModel}
-                lockIdentity={lockExistingMemberIdentity && Boolean(member.originalName?.trim())}
-                identityLockReason={identityLockReason}
-                modelLockReason={modelLockReason}
-                warningText={memberWarningById?.[member.id] ?? null}
-                infoText={memberInfoById?.[member.id] ?? null}
-                disableGeminiOption={disableGeminiOption}
-                modelIssueText={memberModelIssueById?.[member.id] ?? null}
-                modelIssueReasonByProvider={modelIssueReasonByProvider}
-                modelUnavailableReasonByProvider={modelUnavailableReasonByProvider}
-              />
-            ))}
-            {softDeleteMembers && removedMembers.length > 0 ? (
-              <div className="pt-2">
-                <div className="mb-2 text-[10px] text-[var(--color-text-muted)]">
-                  Removed ({removedMembers.length})
-                </div>
-                <div className="space-y-2">
-                  {removedMembers.map((member, index) => (
-                    <MemberDraftRow
-                      key={member.id}
-                      member={member}
-                      index={activeMembers.length + index}
-                      avatarSrc={getParticipantAvatarUrlByIndex(activeMembers.length + index + 1)}
-                      resolvedColor={memberColorMap.get(member.id)}
-                      nameError={null}
-                      onNameChange={updateMemberName}
-                      onRoleChange={updateMemberRole}
-                      onCustomRoleChange={updateMemberCustomRole}
-                      onRemove={removeMember}
-                      onRestore={restoreMember}
-                      showWorkflow={showWorkflow}
-                      onWorkflowChange={showWorkflow ? updateMemberWorkflow : undefined}
-                      onWorkflowChipsChange={showWorkflow ? updateMemberWorkflowChips : undefined}
-                      onProviderChange={updateMemberProvider}
-                      onModelChange={updateMemberModel}
-                      onEffortChange={updateMemberEffort}
-                      showWorktreeIsolationControls={showWorktreeIsolationControls}
-                      onWorktreeIsolationChange={updateMemberIsolation}
-                      inheritedProviderId={inheritedProviderId}
-                      inheritedModel={inheritedModel}
-                      inheritedEffort={inheritedEffort}
-                      limitContext={limitContext}
-                      forceInheritedModelSettings={forceInheritedModelSettings}
-                      draftKeyPrefix={draftKeyPrefix}
-                      projectPath={projectPath}
-                      mentionSuggestions={mentionSuggestions}
-                      taskSuggestions={taskSuggestions}
-                      teamSuggestions={teamSuggestions}
-                      lockProviderModel
-                      modelLockReason="Removed members are kept for soft delete history. Restore them to edit settings."
-                      isRemoved
-                      warningText={null}
-                      disableGeminiOption={disableGeminiOption}
-                      modelIssueText={null}
-                    />
-                  ))}
-                </div>
+          <div
+            className={
+              showWorktreeIsolationControls
+                ? 'overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]'
+                : undefined
+            }
+          >
+            {showWorktreeIsolationControls ? (
+              <div
+                className="flex items-center gap-2 border-b border-[var(--color-border)] px-2.5 py-2"
+                title={worktreeIsolationDisabledReason ?? undefined}
+              >
+                <Checkbox
+                  id={worktreeDefaultControlId}
+                  checked={teammateWorktreeDefault}
+                  disabled={Boolean(worktreeIsolationDisabledReason && !teammateWorktreeDefault)}
+                  onCheckedChange={(checked) => updateTeammateWorktreeDefault(checked === true)}
+                />
+                <Label
+                  htmlFor={worktreeDefaultControlId}
+                  className="flex min-w-0 cursor-pointer items-center gap-1.5 text-xs font-normal text-[var(--color-text-secondary)]"
+                >
+                  <GitBranch className="size-3.5 shrink-0" />
+                  <span className="truncate">Run teammates in separate worktrees</span>
+                </Label>
               </div>
             ) : null}
+            <div className={cn('space-y-2', showWorktreeIsolationControls && 'p-2')}>
+              {activeMembers.map((member, index) => (
+                <MemberDraftRow
+                  key={member.id}
+                  member={member}
+                  index={index}
+                  avatarSrc={getParticipantAvatarUrlByIndex(index + 1)}
+                  resolvedColor={memberColorMap.get(member.id)}
+                  nameError={validateMemberName?.(member.name) ?? null}
+                  onNameChange={updateMemberName}
+                  onRoleChange={updateMemberRole}
+                  onCustomRoleChange={updateMemberCustomRole}
+                  onRemove={removeMember}
+                  showWorkflow={showWorkflow}
+                  onWorkflowChange={showWorkflow ? updateMemberWorkflow : undefined}
+                  onWorkflowChipsChange={showWorkflow ? updateMemberWorkflowChips : undefined}
+                  onProviderChange={updateMemberProvider}
+                  onModelChange={updateMemberModel}
+                  onEffortChange={updateMemberEffort}
+                  showWorktreeIsolationControls={showWorktreeIsolationControls}
+                  worktreeIsolationDisabledReason={worktreeIsolationDisabledReason}
+                  onWorktreeIsolationChange={updateMemberIsolation}
+                  inheritedProviderId={inheritedProviderId}
+                  inheritedModel={inheritedModel}
+                  inheritedEffort={inheritedEffort}
+                  limitContext={limitContext}
+                  forceInheritedModelSettings={forceInheritedModelSettings}
+                  draftKeyPrefix={draftKeyPrefix}
+                  projectPath={projectPath}
+                  mentionSuggestions={mentionSuggestions}
+                  taskSuggestions={taskSuggestions}
+                  teamSuggestions={teamSuggestions}
+                  lockProviderModel={lockProviderModel}
+                  lockIdentity={lockExistingMemberIdentity && Boolean(member.originalName?.trim())}
+                  identityLockReason={identityLockReason}
+                  modelLockReason={modelLockReason}
+                  warningText={memberWarningById?.[member.id] ?? null}
+                  infoText={memberInfoById?.[member.id] ?? null}
+                  disableGeminiOption={disableGeminiOption}
+                  modelIssueText={memberModelIssueById?.[member.id] ?? null}
+                  modelIssueReasonByProvider={modelIssueReasonByProvider}
+                  modelUnavailableReasonByProvider={modelUnavailableReasonByProvider}
+                />
+              ))}
+              {softDeleteMembers && removedMembers.length > 0 ? (
+                <div className="pt-2">
+                  <div className="mb-2 text-[10px] text-[var(--color-text-muted)]">
+                    Removed ({removedMembers.length})
+                  </div>
+                  <div className="space-y-2">
+                    {removedMembers.map((member, index) => (
+                      <MemberDraftRow
+                        key={member.id}
+                        member={member}
+                        index={activeMembers.length + index}
+                        avatarSrc={getParticipantAvatarUrlByIndex(activeMembers.length + index + 1)}
+                        resolvedColor={memberColorMap.get(member.id)}
+                        nameError={null}
+                        onNameChange={updateMemberName}
+                        onRoleChange={updateMemberRole}
+                        onCustomRoleChange={updateMemberCustomRole}
+                        onRemove={removeMember}
+                        onRestore={restoreMember}
+                        showWorkflow={showWorkflow}
+                        onWorkflowChange={showWorkflow ? updateMemberWorkflow : undefined}
+                        onWorkflowChipsChange={showWorkflow ? updateMemberWorkflowChips : undefined}
+                        onProviderChange={updateMemberProvider}
+                        onModelChange={updateMemberModel}
+                        onEffortChange={updateMemberEffort}
+                        showWorktreeIsolationControls={showWorktreeIsolationControls}
+                        onWorktreeIsolationChange={updateMemberIsolation}
+                        inheritedProviderId={inheritedProviderId}
+                        inheritedModel={inheritedModel}
+                        inheritedEffort={inheritedEffort}
+                        limitContext={limitContext}
+                        forceInheritedModelSettings={forceInheritedModelSettings}
+                        draftKeyPrefix={draftKeyPrefix}
+                        projectPath={projectPath}
+                        mentionSuggestions={mentionSuggestions}
+                        taskSuggestions={taskSuggestions}
+                        teamSuggestions={teamSuggestions}
+                        lockProviderModel
+                        modelLockReason="Removed members are kept for soft delete history. Restore them to edit settings."
+                        isRemoved
+                        warningText={null}
+                        disableGeminiOption={disableGeminiOption}
+                        modelIssueText={null}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
           </div>
           {hasDuplicates ? (
             <p className="text-[11px]" style={{ color: 'var(--field-error-text)' }}>

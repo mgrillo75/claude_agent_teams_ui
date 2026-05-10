@@ -1,4 +1,5 @@
-export const TEAM_CHANGES_LOAD_TIMEOUT_MS = 45_000;
+// Main-process team summary batches have a 30s deadline; keep the renderer guard above it.
+export const TEAM_CHANGES_LOAD_TIMEOUT_MS = 35_000;
 
 export function withTeamChangesLoadTimeout<T>(
   promise: Promise<T>,
