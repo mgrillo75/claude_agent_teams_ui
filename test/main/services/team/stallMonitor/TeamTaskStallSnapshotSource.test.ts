@@ -155,7 +155,9 @@ describe('TeamTaskStallSnapshotSource', () => {
       tasks: [...expectedWorkflowActiveTasks, ...deletedTasks],
       messages: rawMessages,
     });
-    expect(freshnessReader.readSignals).toHaveBeenCalledWith('/tmp/project', ['task-a', 'task-b']);
+    expect(freshnessReader.readSignals).toHaveBeenCalledWith('/tmp/project', ['task-a', 'task-b'], {
+      teamName: 'demo',
+    });
     expect(exactRowReader.parseFiles).toHaveBeenCalledWith(['/tmp/project/session-a.jsonl', '/tmp/project/session-b.jsonl']);
     expect(openCodeEvidenceSource.readEvidence).toHaveBeenCalledWith({
       teamName: 'demo',

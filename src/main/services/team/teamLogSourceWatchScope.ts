@@ -3,6 +3,7 @@ import * as path from 'path';
 import type { PersistedTeamLaunchMemberState, PersistedTeamLaunchSnapshot } from '@shared/types';
 
 export const BOARD_TASK_LOG_FRESHNESS_DIRNAME = '.board-task-log-freshness';
+export const TEAM_TASK_LOG_FRESHNESS_DIRNAME = 'task-log-freshness';
 export const BOARD_TASK_CHANGE_FRESHNESS_DIRNAME = '.board-task-change-freshness';
 export const BOARD_TASK_CHANGES_DIRNAME = '.board-task-changes';
 export const BOARD_TASK_LOG_FRESHNESS_FILE_SUFFIX = '.json';

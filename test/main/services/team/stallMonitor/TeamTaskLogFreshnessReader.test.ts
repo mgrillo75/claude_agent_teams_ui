@@ -4,6 +4,10 @@ import * as os from 'os';
 import * as path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import {
+  getTeamsBasePath,
+  setClaudeBasePathOverride,
+} from '../../../../../src/main/utils/pathDecoder';
 import { TeamTaskLogFreshnessReader } from '../../../../../src/main/services/team/stallMonitor/TeamTaskLogFreshnessReader';
 
 const tempDirs: string[] = [];
@@ -13,12 +17,17 @@ function safeTaskIdSegment(taskId: string): string {
 }
 
 afterEach(async () => {
+  setClaudeBasePathOverride(null);
   await Promise.all(
     tempDirs.splice(0).map(async (dirPath) => {
       await fs.rm(dirPath, { recursive: true, force: true });
     })
   );
 });
+
+function teamSignalDir(teamName: string): string {
+  return path.join(getTeamsBasePath(), teamName, 'task-log-freshness');
+}
 
 describe('TeamTaskLogFreshnessReader', () => {
   it('reads valid freshness signals and normalizes transcript basename', async () => {
@@ -82,6 +91,31 @@ describe('TeamTaskLogFreshnessReader', () => {
       path.join(signalDir, `${safeTaskIdSegment('CON')}.json`)
     );
     expect(signals.get('CON')?.transcriptFileBasename).toBe('session-con.jsonl');
+  });
+
+  it('prefers team-scoped freshness signals', async () => {
+    const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), 'stall-freshness-'));
+    tempDirs.push(projectDir);
+    setClaudeBasePathOverride(path.join(projectDir, '.claude'));
+    const signalDir = teamSignalDir('demo');
+    await fs.mkdir(signalDir, { recursive: true });
+
+    await fs.writeFile(
+      path.join(signalDir, `${encodeURIComponent('task-a')}.json`),
+      JSON.stringify({
+        taskId: 'task-a',
+        updatedAt: '2026-04-19T12:00:00.000Z',
+      }),
+      'utf8'
+    );
+
+    const signals = await new TeamTaskLogFreshnessReader().readSignals(projectDir, ['task-a'], {
+      teamName: 'demo',
+    });
+
+    expect(signals.get('task-a')?.filePath).toBe(
+      path.join(signalDir, `${encodeURIComponent('task-a')}.json`)
+    );
   });
 
   it('reads hashed freshness files for very long task ids', async () => {

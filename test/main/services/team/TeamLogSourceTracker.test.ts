@@ -5,6 +5,10 @@ import * as path from 'path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import {
+  getTeamsBasePath,
+  setClaudeBasePathOverride,
+} from '../../../../src/main/utils/pathDecoder';
+import {
   shouldIgnoreLogSourceWatcherPath,
   TeamLogSourceTracker,
 } from '../../../../src/main/services/team/TeamLogSourceTracker';
@@ -19,6 +23,10 @@ function safeTaskIdSegment(taskId: string): string {
   return `task-id-${createHash('sha256').update(taskId).digest('hex').slice(0, 32)}`;
 }
 
+function teamLogFreshnessDir(teamName = 'demo'): string {
+  return path.join(getTeamsBasePath(), teamName, 'task-log-freshness');
+}
+
 describe('TeamLogSourceTracker', () => {
   let tempDir: string | null = null;
 
@@ -28,6 +36,7 @@ describe('TeamLogSourceTracker', () => {
   });
 
   afterEach(async () => {
+    setClaudeBasePathOverride(null);
     if (tempDir) {
       await rm(tempDir, { recursive: true, force: true });
       tempDir = null;
@@ -49,6 +58,7 @@ describe('TeamLogSourceTracker', () => {
 
   it('emits task-log-change for matching runtime freshness signals without broad log-source-change', async () => {
     tempDir = await mkdtemp(path.join(tmpdir(), 'team-log-source-tracker-'));
+    setClaudeBasePathOverride(path.join(tempDir, '.claude'));
 
     const logsFinder = {
       getLiveLogSourceWatchContext: vi.fn(async () => ({
@@ -64,10 +74,10 @@ describe('TeamLogSourceTracker', () => {
 
     await tracker.enableTracking('demo', 'change_presence');
     emitter.mockClear();
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 350));
 
     const taskId = '123e4567-e89b-12d3-a456-426614174999';
-    const signalDir = path.join(tempDir, '.board-task-log-freshness');
+    const signalDir = teamLogFreshnessDir();
     await mkdir(signalDir, { recursive: true });
     await writeFile(path.join(signalDir, `${encodeURIComponent(taskId)}.json`), '{"ok":true}');
 
@@ -87,6 +97,7 @@ describe('TeamLogSourceTracker', () => {
 
   it('keeps task-log tracking alive until the last consumer unsubscribes', async () => {
     tempDir = await mkdtemp(path.join(tmpdir(), 'team-log-source-tracker-refcount-'));
+    setClaudeBasePathOverride(path.join(tempDir, '.claude'));
 
     const logsFinder = {
       getLiveLogSourceWatchContext: vi.fn(async () => ({
@@ -103,12 +114,12 @@ describe('TeamLogSourceTracker', () => {
     await tracker.enableTracking('demo', 'task_log_stream');
     await tracker.enableTracking('demo', 'task_log_stream');
     emitter.mockClear();
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 350));
 
     await tracker.disableTracking('demo', 'task_log_stream');
 
     const taskId = '223e4567-e89b-12d3-a456-426614174999';
-    const signalDir = path.join(tempDir, '.board-task-log-freshness');
+    const signalDir = teamLogFreshnessDir();
     await mkdir(signalDir, { recursive: true });
     await writeFile(path.join(signalDir, `${encodeURIComponent(taskId)}.json`), '{"ok":true}');
 
@@ -129,8 +140,9 @@ describe('TeamLogSourceTracker', () => {
     expect(emitter).not.toHaveBeenCalled();
   });
 
-  it('creates transcript freshness dirs without creating missing live cwd roots', async () => {
+  it('creates team log freshness dir without creating missing live cwd roots', async () => {
     tempDir = await mkdtemp(path.join(tmpdir(), 'team-log-source-tracker-missing-root-'));
+    setClaudeBasePathOverride(path.join(tempDir, '.claude'));
     const transcriptProjectDir = path.join(tempDir, 'transcript-project');
     const missingWorkspaceDir = path.join(tempDir, 'missing-workspace');
 
@@ -152,17 +164,12 @@ describe('TeamLogSourceTracker', () => {
     emitter.mockClear();
     await new Promise((resolve) => setTimeout(resolve, 100));
 
-    expect((await stat(path.join(transcriptProjectDir, '.board-task-log-freshness'))).isDirectory())
-      .toBe(true);
+    expect((await stat(teamLogFreshnessDir())).isDirectory()).toBe(true);
     await expect(stat(missingWorkspaceDir)).rejects.toThrow();
 
     const taskId = 'transcript-root-task';
     await writeFile(
-      path.join(
-        transcriptProjectDir,
-        '.board-task-log-freshness',
-        `${encodeURIComponent(taskId)}.json`
-      ),
+      path.join(teamLogFreshnessDir(), `${encodeURIComponent(taskId)}.json`),
       JSON.stringify({ taskId }),
       'utf8'
     );
@@ -181,6 +188,7 @@ describe('TeamLogSourceTracker', () => {
 
   it('emits log freshness kind from Windows-safe hashed task-log freshness files', async () => {
     tempDir = await mkdtemp(path.join(tmpdir(), 'team-log-source-tracker-safe-log-'));
+    setClaudeBasePathOverride(path.join(tempDir, '.claude'));
 
     const logsFinder = {
       getLiveLogSourceWatchContext: vi.fn(async () => ({
@@ -199,7 +207,7 @@ describe('TeamLogSourceTracker', () => {
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     const taskId = 'AUX';
-    const signalDir = path.join(tempDir, '.board-task-log-freshness');
+    const signalDir = teamLogFreshnessDir();
     await mkdir(signalDir, { recursive: true });
     await writeFile(
       path.join(signalDir, `${safeTaskIdSegment(taskId)}.json`),
@@ -219,8 +227,9 @@ describe('TeamLogSourceTracker', () => {
     await tracker.disableTracking('demo', 'task_log_stream');
   });
 
-  it('watches live cwd freshness roots used by Codex Native traces', async () => {
+  it('watches team-scoped log freshness and live cwd task-change freshness roots', async () => {
     tempDir = await mkdtemp(path.join(tmpdir(), 'team-log-source-tracker-codex-root-'));
+    setClaudeBasePathOverride(path.join(tempDir, '.claude'));
     const transcriptProjectDir = path.join(tempDir, 'transcripts');
     const workspaceProjectDir = path.join(tempDir, 'workspace');
     const memberProjectDir = path.join(tempDir, 'member-workspace');
@@ -244,30 +253,15 @@ describe('TeamLogSourceTracker', () => {
 
     await tracker.enableTracking('demo', 'task_log_stream');
     emitter.mockClear();
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 350));
 
-    const logTaskId = 'codex-task-1';
-    await writeFile(
-      path.join(
-        memberProjectDir,
-        '.board-task-log-freshness',
-        `${encodeURIComponent(logTaskId)}.json`
-      ),
-      JSON.stringify({ taskId: logTaskId, source: 'codex-native-trace' }),
-      'utf8'
-    );
+    await expect(stat(path.join(memberProjectDir, '.board-task-log-freshness'))).rejects.toThrow();
+    await expect(stat(path.join(workspaceProjectDir, '.board-task-log-freshness'))).rejects.toThrow();
 
-    await vi.waitFor(() => {
-      expect(emitter).toHaveBeenCalledWith({
-        type: 'task-log-change',
-        teamName: 'demo',
-        taskId: logTaskId,
-        taskSignalKind: 'log',
-      });
-    });
-
-    emitter.mockClear();
     const changeTaskId = 'codex-task-2';
+    await mkdir(path.join(workspaceProjectDir, '.board-task-change-freshness'), {
+      recursive: true,
+    });
     await writeFile(
       path.join(
         workspaceProjectDir,
@@ -432,6 +426,7 @@ describe('TeamLogSourceTracker', () => {
 
   it('supports stall_monitor as an independent tracking consumer', async () => {
     tempDir = await mkdtemp(path.join(tmpdir(), 'team-log-source-tracker-stall-monitor-'));
+    setClaudeBasePathOverride(path.join(tempDir, '.claude'));
 
     const logsFinder = {
       getLiveLogSourceWatchContext: vi.fn(async () => ({
@@ -450,7 +445,7 @@ describe('TeamLogSourceTracker', () => {
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     const taskId = '323e4567-e89b-12d3-a456-426614174999';
-    const signalDir = path.join(tempDir, '.board-task-log-freshness');
+    const signalDir = teamLogFreshnessDir();
     await mkdir(signalDir, { recursive: true });
     await writeFile(path.join(signalDir, `${encodeURIComponent(taskId)}.json`), '{"ok":true}');
 

@@ -159,7 +159,8 @@ export class TeamTaskStallSnapshotSource {
     const [freshnessByTaskId, exactRowsByFilePath, openCodeEvidence] = await Promise.all([
       this.freshnessReader.readSignals(
         transcriptContext.projectDir,
-        relevantMonitorTasks.map((task) => task.id)
+        relevantMonitorTasks.map((task) => task.id),
+        { teamName }
       ),
       exactReadsEnabled
         ? this.exactRowReader.parseFiles(relevantExactFiles)

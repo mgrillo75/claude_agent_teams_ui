@@ -1,3 +1,4 @@
+import { getTeamsBasePath } from '@main/utils/pathDecoder';
 import { createHash } from 'crypto';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -7,6 +8,7 @@ import { BoardTaskActivityParseCache } from '../taskLogs/activity/BoardTaskActiv
 import type { TaskLogFreshnessSignal } from './TeamTaskStallTypes';
 
 const BOARD_TASK_LOG_FRESHNESS_DIRNAME = '.board-task-log-freshness';
+const TEAM_TASK_LOG_FRESHNESS_DIRNAME = 'task-log-freshness';
 const BOARD_TASK_LOG_FRESHNESS_FILE_SUFFIX = '.json';
 const MAX_TASK_ID_ARTIFACT_SEGMENT_LENGTH = 120;
 
@@ -43,12 +45,14 @@ function taskIdArtifactSegments(taskId: string): string[] {
   return safe === legacy ? [safe] : [safe, legacy];
 }
 
-function taskSignalPathCandidates(projectDir: string, taskId: string): string[] {
-  return taskIdArtifactSegments(taskId).map((segment) =>
-    path.join(
-      projectDir,
-      BOARD_TASK_LOG_FRESHNESS_DIRNAME,
-      `${segment}${BOARD_TASK_LOG_FRESHNESS_FILE_SUFFIX}`
+function taskSignalPathCandidates(projectDir: string, taskId: string, teamName?: string): string[] {
+  const dirs = [
+    ...(teamName ? [path.join(getTeamsBasePath(), teamName, TEAM_TASK_LOG_FRESHNESS_DIRNAME)] : []),
+    path.join(projectDir, BOARD_TASK_LOG_FRESHNESS_DIRNAME),
+  ];
+  return dirs.flatMap((dir) =>
+    taskIdArtifactSegments(taskId).map((segment) =>
+      path.join(dir, `${segment}${BOARD_TASK_LOG_FRESHNESS_FILE_SUFFIX}`)
     )
   );
 }
@@ -62,11 +66,12 @@ export class TeamTaskLogFreshnessReader {
 
   async readSignals(
     projectDir: string,
-    taskIds: string[]
+    taskIds: string[],
+    options?: { teamName?: string }
   ): Promise<Map<string, TaskLogFreshnessSignal>> {
     const uniqueTaskIds = [...new Set(taskIds)].filter((taskId) => taskId.trim().length > 0).sort();
     const signalFilePathCandidates = uniqueTaskIds.map((taskId) =>
-      taskSignalPathCandidates(projectDir, taskId)
+      taskSignalPathCandidates(projectDir, taskId, options?.teamName)
     );
     this.cache.retainOnly(new Set(signalFilePathCandidates.flat()));
 
