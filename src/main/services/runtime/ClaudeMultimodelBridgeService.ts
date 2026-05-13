@@ -1013,6 +1013,7 @@ export class ClaudeMultimodelBridgeService {
       memberName: string;
       limit?: number;
       laneId?: string;
+      sessionId?: string;
       timeoutMs?: number;
     }
   ): Promise<OpenCodeRuntimeTranscriptResponse['transcript'] | null> {
@@ -1034,6 +1035,9 @@ export class ClaudeMultimodelBridgeService {
     }
     if (typeof params.laneId === 'string' && params.laneId.trim().length > 0) {
       args.push('--lane', params.laneId.trim());
+    }
+    if (typeof params.sessionId === 'string' && params.sessionId.trim().length > 0) {
+      args.push('--session-id', params.sessionId.trim());
     }
 
     const outputDir = await mkdtemp(path.join(tmpdir(), 'opencode-transcript-'));

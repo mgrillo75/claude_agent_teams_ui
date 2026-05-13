@@ -148,6 +148,11 @@ function buildParticipantKey(memberName: string): string {
   return `member:${normalizeMemberName(memberName)}`;
 }
 
+function buildSessionSegmentKey(sessionId: string | undefined): string {
+  const normalized = sessionId?.trim();
+  return normalized ? normalized.replace(/[^a-zA-Z0-9_.:-]/g, '_') : 'unknown-session';
+}
+
 function buildParticipant(memberName: string): BoardTaskLogParticipant {
   return {
     key: buildParticipantKey(memberName),
@@ -1109,7 +1114,9 @@ export class OpenCodeTaskLogStreamSource {
     const actor = buildActor(ownerName, transcript?.sessionId ?? firstMessage.sessionId);
     const participant = buildParticipant(ownerName);
     const segment: BoardTaskLogSegment = {
-      id: `opencode:${teamName}:${task.id}:${normalizeMemberName(ownerName)}`,
+      id: `opencode:${teamName}:${task.id}:${normalizeMemberName(ownerName)}:${buildSessionSegmentKey(
+        transcript?.sessionId ?? firstMessage.sessionId
+      )}`,
       participantKey: participant.key,
       actor,
       startTimestamp: firstMessage.timestamp.toISOString(),
@@ -1162,18 +1169,21 @@ export class OpenCodeTaskLogStreamSource {
       }
 
       const memberKey = normalizeMemberName(memberName);
-      if (!transcriptCache.has(memberKey)) {
+      const sessionId = record.sessionId?.trim();
+      const transcriptCacheKey = `${memberKey}::${sessionId ?? 'current'}`;
+      if (!transcriptCache.has(transcriptCacheKey)) {
         transcriptCache.set(
-          memberKey,
+          transcriptCacheKey,
           await this.runtimeBridge.getOpenCodeTranscript(binaryPath, {
             teamId: teamName,
             memberName,
             limit: ATTRIBUTED_TRANSCRIPT_LIMIT,
+            ...(sessionId ? { sessionId } : {}),
           })
         );
       }
 
-      const transcript = transcriptCache.get(memberKey);
+      const transcript = transcriptCache.get(transcriptCacheKey);
       if (!transcript) {
         continue;
       }
@@ -1190,22 +1200,29 @@ export class OpenCodeTaskLogStreamSource {
       }
 
       const participantKey = buildParticipantKey(memberName);
-      const existing = projectedByParticipant.get(participantKey);
+      const projectedSessionId = transcript.sessionId ?? record.sessionId;
+      const segmentKey = `${participantKey}::${projectedSessionId ?? 'unknown-session'}`;
+      const existing = projectedByParticipant.get(segmentKey);
       if (existing) {
-        const seen = new Set(existing.messages.map((message) => message.uuid));
+        const seen = new Set(
+          existing.messages.map(
+            (message) => `${message.sessionId || projectedSessionId || ''}::${message.uuid}`
+          )
+        );
         for (const message of filteredMessages) {
-          if (!seen.has(message.uuid)) {
+          const messageKey = `${message.sessionId || projectedSessionId || ''}::${message.uuid}`;
+          if (!seen.has(messageKey)) {
             existing.messages.push(message);
-            seen.add(message.uuid);
+            seen.add(messageKey);
           }
         }
         existing.messages.sort(
           (left, right) => left.timestamp.getTime() - right.timestamp.getTime()
         );
       } else {
-        projectedByParticipant.set(participantKey, {
+        projectedByParticipant.set(segmentKey, {
           memberName,
-          sessionId: transcript.sessionId ?? record.sessionId,
+          sessionId: projectedSessionId,
           messages: filteredMessages,
         });
       }
@@ -1252,7 +1269,9 @@ export class OpenCodeTaskLogStreamSource {
       nativeToolCount += memberToolCounts.nativeToolCount;
       participants.push(participant);
       segments.push({
-        id: `opencode-attributed:${teamName}:${task.id}:${normalizeMemberName(member.memberName)}`,
+        id: `opencode-attributed:${teamName}:${task.id}:${normalizeMemberName(
+          member.memberName
+        )}:${buildSessionSegmentKey(member.sessionId ?? firstMessage.sessionId)}`,
         participantKey: participant.key,
         actor: buildActor(member.memberName, member.sessionId ?? firstMessage.sessionId),
         startTimestamp: firstMessage.timestamp.toISOString(),
