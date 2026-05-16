@@ -353,6 +353,33 @@ async function createOpenCodeRuntimeAdapterRegistry(
   const bridgeEnv = applyOpenCodeAutoUpdatePolicy({ ...process.env });
   bridgeEnv.CLAUDE_TEAM_APP_INSTANCE_ID = openCodeManagedHostInstanceId;
   bridgeEnv.AGENT_TEAMS_MCP_CLAUDE_DIR = getClaudeBasePath();
+  const applyMcpLaunchSpecEnv = async (
+    targetEnv: NodeJS.ProcessEnv,
+    options: { emitProgress?: boolean } = {}
+  ): Promise<void> => {
+    try {
+      if (options.emitProgress) {
+        reportProgress('runtime-mcp', 'Resolving Agent Teams MCP server...');
+      }
+      const mcpLaunchSpec = await resolveAgentTeamsMcpLaunchSpec({
+        onProgress: options.emitProgress
+          ? ({ phase, message }) => reportProgress(`mcp-${phase}`, message)
+          : undefined,
+      });
+      const mcpEntry = mcpLaunchSpec.args[0];
+      if (mcpEntry) {
+        targetEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_COMMAND = mcpLaunchSpec.command;
+        targetEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ENTRY = mcpEntry;
+        targetEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ARGS_JSON = JSON.stringify(mcpLaunchSpec.args);
+      }
+    } catch (error) {
+      logger.warn(
+        `[OpenCode] Runtime adapter bridge MCP entrypoint unresolved: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  };
   try {
     const appManagedOpenCodeBinary = await resolveVerifiedAppManagedOpenCodeRuntimeBinaryPath();
     if (appManagedOpenCodeBinary && !bridgeEnv.CLAUDE_MULTIMODEL_OPENCODE_BIN_PATH) {
@@ -394,24 +421,7 @@ async function createOpenCodeRuntimeAdapterRegistry(
     );
   }
   if (!bridgeEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_URL) {
-    try {
-      reportProgress('runtime-mcp', 'Resolving Agent Teams MCP server...');
-      const mcpLaunchSpec = await resolveAgentTeamsMcpLaunchSpec({
-        onProgress: ({ phase, message }) => reportProgress(`mcp-${phase}`, message),
-      });
-      const mcpEntry = mcpLaunchSpec.args[0];
-      if (mcpEntry) {
-        bridgeEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_COMMAND = mcpLaunchSpec.command;
-        bridgeEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ENTRY = mcpEntry;
-        bridgeEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ARGS_JSON = JSON.stringify(mcpLaunchSpec.args);
-      }
-    } catch (error) {
-      logger.warn(
-        `[OpenCode] Runtime adapter bridge MCP entrypoint unresolved: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-    }
+    await applyMcpLaunchSpecEnv(bridgeEnv, { emitProgress: true });
   }
 
   reportProgress('runtime-bridge', 'Preparing OpenCode bridge...');
@@ -424,8 +434,31 @@ async function createOpenCodeRuntimeAdapterRegistry(
       const mcpHttpServer = await agentTeamsMcpHttpServer.ensureStarted();
       bridgeEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_URL = mcpHttpServer.url;
       nextEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_URL = mcpHttpServer.url;
+      delete nextEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_COMMAND;
+      delete nextEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ENTRY;
+      delete nextEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ARGS_JSON;
     } catch (error) {
       delete nextEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_URL;
+      if (
+        bridgeEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_COMMAND &&
+        bridgeEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ENTRY &&
+        bridgeEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ARGS_JSON
+      ) {
+        nextEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_COMMAND =
+          bridgeEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_COMMAND;
+        nextEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ENTRY =
+          bridgeEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ENTRY;
+        nextEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ARGS_JSON =
+          bridgeEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ARGS_JSON;
+      } else {
+        await applyMcpLaunchSpecEnv(nextEnv);
+        bridgeEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_COMMAND =
+          nextEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_COMMAND;
+        bridgeEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ENTRY =
+          nextEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ENTRY;
+        bridgeEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ARGS_JSON =
+          nextEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ARGS_JSON;
+      }
       logger.warn(
         `[OpenCode] Runtime adapter bridge MCP HTTP server refresh failed: ${
           error instanceof Error ? error.message : String(error)
