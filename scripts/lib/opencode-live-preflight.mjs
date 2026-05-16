@@ -97,6 +97,7 @@ async function canStartOpenCodeHost(opencodeBin, cwd, env) {
     cwd,
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
   });
   let output = '';
   let spawnError = '';
@@ -138,12 +139,17 @@ async function canStartOpenCodeHost(opencodeBin, cwd, env) {
   }
 }
 
-function stopChild(child) {
+async function stopChild(child) {
+  if (child.exitCode != null || child.killed) {
+    return;
+  }
+
+  if (process.platform === 'win32' && child.pid) {
+    await taskkillProcessTree(child.pid);
+    return;
+  }
+
   return new Promise((resolve) => {
-    if (child.exitCode != null || child.killed) {
-      resolve();
-      return;
-    }
     const timeout = setTimeout(() => {
       if (child.exitCode == null) {
         child.kill('SIGKILL');
@@ -155,6 +161,34 @@ function stopChild(child) {
       resolve();
     });
     child.kill('SIGTERM');
+  });
+}
+
+function taskkillProcessTree(pid) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timeout);
+      resolve();
+    };
+    const timeout = setTimeout(finish, 5_000);
+    timeout.unref?.();
+    try {
+      const taskkill = spawn(
+        path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'taskkill.exe'),
+        ['/T', '/F', '/PID', String(pid)],
+        {
+          stdio: 'ignore',
+          windowsHide: true,
+        }
+      );
+      taskkill.once('error', finish);
+      taskkill.once('close', finish);
+    } catch {
+      finish();
+    }
   });
 }
 

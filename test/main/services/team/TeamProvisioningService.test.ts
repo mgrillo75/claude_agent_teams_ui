@@ -176,6 +176,9 @@ import {
 } from '@features/tmux-installer/main';
 import pidusage from 'pidusage';
 
+const EXPECTED_RUNTIME_PIDUSAGE_OPTIONS =
+  process.platform === 'win32' ? { maxage: 1_000 } : { maxage: 0 };
+
 function allowConsoleLogs() {
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -2490,7 +2493,7 @@ describe('TeamProvisioningService', () => {
 
       const snapshot = await svc.getTeamAgentRuntimeSnapshot('runtime-team');
 
-      expect(pidusage).toHaveBeenCalledWith([111, 222], { maxage: 0 });
+      expect(pidusage).toHaveBeenCalledWith([111, 222], EXPECTED_RUNTIME_PIDUSAGE_OPTIONS);
       expect(snapshot.members['team-lead']).toMatchObject({
         pid: 111,
         rssBytes: 123_000_000,
@@ -2630,9 +2633,9 @@ describe('TeamProvisioningService', () => {
 
       const snapshot = await svc.getTeamAgentRuntimeSnapshot('runtime-team');
 
-      expect(pidusage).toHaveBeenNthCalledWith(1, [111, 222], { maxage: 0 });
-      expect(pidusage).toHaveBeenNthCalledWith(2, 111, { maxage: 0 });
-      expect(pidusage).toHaveBeenNthCalledWith(3, 222, { maxage: 0 });
+      expect(pidusage).toHaveBeenNthCalledWith(1, [111, 222], EXPECTED_RUNTIME_PIDUSAGE_OPTIONS);
+      expect(pidusage).toHaveBeenNthCalledWith(2, 111, EXPECTED_RUNTIME_PIDUSAGE_OPTIONS);
+      expect(pidusage).toHaveBeenNthCalledWith(3, 222, EXPECTED_RUNTIME_PIDUSAGE_OPTIONS);
       expect(snapshot.members['team-lead']?.rssBytes).toBe(123_000_000);
       expect(snapshot.members.alice?.rssBytes).toBe(456_000_000);
     });
@@ -2744,7 +2747,7 @@ describe('TeamProvisioningService', () => {
 
       const snapshot = await svc.getTeamAgentRuntimeSnapshot('nice-team');
 
-      expect(pidusage).toHaveBeenCalledWith([111, 333], { maxage: 0 });
+      expect(pidusage).toHaveBeenCalledWith([111, 333], EXPECTED_RUNTIME_PIDUSAGE_OPTIONS);
       expect(snapshot.members.alice).toMatchObject({
         alive: true,
         providerId: 'anthropic',
@@ -3256,8 +3259,8 @@ describe('TeamProvisioningService', () => {
 
       const snapshot = await svc.getTeamAgentRuntimeSnapshot('runtime-team');
 
-      expect(pidusage).toHaveBeenCalledWith([111, 333], { maxage: 0 });
-      expect(pidusage).toHaveBeenCalledWith(333, { maxage: 0 });
+      expect(pidusage).toHaveBeenCalledWith([111, 333], EXPECTED_RUNTIME_PIDUSAGE_OPTIONS);
+      expect(pidusage).toHaveBeenCalledWith(333, EXPECTED_RUNTIME_PIDUSAGE_OPTIONS);
       expect(snapshot.members.bob).toMatchObject({
         memberName: 'bob',
         alive: false,
@@ -3332,7 +3335,7 @@ describe('TeamProvisioningService', () => {
 
       const snapshot = await svc.getTeamAgentRuntimeSnapshot('runtime-team');
 
-      expect(pidusage).toHaveBeenCalledWith([333], { maxage: 0 });
+      expect(pidusage).toHaveBeenCalledWith([333], EXPECTED_RUNTIME_PIDUSAGE_OPTIONS);
       expect(snapshot.members.bob).toMatchObject({
         memberName: 'bob',
         alive: false,

@@ -152,6 +152,10 @@ import * as path from 'path';
 import pidusage from 'pidusage';
 import * as readline from 'readline';
 
+// pidusage's Windows gwmi fallback needs a non-zero cache window to finish its
+// initial two-sample pass. maxage: 0 can recurse forever on Windows.
+const RUNTIME_PIDUSAGE_OPTIONS = process.platform === 'win32' ? { maxage: 1_000 } : { maxage: 0 };
+
 import {
   ANTHROPIC_HELPER_MODE_COMPETING_AUTH_ENV_KEYS,
   type AnthropicTeamApiKeyHelperMaterial,
@@ -15298,7 +15302,7 @@ export class TeamProvisioningService {
       let rssBytes = rssPid ? rssBytesByPid.get(rssPid) : undefined;
       if (rssBytes == null && isSharedOpenCodeHost && typeof rssPid === 'number' && rssPid > 0) {
         try {
-          const refreshedStat = await pidusage(rssPid, { maxage: 0 });
+          const refreshedStat = await pidusage(rssPid, RUNTIME_PIDUSAGE_OPTIONS);
           if (Number.isFinite(refreshedStat.memory) && refreshedStat.memory >= 0) {
             rssBytesByPid.set(rssPid, refreshedStat.memory);
             rssBytes = refreshedStat.memory;
@@ -25558,7 +25562,7 @@ export class TeamProvisioningService {
     }
 
     const rssBytesByPid = new Map<number, number>();
-    const options = { maxage: 0 };
+    const options = RUNTIME_PIDUSAGE_OPTIONS;
     try {
       const statsByPid = await pidusage(uniquePids, options);
       for (const [rawPid, stat] of Object.entries(statsByPid)) {
