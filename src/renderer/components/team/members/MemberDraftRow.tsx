@@ -247,6 +247,15 @@ export const MemberDraftRow = ({
   const currentModelIssueText =
     modelIssueText ?? selectedModelUnavailableText ?? selectedModelIssueText ?? null;
   const hasModelIssue = Boolean(currentModelIssueText);
+  const modelButtonDisabled = (lockProviderModel && !canOpenLockedModelPanel) || isRemoved;
+  const modelButtonTitle =
+    [currentModelIssueText, modelTooltipText]
+      .filter((message): message is string => Boolean(message))
+      .join('\n') || undefined;
+  const modelIssueDescriptionId = hasModelIssue ? `member-${member.id}-model-issue` : undefined;
+  const modelHelpDescriptionId = modelTooltipText ? `member-${member.id}-model-help` : undefined;
+  const modelButtonDescribedBy =
+    [modelIssueDescriptionId, modelHelpDescriptionId].filter(Boolean).join(' ') || undefined;
   const hasCustomProviderOrModel =
     !forceInheritedModelSettings && Boolean(member.providerId || member.model?.trim());
   const showSonnetExtraUsageWarning =
@@ -342,52 +351,46 @@ export const MemberDraftRow = ({
             </Button>
           ) : null}
           <div className="w-full min-w-0 space-y-1 sm:w-[150px] sm:min-w-[150px]">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="inline-flex w-full">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className={cn(
-                      'h-8 w-full justify-start gap-1 overflow-hidden text-left',
-                      hasModelIssue &&
-                        'border-red-500/50 bg-red-500/10 text-red-100 hover:border-red-400/60 hover:bg-red-500/15 hover:text-red-50'
-                    )}
-                    aria-label={modelButtonAriaLabel}
-                    disabled={(lockProviderModel && !canOpenLockedModelPanel) || isRemoved}
-                    onClick={() => setModelExpanded((prev) => !prev)}
-                  >
-                    {modelExpanded ? (
-                      <ChevronDown className="size-3.5" />
-                    ) : (
-                      <ChevronRight className="size-3.5" />
-                    )}
-                    <ProviderBrandLogo
-                      providerId={effectiveProviderId}
-                      className="size-3.5 shrink-0"
-                    />
-                    <span className="min-w-0 flex-1 truncate">{modelButtonLabel}</span>
-                    {hasModelIssue ? (
-                      <AlertTriangle className="size-3.5 shrink-0 text-red-300" />
-                    ) : null}
-                  </Button>
-                </span>
-              </TooltipTrigger>
-              {modelTooltipText || currentModelIssueText ? (
-                <TooltipContent side="top" className="max-w-64 text-xs leading-relaxed">
-                  {currentModelIssueText ? (
-                    <p className="text-red-300">{currentModelIssueText}</p>
-                  ) : null}
-                  {modelTooltipText ? (
-                    <p
-                      className={currentModelIssueText ? 'mt-1 border-t border-white/10 pt-1' : ''}
-                    >
-                      {modelTooltipText}
-                    </p>
-                  ) : null}
-                </TooltipContent>
-              ) : null}
-            </Tooltip>
+            <span className="inline-flex w-full" title={modelButtonTitle}>
+              <Button
+                variant="outline"
+                size="sm"
+                className={cn(
+                  'h-8 w-full justify-start gap-1 overflow-hidden text-left',
+                  hasModelIssue &&
+                    'border-red-500/50 bg-red-500/10 text-red-100 hover:border-red-400/60 hover:bg-red-500/15 hover:text-red-50'
+                )}
+                aria-label={modelButtonAriaLabel}
+                aria-describedby={modelButtonDescribedBy}
+                disabled={modelButtonDisabled}
+                onClick={() => setModelExpanded((prev) => !prev)}
+              >
+                {modelExpanded ? (
+                  <ChevronDown className="size-3.5" />
+                ) : (
+                  <ChevronRight className="size-3.5" />
+                )}
+                <ProviderBrandLogo providerId={effectiveProviderId} className="size-3.5 shrink-0" />
+                <span className="min-w-0 flex-1 truncate">{modelButtonLabel}</span>
+                {hasModelIssue ? (
+                  <AlertTriangle className="size-3.5 shrink-0 text-red-300" />
+                ) : null}
+              </Button>
+            </span>
+            {modelTooltipText ? (
+              <span id={modelHelpDescriptionId} className="sr-only">
+                {modelTooltipText}
+              </span>
+            ) : null}
+            {currentModelIssueText ? (
+              <p
+                id={modelIssueDescriptionId}
+                className="flex items-start gap-1 text-[10px] leading-snug text-red-300"
+              >
+                <AlertTriangle className="mt-0.5 size-3 shrink-0" />
+                <span>{currentModelIssueText}</span>
+              </p>
+            ) : null}
           </div>
           {showWorktreeIsolationControls ? (
             <Tooltip>
