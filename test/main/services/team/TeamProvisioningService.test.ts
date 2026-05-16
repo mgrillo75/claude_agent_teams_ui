@@ -177,7 +177,7 @@ import {
 import pidusage from 'pidusage';
 
 const EXPECTED_RUNTIME_PIDUSAGE_OPTIONS =
-  process.platform === 'win32' ? { maxage: 1_000 } : { maxage: 0 };
+  process.platform === 'win32' ? { maxage: 10_000 } : { maxage: 0 };
 
 function allowConsoleLogs() {
   vi.spyOn(console, 'error').mockImplementation(() => {});

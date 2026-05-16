@@ -572,9 +572,10 @@ import type {
   ToolCallMeta,
 } from '@shared/types';
 
-// pidusage's Windows gwmi fallback needs a non-zero cache window to finish its
-// initial two-sample pass. maxage: 0 can recurse forever on Windows.
-const RUNTIME_PIDUSAGE_OPTIONS = process.platform === 'win32' ? { maxage: 1_000 } : { maxage: 0 };
+// pidusage's Windows wmic/gwmi fallback needs a non-zero cache window to finish
+// its initial two-sample pass. Keep this above slow PowerShell startup time, or
+// the first sample can expire before the recursive second read and loop again.
+const RUNTIME_PIDUSAGE_OPTIONS = process.platform === 'win32' ? { maxage: 10_000 } : { maxage: 0 };
 
 const logger = createLogger('Service:TeamProvisioning');
 const PREFLIGHT_DEBUG_LOG_PATH = path.join(os.tmpdir(), 'claude-team-preflight-debug.log');
