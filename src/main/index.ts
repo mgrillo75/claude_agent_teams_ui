@@ -73,6 +73,7 @@ import {
   copyOpenCodeLocalMcpLaunchEnv,
   hasOpenCodeLocalMcpLaunchEnv,
   isOpenCodeMcpHttpBridgeEnabled,
+  snapshotOpenCodeLocalMcpLaunchEnv,
 } from '@main/services/team/opencode/bridge/OpenCodeMcpBridgeEnv';
 import { ReviewApplierService } from '@main/services/team/ReviewApplierService';
 import { TeamBackupService } from '@main/services/team/TeamBackupService';
@@ -360,6 +361,7 @@ async function createOpenCodeRuntimeAdapterRegistry(
   bridgeEnv.CLAUDE_TEAM_APP_INSTANCE_ID = openCodeManagedHostInstanceId;
   bridgeEnv.AGENT_TEAMS_MCP_CLAUDE_DIR = getClaudeBasePath();
   const useHttpMcpBridge = isOpenCodeMcpHttpBridgeEnabled(bridgeEnv);
+  const explicitLocalMcpLaunchEnv = snapshotOpenCodeLocalMcpLaunchEnv(bridgeEnv);
   if (!useHttpMcpBridge) {
     delete bridgeEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_URL;
   } else {
@@ -399,6 +401,11 @@ async function createOpenCodeRuntimeAdapterRegistry(
   ): Promise<void> => {
     if (hasOpenCodeLocalMcpLaunchEnv(bridgeEnv)) {
       copyOpenCodeLocalMcpLaunchEnv(bridgeEnv, targetEnv);
+      return;
+    }
+    if (explicitLocalMcpLaunchEnv) {
+      copyOpenCodeLocalMcpLaunchEnv(explicitLocalMcpLaunchEnv, targetEnv);
+      copyOpenCodeLocalMcpLaunchEnv(explicitLocalMcpLaunchEnv, bridgeEnv);
       return;
     }
 

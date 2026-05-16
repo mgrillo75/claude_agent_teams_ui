@@ -31,6 +31,18 @@ export function copyOpenCodeLocalMcpLaunchEnv(
   }
 }
 
+export function snapshotOpenCodeLocalMcpLaunchEnv(
+  env: OpenCodeMcpBridgeEnv
+): OpenCodeMcpBridgeEnv | null {
+  if (!hasOpenCodeLocalMcpLaunchEnv(env)) {
+    return null;
+  }
+
+  const snapshot: OpenCodeMcpBridgeEnv = {};
+  copyOpenCodeLocalMcpLaunchEnv(env, snapshot);
+  return snapshot;
+}
+
 export function clearOpenCodeLocalMcpLaunchEnv(env: OpenCodeMcpBridgeEnv): void {
   for (const key of LOCAL_MCP_LAUNCH_ENV_KEYS) {
     delete env[key];
