@@ -208,6 +208,7 @@ export const MemberDetailDialog = ({
             teamName,
             runId: runtimeRunId,
             memberName: member.name,
+            member,
             spawnEntry,
             runtimeEntry,
           })

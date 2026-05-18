@@ -192,6 +192,7 @@ export const MemberHoverCard = memo(function MemberHoverCard({
     teamName: effectiveTeamName,
     runId: runtimeRunId ?? memberSpawnSnapshot?.runId ?? progress?.runId,
     memberName: member.name,
+    member,
     spawnEntry,
     runtimeEntry,
   });

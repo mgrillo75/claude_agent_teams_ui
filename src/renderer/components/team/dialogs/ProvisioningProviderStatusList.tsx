@@ -143,6 +143,7 @@ type ProvisioningDetailSummary =
   | 'Authentication required'
   | 'Runtime provider is not configured'
   | 'CLI preflight failed'
+  | 'Selected model compatible'
   | 'Selected model compatibility pending'
   | 'Selected model available'
   | 'Selected model verified'
@@ -163,6 +164,7 @@ function isFormattedModelDetail(lower: string): boolean {
     lower.includes(' - checking...') ||
     lower.includes(' - verified') ||
     lower.includes(' - available for launch') ||
+    lower.includes(' - compatible for launch') ||
     lower.includes(' - compatible, deep verification pending') ||
     lower.includes(' - unavailable') ||
     lower.includes(' - check failed') ||
@@ -239,6 +241,9 @@ function summarizeDetail(
   if (isModelDetail(lower) && lower.includes('compatible, deep verification pending')) {
     return 'Selected model compatibility pending';
   }
+  if (isModelDetail(lower) && lower.includes('compatible for launch')) {
+    return 'Selected model compatible';
+  }
   if (isSelectedModelDetail(lower) && lower.includes('verified for launch')) {
     return 'Selected model verified';
   }
@@ -294,6 +299,7 @@ function summarizeDetail(
 
 function getModelDetailSummary(details: string[]): string | null {
   let compatibilityPendingCount = 0;
+  let compatibleCount = 0;
   let availableCount = 0;
   let verifiedCount = 0;
   let unavailableCount = 0;
@@ -310,6 +316,10 @@ function getModelDetailSummary(details: string[]): string | null {
     }
     if (lower.includes('compatible, deep verification pending')) {
       compatibilityPendingCount += 1;
+      continue;
+    }
+    if (lower.includes('compatible for launch')) {
+      compatibleCount += 1;
       continue;
     }
     if (
@@ -383,6 +393,9 @@ function getModelDetailSummary(details: string[]): string | null {
   if (compatibilityPendingCount > 0) {
     parts.push(`${compatibilityPendingCount} compatible, deep verification pending`);
   }
+  if (compatibleCount > 0) {
+    parts.push(`${compatibleCount} compatible`);
+  }
   if (checkingCount > 0) {
     parts.push(`${checkingCount} checking`);
   }
@@ -437,7 +450,11 @@ function getDetailTone(
   status: ProvisioningProviderCheckStatus
 ): 'success' | 'failure' | 'checking' | 'neutral' {
   const summary = summarizeDetail(detail, status);
-  if (summary === 'Selected model verified' || summary === 'Selected model available') {
+  if (
+    summary === 'Selected model verified' ||
+    summary === 'Selected model available' ||
+    summary === 'Selected model compatible'
+  ) {
     return 'success';
   }
   if (summary === 'Selected model verification timed out') {

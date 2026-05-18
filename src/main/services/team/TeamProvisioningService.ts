@@ -202,7 +202,9 @@ import {
   hashOpenCodePromptDeliveryPayload,
   isOpenCodePromptDeliveryAttemptDue,
   isOpenCodePromptResponseStateResponded,
+  isOpenCodeResolvedBehaviorChangedReason,
   isOpenCodeSessionRefreshResponseState,
+  isOpenCodeSessionTransportChangedReason,
   OPENCODE_PROMPT_DELIVERY_SESSION_REFRESH_MAX_ATTEMPTS,
   type OpenCodePromptDeliveryLedgerRecord,
   type OpenCodePromptDeliveryLedgerStore,
@@ -9348,6 +9350,50 @@ export class TeamProvisioningService {
     );
   }
 
+  private isOpenCodeSessionRefreshRetryRecord(
+    record: OpenCodePromptDeliveryLedgerRecord,
+    reason: string | null | undefined
+  ): boolean {
+    const stampedSessionRefreshReason = record.lastSessionRefreshReason?.trim();
+    const stampedSessionRefreshReasonIsExplicit = this.isExplicitOpenCodeSessionRefreshStamp(
+      stampedSessionRefreshReason
+    );
+    const currentReason = reason?.trim();
+    const lastReason = record.lastReason?.trim();
+    const currentReasonConfirmsStamp = currentReason
+      ? currentReason === stampedSessionRefreshReason
+      : lastReason === stampedSessionRefreshReason;
+    if (
+      record.responseState === 'session_stale' &&
+      stampedSessionRefreshReason &&
+      stampedSessionRefreshReasonIsExplicit &&
+      currentReasonConfirmsStamp
+    ) {
+      return isOpenCodeSessionRefreshResponseState({
+        responseState: record.responseState,
+        reason: currentReason ?? stampedSessionRefreshReason,
+      });
+    }
+    if (record.responseState !== 'session_stale') {
+      return isOpenCodeSessionRefreshResponseState({
+        responseState: record.responseState,
+        reason,
+      });
+    }
+    return isOpenCodeSessionRefreshResponseState({
+      responseState: record.responseState,
+      reason,
+      diagnostics: record.diagnostics,
+    });
+  }
+
+  private isExplicitOpenCodeSessionRefreshStamp(reason: string | null | undefined): boolean {
+    return (
+      isOpenCodeResolvedBehaviorChangedReason(reason) ||
+      isOpenCodeSessionTransportChangedReason(reason)
+    );
+  }
+
   private async scheduleOpenCodePromptLedgerFollowUp(input: {
     ledger: OpenCodePromptDeliveryLedgerStore;
     ledgerRecord: OpenCodePromptDeliveryLedgerRecord;
@@ -9358,12 +9404,7 @@ export class TeamProvisioningService {
   }): Promise<OpenCodePromptDeliveryLedgerRecord> {
     const now = nowIso();
     const sessionRefreshRetry =
-      input.retry &&
-      isOpenCodeSessionRefreshResponseState({
-        responseState: input.ledgerRecord.responseState,
-        reason: input.reason,
-        diagnostics: input.ledgerRecord.diagnostics,
-      });
+      input.retry && this.isOpenCodeSessionRefreshRetryRecord(input.ledgerRecord, input.reason);
     if (sessionRefreshRetry) {
       const maxSessionRefreshAttempts =
         input.ledgerRecord.maxSessionRefreshAttempts ??
@@ -10618,11 +10659,7 @@ export class TeamProvisioningService {
       const retryShouldRefreshSessionBeforeObserve =
         retryDueBeforeObserve &&
         ledgerRecord.status === 'retry_scheduled' &&
-        isOpenCodeSessionRefreshResponseState({
-          responseState: ledgerRecord.responseState,
-          reason: ledgerRecord.lastReason ?? undefined,
-          diagnostics: ledgerRecord.diagnostics,
-        });
+        this.isOpenCodeSessionRefreshRetryRecord(ledgerRecord, ledgerRecord.lastReason);
       if (
         ledgerRecord.status !== 'pending' &&
         adapter.observeMessageDelivery &&
@@ -10738,11 +10775,7 @@ export class TeamProvisioningService {
         if (
           retryDue &&
           retryable &&
-          isOpenCodeSessionRefreshResponseState({
-            responseState: ledgerRecord.responseState,
-            reason: pendingReason,
-            diagnostics: ledgerRecord.diagnostics,
-          })
+          this.isOpenCodeSessionRefreshRetryRecord(ledgerRecord, pendingReason)
         ) {
           ledgerRecord = await this.scheduleOpenCodePromptLedgerFollowUp({
             ledger,
@@ -10829,6 +10862,18 @@ export class TeamProvisioningService {
       : 'opencode_delivery_response_pending';
     const controlUrl =
       input.messageKind === 'member_work_sync_nudge' ? await this.resolveControlApiBaseUrl() : null;
+    if (
+      !forceOpenCodeSessionRefreshReason &&
+      ledgerRecord?.status === 'retry_scheduled' &&
+      isOpenCodePromptDeliveryAttemptDue(ledgerRecord) &&
+      this.isOpenCodeSessionRefreshRetryRecord(ledgerRecord, ledgerRecord.lastReason)
+    ) {
+      forceOpenCodeSessionRefreshReason =
+        ledgerRecord.lastSessionRefreshReason ??
+        ledgerRecord.lastReason ??
+        ledgerRecord.responseState ??
+        'session_stale';
+    }
     const deliveryText = this.buildOpenCodePromptDeliveryAttemptText({
       text: input.text,
       controlText: this.buildOpenCodePromptDeliveryRepairControlText({

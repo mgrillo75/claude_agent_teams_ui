@@ -377,13 +377,92 @@ function getRuntimeAdvisoryProviderLabel(providerId: TeamProviderId | undefined)
   }
 }
 
-function appendRuntimeAdvisoryRawMessage(base: string, message: string | undefined): string {
-  const trimmed = formatRuntimeAdvisoryDisplayMessage(message);
+function appendRuntimeAdvisoryRawMessage(
+  base: string,
+  message: string | undefined,
+  providerId?: TeamProviderId
+): string {
+  const trimmed = formatRuntimeAdvisoryDisplayMessage(message, providerId);
+  if (trimmed === base) {
+    return base;
+  }
   return trimmed ? `${base}\n\n${trimmed}` : base;
 }
 
+const OPENCODE_SESSION_REFRESH_REASON_PATTERN =
+  /\b(?:resolved_behavior_changed|opencode_app_mcp_transport_changed):[-a-z0-9._~/=]+->[-a-z0-9._~/=]+/i;
+const OPENCODE_SESSION_REFRESH_FAILURE_PATTERN =
+  /(?:^|[_\s:;.\/()-])(?:permission[_\s-]?denied|permission[_\s-]?blocked|access[_\s-]?denied|auth[_\s-]?unavailable|authentication[_\s-]?failed|unauthorized|forbidden|401|403|login[_\s-]?required|not\s+logged\s+in|missing\s+credentials?|invalid\s+credentials?|credentials?[_\s-]?required|credentials?[_\s-]?unavailable|no auth available|authorization|auth(?:entication)?(?:[_\s-]?(?:failed|unavailable))?|invalid api[_\s-]?key|api[_\s-]?key|does not have access|quota|rate[_\s-]?(?:limit|limited)|too many requests|429|model cooldown|cooling down|enospc|no space left|disk is full|capacity exceeded|quota exhausted|usage exceeded|free usage exceeded|key limit exceeded|total limit|insufficient credits|subscribe to go|error|failed|failure|timeout|timed\s+out|network|connection|unable\s+to\s+connect|connect\s+failed|econn[a-z_]*|enotfound|fetch[_\s-]?failed|connection[_\s-]?(?:refused|reset)|aborted|cancel(?:ed|led)|interrupted|service[_\s-]?unavailable|temporarily\s+unavailable|overloaded|visible[_\s-]?reply(?:[_\s-][a-z0-9]+)*|task[_\s-]?refs|relayofmessageid|relay[_\s-]?of[_\s-]?message[_\s-]?id|message[_\s-]?send|non[_\s-]?visible[_\s-]?tool(?:[_\s-][a-z0-9]+)*|protocol[_\s-]?proof)(?=$|[_\s:;.\/(),-])/i;
+const OPENCODE_SESSION_REFRESH_ANY_REASON_PATTERN =
+  /\b(?:resolved_behavior_changed|opencode_app_mcp_transport_changed):[-a-z0-9._~/=]+->[-a-z0-9._~/=]+/gi;
+const OPENCODE_SESSION_REFRESH_SAFE_MARKER_STATE_PATTERN =
+  /\b(?:not_observed|pending|prompt_not_indexed|responded_tool_call|responded_visible_message|responded_non_visible_tool|responded_plain_text|permission_blocked|tool_error|empty_assistant_turn|prompt_delivered_no_assistant_message|session_stale|session_error|reconcile_failed)\b/g;
+
+function isRecoverableOpenCodeSessionRefreshMessage(message: string | undefined): boolean {
+  const normalized = message?.trim().toLowerCase() ?? '';
+  if (
+    normalized === 'session_stale' ||
+    normalized === 'opencode session changed; refreshing the session before retry' ||
+    normalized === 'opencode session changed; refreshing the session before retry.' ||
+    normalized === 'opencode session refresh scheduled after resolved behavior changed' ||
+    normalized === 'opencode_prompt_delivery_session_refresh_scheduled' ||
+    normalized === 'opencode_session_refresh_scheduled_after_resolved_behavior_changed'
+  ) {
+    return true;
+  }
+  if (!OPENCODE_SESSION_REFRESH_REASON_PATTERN.test(normalized)) {
+    return false;
+  }
+  const markerText = normalized.replace(/^opencode api error(?:[.:\s-]+|$)/i, '');
+  if (hasOpenCodeSessionRefreshFailureConflict(markerText)) {
+    return false;
+  }
+  const rawRemainder = markerText.replace(OPENCODE_SESSION_REFRESH_ANY_REASON_PATTERN, '');
+  const remainder = rawRemainder.replace(/[().,;:\s-]+/g, '');
+  if (remainder.length === 0) {
+    return true;
+  }
+  const staleLogProjectionContext =
+    normalized.includes('session is stale') ||
+    normalized.includes('stored session is stale') ||
+    normalized.includes('session reconcile skipped');
+  return staleLogProjectionContext && isBenignOpenCodeSessionRefreshRemainder(rawRemainder);
+}
+
+function isBenignOpenCodeSessionRefreshRemainder(rawRemainder: string): boolean {
+  if (OPENCODE_SESSION_REFRESH_FAILURE_PATTERN.test(rawRemainder)) {
+    return false;
+  }
+  const normalized = rawRemainder.replace(/[().,;:\s-]+/g, ' ').trim();
+  return (
+    normalized === 'opencode session is stale' ||
+    normalized ===
+      'opencode session is stale reading historical messages for log projection only' ||
+    normalized === 'opencode session reconcile skipped because the stored session is stale' ||
+    normalized === 'stored session is stale'
+  );
+}
+
+function hasOpenCodeSessionRefreshFailureConflict(value: string): boolean {
+  return OPENCODE_SESSION_REFRESH_FAILURE_PATTERN.test(
+    value.replace(OPENCODE_SESSION_REFRESH_SAFE_MARKER_STATE_PATTERN, 'state')
+  );
+}
+
+function canTreatAdvisoryAsOpenCodeSessionRefresh(
+  advisory: MemberRuntimeAdvisory | undefined
+): boolean {
+  return (
+    Boolean(advisory) &&
+    (advisory?.reasonCode == null ||
+      advisory.reasonCode === 'backend_error' ||
+      advisory.reasonCode === 'unknown') &&
+    isRecoverableOpenCodeSessionRefreshMessage(advisory?.message)
+  );
+}
+
 function isOpenCodeRuntimeDeliveryAdvisoryMessage(message: string | undefined): boolean {
-  const displayMessage = formatRuntimeAdvisoryDisplayMessage(message);
+  const displayMessage = formatRuntimeAdvisoryDisplayMessage(message, 'opencode');
   return (
     displayMessage.startsWith('OpenCode runtime delivery') ||
     displayMessage.startsWith('OpenCode returned an empty assistant turn') ||
@@ -395,7 +474,10 @@ function isOpenCodeRuntimeDeliveryAdvisoryMessage(message: string | undefined): 
   );
 }
 
-function formatRuntimeAdvisoryDisplayMessage(message: string | undefined): string {
+function formatRuntimeAdvisoryDisplayMessage(
+  message: string | undefined,
+  providerId?: TeamProviderId
+): string {
   const trimmed = message?.trim();
   if (!trimmed) {
     return '';
@@ -408,6 +490,9 @@ function formatRuntimeAdvisoryDisplayMessage(message: string | undefined): strin
   }
   if (trimmed === 'opencode_prompt_acceptance_unknown_after_bridge_timeout') {
     return OPENCODE_BRIDGE_OUTCOME_UNKNOWN_AFTER_TIMEOUT_MESSAGE;
+  }
+  if (providerId === 'opencode' && isRecoverableOpenCodeSessionRefreshMessage(trimmed)) {
+    return 'OpenCode session changed; refreshing the session before retry.';
   }
   if (
     trimmed === 'visible_reply_still_required' ||
@@ -450,6 +535,9 @@ function formatRuntimeAdvisoryBaseLabel(
 ): string {
   const providerLabel = getRuntimeAdvisoryProviderLabel(providerId);
   if (advisory.kind === 'api_error') {
+    if (providerId === 'opencode' && canTreatAdvisoryAsOpenCodeSessionRefresh(advisory)) {
+      return 'OpenCode session refresh';
+    }
     switch (advisory.reasonCode) {
       case 'quota_exhausted':
         return providerLabel ? `${providerLabel} quota error` : 'Quota error';
@@ -512,6 +600,13 @@ function formatRuntimeAdvisoryTitle(
 ): string {
   const providerLabel = getRuntimeAdvisoryProviderLabel(providerId);
   if (advisory.kind === 'api_error') {
+    if (providerId === 'opencode' && canTreatAdvisoryAsOpenCodeSessionRefresh(advisory)) {
+      return appendRuntimeAdvisoryRawMessage(
+        'OpenCode session changed; refreshing the session before retry.',
+        advisory.message,
+        providerId
+      );
+    }
     switch (advisory.reasonCode) {
       case 'quota_exhausted':
         return appendRuntimeAdvisoryRawMessage(
@@ -520,7 +615,8 @@ function formatRuntimeAdvisoryTitle(
             advisory,
             providerId
           ),
-          advisory.message
+          advisory.message,
+          providerId
         );
       case 'rate_limited':
         return appendRuntimeAdvisoryRawMessage(
@@ -529,36 +625,46 @@ function formatRuntimeAdvisoryTitle(
             advisory,
             providerId
           ),
-          advisory.message
+          advisory.message,
+          providerId
         );
       case 'auth_error':
         return appendRuntimeAdvisoryRawMessage(
           `${providerLabel ?? 'Provider'} authentication error.`,
-          advisory.message
+          advisory.message,
+          providerId
         );
       case 'codex_native_timeout':
         return appendRuntimeAdvisoryRawMessage(
           'Codex native mailbox turn timed out. The runtime stopped this turn after its watchdog limit; it was not an automatic SDK retry.',
-          advisory.message
+          advisory.message,
+          providerId
         );
       case 'network_error':
-        return appendRuntimeAdvisoryRawMessage('Network or connectivity error.', advisory.message);
+        return appendRuntimeAdvisoryRawMessage(
+          'Network or connectivity error.',
+          advisory.message,
+          providerId
+        );
       case 'filesystem_error':
         return appendRuntimeAdvisoryRawMessage(
           'Local disk is full or unavailable.',
-          advisory.message
+          advisory.message,
+          providerId
         );
       case 'provider_overloaded':
         return appendRuntimeAdvisoryRawMessage(
           'Provider is temporarily overloaded.',
-          advisory.message
+          advisory.message,
+          providerId
         );
       case 'protocol_proof_missing':
         return appendRuntimeAdvisoryRawMessage(
           providerId === 'opencode'
             ? 'OpenCode delivery completed without required visible/progress proof.'
             : 'Runtime delivery completed without required protocol proof.',
-          advisory.message
+          advisory.message,
+          providerId
         );
       case 'backend_error':
       case 'unknown':
@@ -568,12 +674,14 @@ function formatRuntimeAdvisoryTitle(
         ) {
           return appendRuntimeAdvisoryRawMessage(
             'OpenCode runtime delivery error.',
-            advisory.message
+            advisory.message,
+            providerId
           );
         }
         return appendRuntimeAdvisoryRawMessage(
           `${providerLabel ?? 'Provider'} API error.`,
-          advisory.message
+          advisory.message,
+          providerId
         );
       default:
         return advisory.message?.trim() || 'Provider API error.';
@@ -584,50 +692,59 @@ function formatRuntimeAdvisoryTitle(
     case 'quota_exhausted':
       return appendRuntimeAdvisoryRawMessage(
         `${providerLabel ?? 'Provider'} quota exhausted. SDK is retrying automatically.`,
-        advisory.message
+        advisory.message,
+        providerId
       );
     case 'rate_limited':
       return appendRuntimeAdvisoryRawMessage(
         `${providerLabel ?? 'Provider'} rate limited the request. SDK is retrying automatically.`,
-        advisory.message
+        advisory.message,
+        providerId
       );
     case 'auth_error':
       return appendRuntimeAdvisoryRawMessage(
         `${providerLabel ?? 'Provider'} authentication issue. SDK is retrying automatically.`,
-        advisory.message
+        advisory.message,
+        providerId
       );
     case 'codex_native_timeout':
       return appendRuntimeAdvisoryRawMessage(
         'Codex native mailbox turn timed out. A retry window was reported by the runtime.',
-        advisory.message
+        advisory.message,
+        providerId
       );
     case 'network_error':
       return appendRuntimeAdvisoryRawMessage(
         'Network or connectivity issue. SDK is retrying automatically.',
-        advisory.message
+        advisory.message,
+        providerId
       );
     case 'filesystem_error':
       return appendRuntimeAdvisoryRawMessage(
         'Local disk is full or unavailable. SDK is retrying automatically.',
-        advisory.message
+        advisory.message,
+        providerId
       );
     case 'provider_overloaded':
       return appendRuntimeAdvisoryRawMessage(
         'Provider is temporarily overloaded. SDK is retrying automatically.',
-        advisory.message
+        advisory.message,
+        providerId
       );
     case 'protocol_proof_missing':
       return appendRuntimeAdvisoryRawMessage(
         providerId === 'opencode'
           ? 'OpenCode delivery is waiting for required visible/progress proof.'
           : 'Runtime delivery is waiting for required protocol proof.',
-        advisory.message
+        advisory.message,
+        providerId
       );
     case 'backend_error':
     case 'unknown':
       return appendRuntimeAdvisoryRawMessage(
         'The SDK is retrying this request after a provider or backend error.',
-        advisory.message
+        advisory.message,
+        providerId
       );
     default:
       return (
@@ -673,10 +790,14 @@ export function getMemberRuntimeAdvisoryTitle(
 }
 
 export function getMemberRuntimeAdvisoryTone(
-  advisory: MemberRuntimeAdvisory | undefined
+  advisory: MemberRuntimeAdvisory | undefined,
+  providerId?: TeamProviderId
 ): 'error' | 'warning' | null {
   if (!advisory) {
     return null;
+  }
+  if (providerId === 'opencode' && canTreatAdvisoryAsOpenCodeSessionRefresh(advisory)) {
+    return 'warning';
   }
   if (advisory.reasonCode === 'protocol_proof_missing') {
     return 'warning';
@@ -1123,7 +1244,7 @@ export function buildMemberLaunchPresentation({
   );
   const runtimeAdvisoryLabel = getMemberRuntimeAdvisoryLabel(runtimeAdvisory, member.providerId);
   const runtimeAdvisoryTitle = getMemberRuntimeAdvisoryTitle(runtimeAdvisory, member.providerId);
-  const runtimeAdvisoryTone = getMemberRuntimeAdvisoryTone(runtimeAdvisory);
+  const runtimeAdvisoryTone = getMemberRuntimeAdvisoryTone(runtimeAdvisory, member.providerId);
   const keepLaunchSettlingVisuals = isTeamProvisioning === true || isLaunchSettling;
   const startingIsStale =
     !hasConfirmedSpawnLaunch &&

@@ -75,6 +75,14 @@ const SECRET_FLAG_PATTERN =
   /(--(?:api-key|token|password|secret|authorization|auth-token)(?:=|\s+))("[^"]*"|'[^']*'|\S+)/gi;
 const SECRET_VALUE_PATTERN =
   /\b(sk-[A-Za-z0-9._~+/=-]{12,}|[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,})\b/g;
+const OPENCODE_SESSION_REFRESH_REASON_PATTERN =
+  /\b(?:resolved_behavior_changed|opencode_app_mcp_transport_changed):[-a-z0-9._~/=]+->[-a-z0-9._~/=]+/i;
+const OPENCODE_SESSION_REFRESH_FAILURE_PATTERN =
+  /(?:^|[_\s:;.\/()-])(?:permission[_\s-]?denied|permission[_\s-]?blocked|access[_\s-]?denied|auth[_\s-]?unavailable|authentication[_\s-]?failed|unauthorized|forbidden|401|403|login[_\s-]?required|not\s+logged\s+in|missing\s+credentials?|invalid\s+credentials?|credentials?[_\s-]?required|credentials?[_\s-]?unavailable|no auth available|authorization|auth(?:entication)?(?:[_\s-]?(?:failed|unavailable))?|invalid api[_\s-]?key|api[_\s-]?key|does not have access|quota|rate[_\s-]?(?:limit|limited)|too many requests|429|model cooldown|cooling down|enospc|no space left|disk is full|capacity exceeded|quota exhausted|usage exceeded|free usage exceeded|key limit exceeded|total limit|insufficient credits|subscribe to go|error|failed|failure|timeout|timed\s+out|network|connection|unable\s+to\s+connect|connect\s+failed|econn[a-z_]*|enotfound|fetch[_\s-]?failed|connection[_\s-]?(?:refused|reset)|aborted|cancel(?:ed|led)|interrupted|service[_\s-]?unavailable|temporarily\s+unavailable|overloaded|visible[_\s-]?reply(?:[_\s-][a-z0-9]+)*|task[_\s-]?refs|relayofmessageid|relay[_\s-]?of[_\s-]?message[_\s-]?id|message[_\s-]?send|non[_\s-]?visible[_\s-]?tool(?:[_\s-][a-z0-9]+)*|protocol[_\s-]?proof)(?=$|[_\s:;.\/(),-])/i;
+const OPENCODE_SESSION_REFRESH_ANY_REASON_PATTERN =
+  /\b(?:resolved_behavior_changed|opencode_app_mcp_transport_changed):[-a-z0-9._~/=]+->[-a-z0-9._~/=]+/gi;
+const OPENCODE_SESSION_REFRESH_SAFE_MARKER_STATE_PATTERN =
+  /\b(?:not_observed|pending|prompt_not_indexed|responded_tool_call|responded_visible_message|responded_non_visible_tool|responded_plain_text|permission_blocked|tool_error|empty_assistant_turn|prompt_delivered_no_assistant_message|session_stale|session_error|reconcile_failed)\b/g;
 
 type MemberSpawnStatusCollection =
   | Record<string, MemberSpawnStatusEntry>
@@ -134,8 +142,18 @@ function isRuntimeDiagnosticCardError(params: {
   launchState?: MemberLaunchState;
   spawnStatus?: MemberSpawnStatus;
   hardFailure?: boolean;
+  providerId?: string;
 }): boolean {
   if (!params.runtimeDiagnostic) {
+    return false;
+  }
+  if (params.runtimeDiagnosticSeverity === 'info') {
+    return false;
+  }
+  if (
+    params.providerId === 'opencode' &&
+    isRecoverableOpenCodeSessionRefreshText(params.runtimeDiagnostic)
+  ) {
     return false;
   }
   return (
@@ -148,20 +166,114 @@ function isRuntimeDiagnosticCardError(params: {
 
 function isRecoverableOpenCodeSessionRefreshText(value: string | undefined): boolean {
   const normalized = value?.trim().toLowerCase() ?? '';
+  if (
+    normalized === 'session_stale' ||
+    normalized === 'opencode session refresh' ||
+    normalized === 'opencode session changed; refreshing the session before retry' ||
+    normalized === 'opencode session changed; refreshing the session before retry.' ||
+    normalized === 'opencode session refresh scheduled after resolved behavior changed' ||
+    normalized === 'opencode_prompt_delivery_session_refresh_scheduled' ||
+    normalized === 'opencode_session_refresh_scheduled_after_resolved_behavior_changed'
+  ) {
+    return true;
+  }
+  if (!OPENCODE_SESSION_REFRESH_REASON_PATTERN.test(normalized)) {
+    return false;
+  }
+  const markerText = normalized.replace(/^opencode api error(?:[.:\s-]+|$)/i, '');
+  if (hasOpenCodeSessionRefreshFailureConflict(markerText)) {
+    return false;
+  }
+  const rawRemainder = markerText.replace(OPENCODE_SESSION_REFRESH_ANY_REASON_PATTERN, '');
+  const remainder = rawRemainder.replace(/[().,;:\s-]+/g, '');
+  if (remainder.length === 0) {
+    return true;
+  }
+  const staleLogProjectionContext =
+    normalized.includes('session is stale') ||
+    normalized.includes('stored session is stale') ||
+    normalized.includes('session reconcile skipped');
+  return staleLogProjectionContext && isBenignOpenCodeSessionRefreshRemainder(rawRemainder);
+}
+
+function isBenignOpenCodeSessionRefreshRemainder(rawRemainder: string): boolean {
+  if (OPENCODE_SESSION_REFRESH_FAILURE_PATTERN.test(rawRemainder)) {
+    return false;
+  }
+  const normalized = rawRemainder.replace(/[().,;:\s-]+/g, ' ').trim();
   return (
-    normalized.includes('resolved_behavior_changed:') ||
-    normalized.includes('opencode_app_mcp_transport_changed:') ||
-    normalized.includes('opencode session changed; refreshing the session before retry') ||
-    normalized.includes('opencode_session_refresh_scheduled_after_resolved_behavior_changed')
+    normalized === 'opencode session is stale' ||
+    normalized ===
+      'opencode session is stale reading historical messages for log projection only' ||
+    normalized === 'opencode session reconcile skipped because the stored session is stale' ||
+    normalized === 'stored session is stale'
   );
 }
 
-function isRuntimeAdvisoryCardError(runtimeAdvisory: MemberRuntimeAdvisory | undefined): boolean {
-  if (isRecoverableOpenCodeSessionRefreshText(runtimeAdvisory?.message)) {
+function hasOpenCodeSessionRefreshFailureConflict(value: string): boolean {
+  return OPENCODE_SESSION_REFRESH_FAILURE_PATTERN.test(
+    value.replace(OPENCODE_SESSION_REFRESH_SAFE_MARKER_STATE_PATTERN, 'state')
+  );
+}
+
+function isGenericOpenCodeApiErrorText(value: string | undefined): boolean {
+  const normalized =
+    value
+      ?.trim()
+      .toLowerCase()
+      .replace(/[.:\s-]+$/, '') ?? '';
+  return normalized === 'opencode api error';
+}
+
+function isBenignOpenCodeRefreshContextText(value: string | undefined): boolean {
+  const normalized =
+    value
+      ?.trim()
+      .toLowerCase()
+      .replace(/[.:\s-]+$/, '') ?? '';
+  return (
+    !normalized ||
+    isRecoverableOpenCodeSessionRefreshText(normalized) ||
+    isGenericOpenCodeApiErrorText(normalized) ||
+    normalized === 'matched opencode runtime pid and process identity' ||
+    normalized === 'bootstrap confirmed' ||
+    normalized === 'opencode runtime process detected after bootstrap confirmation'
+  );
+}
+
+function hasCleanRecoverableOpenCodeRefreshContext(
+  values: readonly (string | undefined)[]
+): boolean {
+  const normalizedValues = values
+    .map((value) => value?.trim())
+    .filter((value): value is string => Boolean(value));
+  return (
+    normalizedValues.some(isRecoverableOpenCodeSessionRefreshText) &&
+    normalizedValues.every(isBenignOpenCodeRefreshContextText)
+  );
+}
+
+function isRuntimeAdvisoryCardError(
+  runtimeAdvisory: MemberRuntimeAdvisory | undefined,
+  providerId: string | undefined
+): boolean {
+  if (providerId === 'opencode' && isRecoverableOpenCodeSessionRefreshAdvisory(runtimeAdvisory)) {
     return false;
   }
   return (
     runtimeAdvisory?.kind === 'api_error' && runtimeAdvisory.reasonCode !== 'protocol_proof_missing'
+  );
+}
+
+function isRecoverableOpenCodeSessionRefreshAdvisory(
+  runtimeAdvisory: MemberRuntimeAdvisory | undefined
+): boolean {
+  return (
+    Boolean(runtimeAdvisory) &&
+    (runtimeAdvisory?.reasonCode == null ||
+      runtimeAdvisory.reasonCode === 'backend_error' ||
+      runtimeAdvisory.reasonCode === 'unknown') &&
+    isRecoverableOpenCodeSessionRefreshText(runtimeAdvisory?.message)
   );
 }
 
@@ -172,6 +284,30 @@ export function normalizeMemberLaunchFailureReason(value: string | undefined): s
     .replace(/^Latest assistant message\s+\S+\s+failed with APIError\s*[-:]\s*/i, '')
     .replace(/^APIError\s*[-:]\s*/i, '');
   return normalized && normalized.length > 0 ? normalized : null;
+}
+
+function firstMemberCardFailureReason(input: {
+  candidates: (string | undefined)[];
+  evidence?: readonly (string | undefined)[];
+  providerId?: string;
+}): string | undefined {
+  const hasCleanRecoverableOpenCodeRefresh =
+    input.providerId === 'opencode' &&
+    hasCleanRecoverableOpenCodeRefreshContext([...input.candidates, ...(input.evidence ?? [])]);
+  for (const value of input.candidates) {
+    const normalized = normalizeMemberLaunchFailureReason(value);
+    if (
+      !normalized ||
+      (hasCleanRecoverableOpenCodeRefresh &&
+        input.providerId === 'opencode' &&
+        isRecoverableOpenCodeSessionRefreshText(normalized)) ||
+      (hasCleanRecoverableOpenCodeRefresh && isGenericOpenCodeApiErrorText(normalized))
+    ) {
+      continue;
+    }
+    return boundedString(normalized);
+  }
+  return undefined;
 }
 
 function uniqueDiagnostics(
@@ -204,11 +340,16 @@ function buildDiagnosticHints(input: {
   livenessKind?: TeamAgentRuntimeLivenessKind;
   launchState?: MemberLaunchState;
   spawnStatus?: MemberSpawnStatus;
+  providerId?: string;
 }): string[] | undefined {
   const text = [input.memberCardError, input.runtimeDiagnostic, ...(input.diagnostics ?? [])]
     .filter((item): item is string => Boolean(item))
     .join('\n')
     .toLowerCase();
+  const openCodeRefreshEvidenceContext = [input.runtimeDiagnostic, ...(input.diagnostics ?? [])];
+  const hasCleanRecoverableOpenCodeRefreshEvidence =
+    input.providerId === 'opencode' &&
+    hasCleanRecoverableOpenCodeRefreshContext(openCodeRefreshEvidenceContext);
   const hints: string[] = [];
 
   if (textIncludesAny(text, ['reason=query_active', 'queryguardstatus=running'])) {
@@ -260,7 +401,10 @@ function buildDiagnosticHints(input: {
       'Persisted runtime pid is dead; this is post-failure liveness, not the original root cause.'
     );
   }
-  if (input.launchState === 'failed_to_start' || input.spawnStatus === 'error') {
+  if (
+    (input.launchState === 'failed_to_start' || input.spawnStatus === 'error') &&
+    !(hasCleanRecoverableOpenCodeRefreshEvidence && !input.memberCardError)
+  ) {
     hints.push(
       'Launch state is terminal for this run; restart/relaunch is required after fixing the cause.'
     );
@@ -290,16 +434,16 @@ export function buildMemberLaunchDiagnosticsPayload(params: {
   const spawnEntry = params.spawnEntry;
   const runtimeEntry = params.runtimeEntry;
   const runtimeAdvisory = params.runtimeAdvisory;
+  const providerId = runtimeEntry?.providerId ?? params.member?.providerId;
+  const providerBackendId = runtimeEntry?.providerBackendId ?? params.member?.providerBackendId;
+  const laneId = runtimeEntry?.laneId ?? params.member?.laneId;
+  const laneKind = runtimeEntry?.laneKind ?? params.member?.laneKind;
   const runtimeAdvisoryTitle = boundedString(params.runtimeAdvisoryTitle);
   const runtimeAdvisoryLabel = boundedString(params.runtimeAdvisoryLabel ?? undefined);
   const runtimeAdvisoryMessage = boundedString(runtimeAdvisory?.message);
-  const runtimeAdvisoryCardError =
-    isRuntimeAdvisoryCardError(runtimeAdvisory) &&
-    ![runtimeAdvisoryTitle, runtimeAdvisoryLabel, runtimeAdvisoryMessage].some(
-      isRecoverableOpenCodeSessionRefreshText
-    )
-      ? (runtimeAdvisoryTitle ?? runtimeAdvisoryLabel ?? runtimeAdvisoryMessage)
-      : undefined;
+  const runtimeAdvisoryCardError = isRuntimeAdvisoryCardError(runtimeAdvisory, providerId)
+    ? (runtimeAdvisoryTitle ?? runtimeAdvisoryLabel ?? runtimeAdvisoryMessage)
+    : undefined;
   const runtimeDiagnosticSeverity =
     spawnEntry?.runtimeDiagnosticSeverity ?? runtimeEntry?.runtimeDiagnosticSeverity;
   const spawnRuntimeDiagnosticCardError = isRuntimeDiagnosticCardError({
@@ -308,12 +452,14 @@ export function buildMemberLaunchDiagnosticsPayload(params: {
     launchState: spawnEntry?.launchState,
     spawnStatus: spawnEntry?.status,
     hardFailure: spawnEntry?.hardFailure,
+    providerId,
   })
     ? spawnEntry?.runtimeDiagnostic
     : undefined;
   const runtimeEntryDiagnosticCardError = isRuntimeDiagnosticCardError({
     runtimeDiagnostic: runtimeEntry?.runtimeDiagnostic,
     runtimeDiagnosticSeverity: runtimeEntry?.runtimeDiagnosticSeverity,
+    providerId,
   })
     ? runtimeEntry?.runtimeDiagnostic
     : undefined;
@@ -323,15 +469,24 @@ export function buildMemberLaunchDiagnosticsPayload(params: {
     boundedString(spawnEntry?.hardFailureReason) ??
     boundedString(spawnEntry?.error) ??
     runtimeAdvisoryMessage;
-  const memberCardError =
-    boundedString(
-      normalizeMemberLaunchFailureReason(
-        spawnEntry?.error ??
-          spawnEntry?.hardFailureReason ??
-          spawnRuntimeDiagnosticCardError ??
-          runtimeEntryDiagnosticCardError
-      ) ?? undefined
-    ) ?? runtimeAdvisoryCardError;
+  const memberCardError = firstMemberCardFailureReason({
+    candidates: [
+      spawnEntry?.error,
+      spawnEntry?.hardFailureReason,
+      spawnRuntimeDiagnosticCardError,
+      runtimeEntryDiagnosticCardError,
+      runtimeAdvisoryCardError,
+    ],
+    evidence: [
+      spawnEntry?.runtimeDiagnostic,
+      runtimeEntry?.runtimeDiagnostic,
+      runtimeAdvisoryTitle,
+      runtimeAdvisoryLabel,
+      runtimeAdvisoryMessage,
+      ...(runtimeEntry?.diagnostics ?? []),
+    ],
+    providerId,
+  });
   const diagnostics = uniqueDiagnostics(
     memberCardError ? [memberCardError] : undefined,
     runtimeDiagnostic ? [runtimeDiagnostic] : undefined,
@@ -343,10 +498,6 @@ export function buildMemberLaunchDiagnosticsPayload(params: {
     runtimeEntry?.diagnostics
   );
   const runId = boundedString(params.runId ?? undefined);
-  const providerId = runtimeEntry?.providerId ?? params.member?.providerId;
-  const providerBackendId = runtimeEntry?.providerBackendId ?? params.member?.providerBackendId;
-  const laneId = runtimeEntry?.laneId ?? params.member?.laneId;
-  const laneKind = runtimeEntry?.laneKind ?? params.member?.laneKind;
   const runtimeUpdatedAt = maybeString(runtimeEntry?.updatedAt);
   const spawnUpdatedAt = maybeString(spawnEntry?.updatedAt);
   const livenessKind = spawnEntry?.livenessKind ?? runtimeEntry?.livenessKind;
@@ -359,6 +510,7 @@ export function buildMemberLaunchDiagnosticsPayload(params: {
     livenessKind,
     launchState,
     spawnStatus,
+    providerId,
   });
   const probableCause = buildProbableCause(diagnosticHints);
 
@@ -611,6 +763,16 @@ export function hasMemberLaunchDiagnosticsDetails(
 }
 
 export function hasMemberLaunchDiagnosticsError(payload: MemberLaunchDiagnosticsPayload): boolean {
+  if (
+    payload.providerId === 'opencode' &&
+    !payload.memberCardError &&
+    hasCleanRecoverableOpenCodeRefreshContext([
+      payload.runtimeDiagnostic,
+      ...(payload.diagnostics ?? []),
+    ])
+  ) {
+    return false;
+  }
   return Boolean(
     payload.spawnStatus === 'error' ||
     payload.launchState === 'failed_to_start' ||

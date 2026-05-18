@@ -24,8 +24,8 @@ interface ComparisonRow {
 const rows = computed<ComparisonRow[]>(() => [
   {
     feature: t('comparison.features.crossTeam'),
-    us: { status: 'yes' },
-    gastown: { status: 'partial', note: 'Cross-rig coordination' },
+    us: { status: 'yes', note: 'Messages between separate teams' },
+    gastown: { status: 'partial', note: 'Coordination across groups' },
     paperclip: { status: 'partial', note: 'Company-scoped org work' },
     cursor: { status: 'na' },
     claudeCli: { status: 'no' },
@@ -40,16 +40,16 @@ const rows = computed<ComparisonRow[]>(() => [
   },
   {
     feature: t('comparison.features.linkedTasks'),
-    us: { status: 'yes', note: 'Cross-refs + dependencies' },
-    gastown: { status: 'partial', note: 'Beads deps + convoys' },
-    paperclip: { status: 'yes', note: 'Goals, parents, blockers' },
+    us: { status: 'yes', note: 'Tasks can link to and block each other' },
+    gastown: { status: 'partial', note: 'Task deps + grouped work' },
+    paperclip: { status: 'yes', note: 'Goals, parent tasks, blockers' },
     cursor: { status: 'no' },
     claudeCli: { status: 'yes', note: 'Shared task list' },
   },
   {
     feature: t('comparison.features.sessionAnalysis'),
-    us: { status: 'yes', note: 'Task logs + token tracking' },
-    gastown: { status: 'partial', note: 'Session recall, feed, OTEL' },
+    us: { status: 'yes', note: 'Task logs + token usage' },
+    gastown: { status: 'partial', note: 'Session recall, feed, metrics' },
     paperclip: { status: 'partial', note: 'Run transcripts + cost audit' },
     cursor: { status: 'no' },
     claudeCli: { status: 'partial', note: 'Usage command, no UI' },
@@ -80,16 +80,16 @@ const rows = computed<ComparisonRow[]>(() => [
   },
   {
     feature: t('comparison.features.fullAutonomy'),
-    us: { status: 'yes', note: 'Create, assign, review end-to-end' },
-    gastown: { status: 'yes', note: 'Mayor, convoys, recovery' },
-    paperclip: { status: 'yes', note: 'Heartbeats + governance' },
+    us: { status: 'yes', note: 'Plan, assign, work, and review' },
+    gastown: { status: 'yes', note: 'Coordinator, grouped work, recovery' },
+    paperclip: { status: 'yes', note: 'Wake-up runs + governance' },
     cursor: { status: 'partial', note: 'Background agents, not teams' },
     claudeCli: { status: 'yes', note: 'Experimental CLI teams' },
   },
   {
     feature: t('comparison.features.taskDeps'),
-    us: { status: 'yes', note: 'Guaranteed ordering' },
-    gastown: { status: 'yes', note: 'DAG waves via Beads' },
+    us: { status: 'yes', note: 'Tasks wait for blockers automatically' },
+    gastown: { status: 'yes', note: 'Dependency waves' },
     paperclip: { status: 'yes', note: 'Blockers + execution locks' },
     cursor: { status: 'no' },
     claudeCli: { status: 'yes', note: 'Team task deps, no UI' },
@@ -97,7 +97,7 @@ const rows = computed<ComparisonRow[]>(() => [
   {
     feature: t('comparison.features.reviewWorkflow'),
     us: { status: 'yes', note: 'Agents review each other' },
-    gastown: { status: 'partial', note: 'Refinery merge queue' },
+    gastown: { status: 'partial', note: 'Merge queue' },
     paperclip: { status: 'yes', note: 'Approvals + governance' },
     cursor: { status: 'partial', note: 'PR/BugBot only' },
     claudeCli: { status: 'yes', note: 'Team review, no UI' },
@@ -105,8 +105,8 @@ const rows = computed<ComparisonRow[]>(() => [
   {
     feature: t('comparison.features.zeroSetup'),
     us: { status: 'yes', note: 'Guided runtime setup' },
-    gastown: { status: 'no', note: 'Go/Git/Dolt/Beads/tmux' },
-    paperclip: { status: 'partial', note: 'npx + embedded Postgres' },
+    gastown: { status: 'no', note: 'Manual CLI stack' },
+    paperclip: { status: 'partial', note: 'npx + local database' },
     cursor: { status: 'yes' },
     claudeCli: { status: 'partial', note: 'CLI + env flag' },
   },
@@ -121,8 +121,8 @@ const rows = computed<ComparisonRow[]>(() => [
   {
     feature: t('comparison.features.execLog'),
     us: { status: 'yes', note: 'Tool calls, reasoning, timeline' },
-    gastown: { status: 'partial', note: 'Feed, OTEL, dashboard' },
-    paperclip: { status: 'yes', note: 'Run transcripts + ledger' },
+    gastown: { status: 'partial', note: 'Feed, metrics, dashboard' },
+    paperclip: { status: 'yes', note: 'Run transcripts + audit log' },
     cursor: { status: 'partial', note: 'Agent chat + terminal' },
     claudeCli: { status: 'no' },
   },
@@ -132,6 +132,14 @@ const rows = computed<ComparisonRow[]>(() => [
     gastown: { status: 'partial', note: 'Agent health dashboard' },
     paperclip: { status: 'partial', note: 'Manual services + previews' },
     cursor: { status: 'partial', note: 'Native terminal only' },
+    claudeCli: { status: 'no' },
+  },
+  {
+    feature: t('comparison.features.runtimeLoad'),
+    us: { status: 'yes', note: 'CPU/RAM history for each live teammate' },
+    gastown: { status: 'partial', note: 'Activity/health, not CPU/RAM' },
+    paperclip: { status: 'partial', note: 'Run status/cost, not CPU/RAM' },
+    cursor: { status: 'no', note: 'Remote agent/terminal only' },
     claudeCli: { status: 'no' },
   },
   {
@@ -147,7 +155,7 @@ const rows = computed<ComparisonRow[]>(() => [
     us: { status: 'yes', note: 'Per-action approvals + notifications' },
     gastown: { status: 'yes', note: 'Gates, escalation, recovery' },
     paperclip: { status: 'yes', note: 'Board approvals, pause, terminate' },
-    cursor: { status: 'partial', note: 'BG agents auto-run commands' },
+    cursor: { status: 'partial', note: 'Background agents auto-run commands' },
     claudeCli: { status: 'yes', note: 'Permissions + hooks' },
   },
   {
@@ -160,11 +168,43 @@ const rows = computed<ComparisonRow[]>(() => [
   },
   {
     feature: t('comparison.features.multiAgent'),
-    us: { status: 'yes', note: 'Claude, Codex + OpenCode teammates' },
-    gastown: { status: 'yes', note: 'Claude, Codex, Gemini, Copilot + more' },
-    paperclip: { status: 'yes', note: 'BYO agents: Claude, Codex, Cursor/OpenCode, HTTP' },
-    cursor: { status: 'partial', note: 'Multi-model agents, no team backend' },
+    us: { status: 'yes', note: 'Claude, Codex, and OpenCode in one team' },
+    gastown: { status: 'yes', note: 'Many providers, terminal-first' },
+    paperclip: { status: 'yes', note: 'Bring your own agents/runtimes' },
+    cursor: { status: 'partial', note: 'Multi-model agents, no shared team' },
     claudeCli: { status: 'partial', note: 'Claude-only experimental teams' },
+  },
+  {
+    feature: t('comparison.features.liveWorkGraph'),
+    us: { status: 'yes', note: 'Teammates, tasks, blockers, handoffs, activity, logs' },
+    gastown: { status: 'partial', note: 'Agent tree + feed panels' },
+    paperclip: { status: 'partial', note: 'Org chart/status, not a task/log map' },
+    cursor: { status: 'no' },
+    claudeCli: { status: 'no' },
+  },
+  {
+    feature: t('comparison.features.liveTeam'),
+    us: { status: 'yes', note: 'Watch teammates work and message them directly' },
+    gastown: { status: 'partial', note: 'Terminal-based agent sessions' },
+    paperclip: { status: 'partial', note: 'Agents wake up for runs, then sleep' },
+    cursor: { status: 'partial', note: 'Background agents per task' },
+    claudeCli: { status: 'partial', note: 'CLI teams, no desktop view' },
+  },
+  {
+    feature: t('comparison.features.teamWorkspace'),
+    us: { status: 'yes', note: 'Tasks, logs, Kanban, review, and teammates in one app' },
+    gastown: { status: 'partial', note: 'Mail/feed/dashboard across tools' },
+    paperclip: { status: 'partial', note: 'Board + transcripts, less live teammate view' },
+    cursor: { status: 'partial', note: 'IDE chats/tasks, not team view' },
+    claudeCli: { status: 'no', note: 'No desktop UI' },
+  },
+  {
+    feature: t('comparison.features.launchProof'),
+    us: { status: 'yes', note: 'Know who started, who is stuck, and who replied' },
+    gastown: { status: 'partial', note: 'Session health, less clear message status' },
+    paperclip: { status: 'partial', note: 'Run status, not live teammate status' },
+    cursor: { status: 'no' },
+    claudeCli: { status: 'partial', note: 'CLI mailbox, no visual status' },
   },
   {
     feature: t('comparison.features.orgGovernance'),
@@ -214,11 +254,24 @@ const sourceLinks = [
     label: 'Gastown scheduler',
     href: 'https://github.com/gastownhall/gastown/blob/main/docs/design/scheduler.md',
   },
+  {
+    label: 'Gastown dashboard source',
+    href: 'https://github.com/gastownhall/gastown/blob/main/internal/web/templates/convoy.html',
+  },
   { label: 'Gastown release', href: 'https://github.com/gastownhall/gastown/releases/tag/v1.1.0' },
   { label: 'Paperclip README', href: 'https://github.com/paperclipai/paperclip' },
   {
     label: 'Paperclip adapters',
     href: 'https://github.com/paperclipai/paperclip/blob/master/docs/adapters/overview.md',
+  },
+  {
+    label: 'Paperclip heartbeat protocol',
+    href: 'https://github.com/paperclipai/paperclip/blob/master/docs/guides/agent-developer/heartbeat-protocol.md',
+  },
+  { label: 'Paperclip org chart', href: 'https://paperclip.inc/docs/guides/board-operator/org-structure/' },
+  {
+    label: 'Paperclip OrgChart source',
+    href: 'https://github.com/paperclipai/paperclip/blob/master/ui/src/pages/OrgChart.tsx',
   },
   {
     label: 'Paperclip budgets',
@@ -236,7 +289,7 @@ const sourceLinks = [
     label: 'Paperclip work products',
     href: 'https://github.com/paperclipai/paperclip/blob/master/packages/shared/src/validators/work-product.ts',
   },
-  { label: 'Paperclip release', href: 'https://github.com/paperclipai/paperclip/releases/tag/v2026.513.0' },
+  { label: 'Paperclip release', href: 'https://github.com/paperclipai/paperclip/releases/tag/v2026.517.0' },
   { label: 'Cursor Background Agents', href: 'https://docs.cursor.com/en/background-agents' },
   { label: 'Cursor Diffs & Review', href: 'https://docs.cursor.com/en/agent/review' },
   { label: 'Cursor Bugbot', href: 'https://docs.cursor.com/en/bugbot' },
@@ -400,7 +453,7 @@ function getStatusIcon(status: string): string {
       </div>
 
       <p class="comparison-section__sources">
-        Fact sources checked on May 16, 2026:
+        Fact sources checked on May 18, 2026:
         <template v-for="(source, index) in sourceLinks" :key="source.href">
           <a :href="source.href" target="_blank" rel="noopener noreferrer">
             {{ source.label }}

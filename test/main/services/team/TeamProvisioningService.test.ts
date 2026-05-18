@@ -851,6 +851,355 @@ describe('TeamProvisioningService', () => {
       expect(nextRecord.status).toBe('retry_scheduled');
     });
 
+    it('uses stamped OpenCode session-refresh evidence instead of stale historical diagnostics', async () => {
+      const svc = new TeamProvisioningService();
+      (svc as any).scheduleOpenCodePromptDeliveryWatchdog = vi.fn();
+      const record = {
+        id: 'opencode-prompt:session-refresh',
+        teamName: 'team-a',
+        memberName: 'atlas',
+        laneId: 'secondary:opencode:atlas',
+        runId: 'run-1',
+        runtimeSessionId: 'ses-1',
+        inboxMessageId: 'msg-1',
+        inboxTimestamp: '2026-05-18T08:31:00.000Z',
+        source: 'watcher',
+        messageKind: null,
+        replyRecipient: 'team-lead',
+        actionMode: null,
+        taskRefs: [],
+        payloadHash: 'sha256:test',
+        status: 'accepted',
+        responseState: 'session_stale',
+        attempts: 1,
+        maxAttempts: 3,
+        sessionRefreshAttempts: 0,
+        maxSessionRefreshAttempts: 5,
+        acceptanceUnknown: false,
+        nextAttemptAt: null,
+        lastAttemptAt: '2026-05-18T08:31:30.000Z',
+        lastObservedAt: '2026-05-18T08:31:45.000Z',
+        acceptedAt: '2026-05-18T08:31:30.000Z',
+        respondedAt: null,
+        failedAt: null,
+        inboxReadCommittedAt: null,
+        inboxReadCommitError: null,
+        prePromptCursor: null,
+        postPromptCursor: null,
+        deliveredUserMessageId: 'delivered-1',
+        observedAssistantMessageId: null,
+        observedAssistantPreview: null,
+        observedToolCallNames: [],
+        observedVisibleMessageId: null,
+        visibleReplyMessageId: null,
+        visibleReplyInbox: null,
+        visibleReplyCorrelation: null,
+        lastReason: 'resolved_behavior_changed:old->new',
+        lastSessionRefreshReason: 'resolved_behavior_changed:old->new',
+        diagnostics: ['network timeout', 'resolved_behavior_changed:old->new'],
+        createdAt: '2026-05-18T08:31:00.000Z',
+        updatedAt: '2026-05-18T08:31:45.000Z',
+      };
+      const ledger = {
+        markFailedTerminal: vi.fn(),
+        markNextAttemptScheduled: vi.fn(),
+        markSessionRefreshScheduled: vi.fn(async (input: any) => ({
+          ...record,
+          status: 'retry_scheduled',
+          responseState: 'session_stale',
+          nextAttemptAt: input.nextAttemptAt,
+          sessionRefreshAttempts: 1,
+          lastSessionRefreshReason: input.reason,
+          lastReason: input.reason,
+          updatedAt: input.scheduledAt,
+        })),
+      };
+
+      const nextRecord = await (svc as any).scheduleOpenCodePromptLedgerFollowUp({
+        ledger,
+        ledgerRecord: record,
+        teamName: 'team-a',
+        memberName: 'atlas',
+        retry: true,
+        reason: 'resolved_behavior_changed:old->new',
+      });
+
+      expect(ledger.markFailedTerminal).not.toHaveBeenCalled();
+      expect(ledger.markNextAttemptScheduled).not.toHaveBeenCalled();
+      expect(ledger.markSessionRefreshScheduled).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: record.id,
+          reason: 'resolved_behavior_changed:old->new',
+          maxSessionRefreshAttempts: 5,
+        })
+      );
+      expect(nextRecord).toMatchObject({
+        status: 'retry_scheduled',
+        sessionRefreshAttempts: 1,
+      });
+    });
+
+    it('does not reuse stamped OpenCode session-refresh evidence for current action-required stale sessions', async () => {
+      const svc = new TeamProvisioningService();
+      (svc as any).scheduleOpenCodePromptDeliveryWatchdog = vi.fn();
+      const record = {
+        id: 'opencode-prompt:session-stale-auth',
+        teamName: 'team-a',
+        memberName: 'atlas',
+        laneId: 'secondary:opencode:atlas',
+        runId: 'run-1',
+        runtimeSessionId: 'ses-1',
+        inboxMessageId: 'msg-1',
+        inboxTimestamp: '2026-05-18T08:31:00.000Z',
+        source: 'watcher',
+        messageKind: null,
+        replyRecipient: 'team-lead',
+        actionMode: null,
+        taskRefs: [],
+        payloadHash: 'sha256:test',
+        status: 'accepted',
+        responseState: 'session_stale',
+        attempts: 1,
+        maxAttempts: 3,
+        sessionRefreshAttempts: 1,
+        maxSessionRefreshAttempts: 5,
+        acceptanceUnknown: false,
+        nextAttemptAt: null,
+        lastAttemptAt: '2026-05-18T08:31:30.000Z',
+        lastObservedAt: '2026-05-18T08:31:45.000Z',
+        acceptedAt: '2026-05-18T08:31:30.000Z',
+        respondedAt: null,
+        failedAt: null,
+        inboxReadCommittedAt: null,
+        inboxReadCommitError: null,
+        prePromptCursor: null,
+        postPromptCursor: null,
+        deliveredUserMessageId: 'delivered-1',
+        observedAssistantMessageId: null,
+        observedAssistantPreview: null,
+        observedToolCallNames: [],
+        observedVisibleMessageId: null,
+        visibleReplyMessageId: null,
+        visibleReplyInbox: null,
+        visibleReplyCorrelation: null,
+        lastReason: 'authentication_failed: invalid api key',
+        lastSessionRefreshReason: 'resolved_behavior_changed:old->new',
+        diagnostics: [
+          'resolved_behavior_changed:old->new',
+          'authentication_failed: invalid api key',
+        ],
+        createdAt: '2026-05-18T08:31:00.000Z',
+        updatedAt: '2026-05-18T08:31:45.000Z',
+      };
+      const ledger = {
+        markFailedTerminal: vi.fn(),
+        markSessionRefreshScheduled: vi.fn(),
+        markNextAttemptScheduled: vi.fn(async (input: any) => ({
+          ...record,
+          status: input.status,
+          nextAttemptAt: input.nextAttemptAt,
+          lastReason: input.reason,
+          updatedAt: input.scheduledAt,
+        })),
+      };
+
+      const nextRecord = await (svc as any).scheduleOpenCodePromptLedgerFollowUp({
+        ledger,
+        ledgerRecord: record,
+        teamName: 'team-a',
+        memberName: 'atlas',
+        retry: true,
+        reason: 'authentication_failed: invalid api key',
+      });
+
+      expect(ledger.markSessionRefreshScheduled).not.toHaveBeenCalled();
+      expect(ledger.markNextAttemptScheduled).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: record.id,
+          status: 'retry_scheduled',
+          reason: 'authentication_failed: invalid api key',
+        })
+      );
+      expect(nextRecord.status).toBe('retry_scheduled');
+    });
+
+    it('does not let generic session-refresh stamps bypass current action-required diagnostics', async () => {
+      const svc = new TeamProvisioningService();
+      (svc as any).scheduleOpenCodePromptDeliveryWatchdog = vi.fn();
+      const record = {
+        id: 'opencode-prompt:session-stale-generic-auth',
+        teamName: 'team-a',
+        memberName: 'atlas',
+        laneId: 'secondary:opencode:atlas',
+        runId: 'run-1',
+        runtimeSessionId: 'ses-1',
+        inboxMessageId: 'msg-1',
+        inboxTimestamp: '2026-05-18T08:31:00.000Z',
+        source: 'watcher',
+        messageKind: null,
+        replyRecipient: 'team-lead',
+        actionMode: null,
+        taskRefs: [],
+        payloadHash: 'sha256:test',
+        status: 'accepted',
+        responseState: 'session_stale',
+        attempts: 1,
+        maxAttempts: 3,
+        sessionRefreshAttempts: 1,
+        maxSessionRefreshAttempts: 5,
+        acceptanceUnknown: false,
+        nextAttemptAt: null,
+        lastAttemptAt: '2026-05-18T08:31:30.000Z',
+        lastObservedAt: '2026-05-18T08:31:45.000Z',
+        acceptedAt: '2026-05-18T08:31:30.000Z',
+        respondedAt: null,
+        failedAt: null,
+        inboxReadCommittedAt: null,
+        inboxReadCommitError: null,
+        prePromptCursor: null,
+        postPromptCursor: null,
+        deliveredUserMessageId: 'delivered-1',
+        observedAssistantMessageId: null,
+        observedAssistantPreview: null,
+        observedToolCallNames: [],
+        observedVisibleMessageId: null,
+        visibleReplyMessageId: null,
+        visibleReplyInbox: null,
+        visibleReplyCorrelation: null,
+        lastReason: 'OpenCode API error',
+        lastSessionRefreshReason: 'OpenCode API error',
+        diagnostics: ['OpenCode API error', 'permission_blocked'],
+        createdAt: '2026-05-18T08:31:00.000Z',
+        updatedAt: '2026-05-18T08:31:45.000Z',
+      };
+      const ledger = {
+        markFailedTerminal: vi.fn(),
+        markSessionRefreshScheduled: vi.fn(),
+        markNextAttemptScheduled: vi.fn(async (input: any) => ({
+          ...record,
+          status: input.status,
+          nextAttemptAt: input.nextAttemptAt,
+          lastReason: input.reason,
+          updatedAt: input.scheduledAt,
+        })),
+      };
+
+      const nextRecord = await (svc as any).scheduleOpenCodePromptLedgerFollowUp({
+        ledger,
+        ledgerRecord: record,
+        teamName: 'team-a',
+        memberName: 'atlas',
+        retry: true,
+        reason: 'OpenCode API error',
+      });
+
+      expect(ledger.markSessionRefreshScheduled).not.toHaveBeenCalled();
+      expect(ledger.markNextAttemptScheduled).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: record.id,
+          status: 'retry_scheduled',
+          reason: 'OpenCode API error',
+        })
+      );
+      expect(nextRecord.status).toBe('retry_scheduled');
+      expect(
+        (svc as any).isOpenCodeSessionRefreshRetryRecord(
+          {
+            ...record,
+            id: 'opencode-prompt:session-stale-display-auth',
+            lastReason: 'OpenCode session changed; refreshing the session before retry.',
+            lastSessionRefreshReason:
+              'OpenCode session changed; refreshing the session before retry.',
+          },
+          'OpenCode session changed; refreshing the session before retry.'
+        )
+      ).toBe(false);
+    });
+
+    it('does not reuse stale session-refresh stamps for later non-session-stale retries', async () => {
+      const svc = new TeamProvisioningService();
+      (svc as any).scheduleOpenCodePromptDeliveryWatchdog = vi.fn();
+      const record = {
+        id: 'opencode-prompt:no-assistant-after-refresh',
+        teamName: 'team-a',
+        memberName: 'atlas',
+        laneId: 'secondary:opencode:atlas',
+        runId: 'run-1',
+        runtimeSessionId: 'ses-1',
+        inboxMessageId: 'msg-1',
+        inboxTimestamp: '2026-05-18T08:31:00.000Z',
+        source: 'watcher',
+        messageKind: null,
+        replyRecipient: 'team-lead',
+        actionMode: null,
+        taskRefs: [],
+        payloadHash: 'sha256:test',
+        status: 'accepted',
+        responseState: 'prompt_delivered_no_assistant_message',
+        attempts: 3,
+        maxAttempts: 3,
+        sessionRefreshAttempts: 1,
+        maxSessionRefreshAttempts: 5,
+        acceptanceUnknown: false,
+        nextAttemptAt: null,
+        lastAttemptAt: '2026-05-18T08:31:30.000Z',
+        lastObservedAt: '2026-05-18T08:31:45.000Z',
+        acceptedAt: '2026-05-18T08:31:30.000Z',
+        respondedAt: null,
+        failedAt: null,
+        inboxReadCommittedAt: null,
+        inboxReadCommitError: null,
+        prePromptCursor: null,
+        postPromptCursor: null,
+        deliveredUserMessageId: 'delivered-1',
+        observedAssistantMessageId: null,
+        observedAssistantPreview: null,
+        observedToolCallNames: [],
+        observedVisibleMessageId: null,
+        visibleReplyMessageId: null,
+        visibleReplyInbox: null,
+        visibleReplyCorrelation: null,
+        lastReason: 'prompt_delivered_no_assistant_message',
+        lastSessionRefreshReason: 'resolved_behavior_changed:old->new',
+        diagnostics: [
+          'resolved_behavior_changed:old->new',
+          'prompt_delivered_no_assistant_message',
+        ],
+        createdAt: '2026-05-18T08:31:00.000Z',
+        updatedAt: '2026-05-18T08:31:45.000Z',
+      };
+      const ledger = {
+        markFailedTerminal: vi.fn(),
+        markSessionRefreshScheduled: vi.fn(),
+        markNextAttemptScheduled: vi.fn(async (input: any) => ({
+          ...record,
+          status: input.status,
+          nextAttemptAt: input.nextAttemptAt,
+          lastReason: input.reason,
+          updatedAt: input.scheduledAt,
+        })),
+      };
+
+      const nextRecord = await (svc as any).scheduleOpenCodePromptLedgerFollowUp({
+        ledger,
+        ledgerRecord: record,
+        teamName: 'team-a',
+        memberName: 'atlas',
+        retry: true,
+        reason: 'prompt_delivered_no_assistant_message',
+      });
+
+      expect(ledger.markSessionRefreshScheduled).not.toHaveBeenCalled();
+      expect(ledger.markNextAttemptScheduled).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: record.id,
+          status: 'retry_scheduled',
+          reason: 'prompt_delivered_no_assistant_message',
+        })
+      );
+      expect(nextRecord.status).toBe('retry_scheduled');
+    });
+
     it('does not requeue terminal no-assistant delivery after the bounded recovery retry is exhausted', async () => {
       const svc = new TeamProvisioningService();
       const record = {
@@ -7526,6 +7875,9 @@ describe('TeamProvisioningService', () => {
       const scheduledEnvelope = JSON.parse(await fsPromises.readFile(ledgerPath, 'utf8')) as {
         data: Array<{
           nextAttemptAt: string | null;
+          diagnostics?: string[];
+          lastReason?: string | null;
+          lastSessionRefreshReason?: string | null;
           sessionRefreshAttempts?: number;
           attempts: number;
           maxAttempts: number;
@@ -7537,6 +7889,13 @@ describe('TeamProvisioningService', () => {
         sessionRefreshAttempts: 1,
       });
       scheduledEnvelope.data[0].nextAttemptAt = '2000-01-01T00:00:00.000Z';
+      scheduledEnvelope.data[0].lastReason = 'resolved_behavior_changed:old->new';
+      scheduledEnvelope.data[0].lastSessionRefreshReason = 'resolved_behavior_changed:old->new';
+      scheduledEnvelope.data[0].diagnostics = [
+        'network timeout',
+        'resolved_behavior_changed:old->new',
+        'opencode_session_refresh_scheduled_after_resolved_behavior_changed',
+      ];
       await fsPromises.writeFile(ledgerPath, JSON.stringify(scheduledEnvelope, null, 2), 'utf8');
 
       await expect(
@@ -7562,6 +7921,7 @@ describe('TeamProvisioningService', () => {
         cwd: '/repo',
         messageId: 'msg-stale-session',
         deliveryAttemptId: expect.stringContaining(':refresh1'),
+        forceSessionRefreshReason: 'resolved_behavior_changed:old->new',
       });
     });
 
@@ -7921,6 +8281,209 @@ describe('TeamProvisioningService', () => {
       });
     });
 
+    it('stamps legacy OpenCode session transport evidence after a successful send without forcing refresh', async () => {
+      const svc = new TeamProvisioningService();
+      const sendMessageToMember = vi.fn(async (input: Record<string, unknown>) => ({
+        ok: true,
+        providerId: 'opencode',
+        memberName: String(input.memberName),
+        sessionId: 'oc-session-bob',
+        runtimePromptMessageId: 'msg_prompt_legacy_transport_stamp',
+        prePromptCursor: 'cursor-legacy-transport-stamp',
+        responseObservation: {
+          state: 'pending',
+          deliveredUserMessageId: 'oc-user-legacy-transport-stamp',
+          assistantMessageId: null,
+          toolCallNames: [],
+          visibleMessageToolCallId: null,
+          visibleReplyMessageId: null,
+          visibleReplyCorrelation: null,
+          latestAssistantPreview: null,
+          reason: 'assistant_response_pending',
+        },
+        diagnostics: [],
+      }));
+      await configureOpenCodeBobDeliveryService({ svc, sendMessageToMember });
+      await writeCommittedOpenCodeSessionStore({
+        teamName: 'team-a',
+        laneId: 'secondary:opencode:bob',
+        runId: 'opencode-run-bob',
+        batchKey: 'legacy-transport-stamp',
+        sessions: [
+          {
+            id: 'oc-session-bob',
+            teamName: 'team-a',
+            memberName: 'bob',
+            laneId: 'secondary:opencode:bob',
+            runId: 'opencode-run-bob',
+            source: 'app_managed_bootstrap',
+          },
+        ],
+      });
+
+      const currentTransportEvidence = {
+        schemaVersion: 1,
+        transport: 'httpStream',
+        host: '127.0.0.1',
+        port: 43129,
+        endpoint: '/mcp',
+        url: 'http://127.0.0.1:43129/mcp',
+        urlHash: 'current-legacy-transport-hash',
+        generation: 8,
+        observedAt: '2026-04-25T10:00:00.000Z',
+      };
+      const transportSpy = vi.spyOn(agentTeamsMcpHttpServer, 'getCurrentHandle').mockReturnValue({
+        url: currentTransportEvidence.url,
+        port: currentTransportEvidence.port,
+        child: { pid: 43129 },
+        generation: currentTransportEvidence.generation,
+        urlHash: currentTransportEvidence.urlHash,
+        transportEvidence: currentTransportEvidence,
+        diagnostics: [],
+      } as any);
+
+      try {
+        await expect(
+          svc.deliverOpenCodeMemberMessage('team-a', {
+            memberName: 'bob',
+            text: 'hello legacy transport stamp bob',
+            messageId: 'msg-legacy-transport-stamp',
+            source: 'watcher',
+            inboxTimestamp: '2026-04-25T10:00:00.000Z',
+          })
+        ).resolves.toMatchObject({
+          delivered: true,
+          responsePending: true,
+          responseState: 'pending',
+        });
+      } finally {
+        transportSpy.mockRestore();
+      }
+
+      expect(sendMessageToMember).toHaveBeenCalledWith(
+        expect.not.objectContaining({
+          forceSessionRefreshReason: expect.any(String),
+        })
+      );
+      const evidence = await readCommittedOpenCodeBootstrapSessionEvidence({
+        teamsBasePath: tempTeamsBase,
+        teamName: 'team-a',
+        laneId: 'secondary:opencode:bob',
+      });
+      expect(evidence.sessions).toHaveLength(1);
+      expect(evidence.sessions[0]).toMatchObject({
+        id: 'oc-session-bob',
+        appMcpTransportHash: 'current-legacy-transport-hash',
+      });
+    });
+
+    it('dedupes stale and refreshed OpenCode session evidence when stamping a new transport hash', async () => {
+      const svc = new TeamProvisioningService();
+      const sendMessageToMember = vi.fn(async (input: Record<string, unknown>) => ({
+        ok: true,
+        providerId: 'opencode',
+        memberName: String(input.memberName),
+        sessionId: 'oc-session-bob-refreshed',
+        runtimePromptMessageId: 'msg_prompt_deduped_refresh',
+        prePromptCursor: 'cursor-deduped-refresh',
+        responseObservation: {
+          state: 'pending',
+          deliveredUserMessageId: 'oc-user-deduped-refresh',
+          assistantMessageId: null,
+          toolCallNames: [],
+          visibleMessageToolCallId: null,
+          visibleReplyMessageId: null,
+          visibleReplyCorrelation: null,
+          latestAssistantPreview: null,
+          reason: 'assistant_response_pending',
+        },
+        diagnostics: [],
+      }));
+      await configureOpenCodeBobDeliveryService({ svc, sendMessageToMember });
+      await writeCommittedOpenCodeSessionStore({
+        teamName: 'team-a',
+        laneId: 'secondary:opencode:bob',
+        runId: 'opencode-run-bob',
+        batchKey: 'dedupe-transport-refresh',
+        sessions: [
+          {
+            id: 'oc-session-bob',
+            teamName: 'team-a',
+            memberName: 'bob',
+            laneId: 'secondary:opencode:bob',
+            runId: 'opencode-run-bob',
+            source: 'app_managed_bootstrap',
+            appMcpTransportHash: 'old-deduped-transport-hash',
+          },
+          {
+            id: 'oc-session-bob-refreshed',
+            teamName: 'team-a',
+            memberName: 'bob',
+            laneId: 'secondary:opencode:bob',
+            runId: 'opencode-run-bob',
+            source: 'app_managed_bootstrap',
+            appMcpTransportHash: 'older-duplicate-transport-hash',
+          },
+        ],
+      });
+
+      const currentTransportEvidence = {
+        schemaVersion: 1,
+        transport: 'httpStream',
+        host: '127.0.0.1',
+        port: 43130,
+        endpoint: '/mcp',
+        url: 'http://127.0.0.1:43130/mcp',
+        urlHash: 'current-deduped-transport-hash',
+        generation: 9,
+        observedAt: '2026-04-25T10:00:00.000Z',
+      };
+      const transportSpy = vi.spyOn(agentTeamsMcpHttpServer, 'getCurrentHandle').mockReturnValue({
+        url: currentTransportEvidence.url,
+        port: currentTransportEvidence.port,
+        child: { pid: 43130 },
+        generation: currentTransportEvidence.generation,
+        urlHash: currentTransportEvidence.urlHash,
+        transportEvidence: currentTransportEvidence,
+        diagnostics: [],
+      } as any);
+
+      try {
+        await expect(
+          svc.deliverOpenCodeMemberMessage('team-a', {
+            memberName: 'bob',
+            text: 'hello deduped refresh bob',
+            messageId: 'msg-deduped-refresh-transport',
+            source: 'watcher',
+            inboxTimestamp: '2026-04-25T10:00:00.000Z',
+          })
+        ).resolves.toMatchObject({
+          delivered: true,
+          responsePending: true,
+          responseState: 'pending',
+        });
+      } finally {
+        transportSpy.mockRestore();
+      }
+
+      expect(sendMessageToMember).toHaveBeenCalledWith(
+        expect.objectContaining({
+          forceSessionRefreshReason:
+            'opencode_app_mcp_transport_changed:old-deduped-transport-hash->current-deduped-transport-hash',
+        })
+      );
+      const evidence = await readCommittedOpenCodeBootstrapSessionEvidence({
+        teamsBasePath: tempTeamsBase,
+        teamName: 'team-a',
+        laneId: 'secondary:opencode:bob',
+      });
+      expect(evidence.sessions).toHaveLength(1);
+      expect(evidence.sessions[0]).toMatchObject({
+        id: 'oc-session-bob-refreshed',
+        appMcpTransportHash: 'current-deduped-transport-hash',
+      });
+    });
+
     it('fails closed through the delivery ledger when forced refresh reaches an old OpenCode bridge contract', async () => {
       const svc = new TeamProvisioningService();
       await configureOpenCodeBobDeliveryService({ svc, sendMessageToMember: vi.fn() });
@@ -7953,17 +8516,15 @@ describe('TeamProvisioningService', () => {
         generation: 6,
         observedAt: '2026-04-25T10:00:00.000Z',
       };
-      const transportSpy = vi
-        .spyOn(agentTeamsMcpHttpServer, 'getCurrentHandle')
-        .mockReturnValue({
-          url: currentTransportEvidence.url,
-          port: currentTransportEvidence.port,
-          child: { pid: 43127 },
-          generation: currentTransportEvidence.generation,
-          urlHash: currentTransportEvidence.urlHash,
-          transportEvidence: currentTransportEvidence,
-          diagnostics: [],
-        } as any);
+      const transportSpy = vi.spyOn(agentTeamsMcpHttpServer, 'getCurrentHandle').mockReturnValue({
+        url: currentTransportEvidence.url,
+        port: currentTransportEvidence.port,
+        child: { pid: 43127 },
+        generation: currentTransportEvidence.generation,
+        urlHash: currentTransportEvidence.urlHash,
+        transportEvidence: currentTransportEvidence,
+        diagnostics: [],
+      } as any);
       const directBridgeExecute = vi.fn(async () => {
         throw new Error('direct OpenCode bridge executor should not be used for acceptance send');
       });

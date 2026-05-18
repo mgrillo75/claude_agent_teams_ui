@@ -519,6 +519,288 @@ describe('OpenCodePromptDeliveryLedger', () => {
         reason: 'opencode_app_mcp_transport_changed:old->new',
       })
     ).toBe(true);
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        reason: '(resolved_behavior_changed:old->new)',
+      })
+    ).toBe(true);
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        reason: 'resolved_behavior_changed:old.hash/1=abc->new.hash/2=def.',
+      })
+    ).toBe(true);
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        reason: 'resolved_behavior_changed:tool_error->session_error',
+      })
+    ).toBe(true);
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        reason: 'resolved_behavior_changed:responded_non_visible_tool->pending',
+      })
+    ).toBe(true);
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        reason: 'resolved_behavior_changed:permission_blocked->pending',
+      })
+    ).toBe(true);
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        reason:
+          'resolved_behavior_changed:old->new opencode_app_mcp_transport_changed:a->b',
+      })
+    ).toBe(true);
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        diagnostics: [
+          'OpenCode session is stale (resolved_behavior_changed:old->new); reading historical messages for log projection only',
+        ],
+      })
+    ).toBe(true);
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        diagnostics: [
+          'OpenCode session is stale (resolved_behavior_changed:old->new); unexpected detail',
+        ],
+      })
+    ).toBe(false);
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        diagnostics: ['resolved_behavior_changed:old->new unexpected detail'],
+      })
+    ).toBe(false);
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        diagnostics: ['OpenCode API error', 'resolved_behavior_changed:old->new'],
+      })
+    ).toBe(true);
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        diagnostics: ['OpenCode API error:', 'resolved_behavior_changed:old->new'],
+      })
+    ).toBe(true);
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        diagnostics: ['OpenCode API errorresolved_behavior_changed:old->new'],
+      })
+    ).toBe(false);
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        diagnostics: ['OpenCode API error.', 'opencode_app_mcp_transport_changed:old->new'],
+      })
+    ).toBe(true);
+    for (const reason of [
+      'opencode_prompt_delivery_session_refresh_scheduled',
+      'opencode_session_refresh_scheduled_after_resolved_behavior_changed',
+      'OpenCode session refresh scheduled after resolved behavior changed',
+      'OpenCode session changed; refreshing the session before retry.',
+    ]) {
+      expect(
+        isOpenCodeSessionRefreshResponseState({
+          responseState: 'pending',
+          reason,
+        })
+      ).toBe(true);
+    }
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        diagnostics: [
+          'OpenCode session is stale (resolved_behavior_changed:old->new); permission denied',
+        ],
+      })
+    ).toBe(false);
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        diagnostics: [
+          'OpenCode session is stale (resolved_behavior_changed:old->new); network timeout',
+        ],
+      })
+    ).toBe(false);
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        diagnostics: [
+          'OpenCode session is stale (resolved_behavior_changed:old->new); visible_reply_missing_task_refs',
+        ],
+      })
+    ).toBe(false);
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        diagnostics: ['resolved_behavior_changed:old->new', 'unable to connect to provider'],
+      })
+    ).toBe(false);
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        diagnostics: [
+          'OpenCode API error',
+          'resolved_behavior_changed:old->new',
+          'permission denied',
+        ],
+      })
+    ).toBe(false);
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        diagnostics: ['resolved_behavior_changed:old->new', 'auth_unavailable'],
+      })
+    ).toBe(false);
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        diagnostics: [
+          'resolved_behavior_changed:old->new',
+          'Key limit exceeded (total limit). Manage it using OpenRouter settings.',
+        ],
+      })
+    ).toBe(false);
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        diagnostics: ['resolved_behavior_changed:old->new', '429 too many requests'],
+      })
+    ).toBe(false);
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        reason: 'resolved_behavior_changed:old->new permission denied',
+      })
+    ).toBe(false);
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        reason: 'resolved_behavior_changed:old->new;permission_denied',
+      })
+    ).toBe(false);
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        reason: 'resolved_behavior_changed:old->new:permission_denied',
+      })
+    ).toBe(false);
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        reason: 'resolved_behavior_changed:old->new_permission_denied',
+      })
+    ).toBe(false);
+    for (const suffix of ['error', 'failed', 'failure', 'aborted', 'canceled', 'cancelled', 'interrupted', 'enospc']) {
+      expect(
+        isOpenCodeSessionRefreshResponseState({
+          reason: `resolved_behavior_changed:old->new_${suffix}`,
+        })
+      ).toBe(false);
+    }
+    for (const reason of [
+      'resolved_behavior_changed:old->new/auth_unavailable',
+      'resolved_behavior_changed:old->new permission denied',
+      'resolved_behavior_changed:old->new permission_blocked',
+      'resolved_behavior_changed:old->new login required',
+      'resolved_behavior_changed:old->new not logged in',
+      'resolved_behavior_changed:old->new missing credentials',
+      'resolved_behavior_changed:old->new access denied',
+      'resolved_behavior_changed:old->new 401',
+      'resolved_behavior_changed:old->new;key limit exceeded',
+      'resolved_behavior_changed:old->new-network_timeout',
+      'resolved_behavior_changed:old->new(non_visible_tool_without_task_progress)',
+      'resolved_behavior_changed:old->new interrupted',
+      'opencode_app_mcp_transport_changed:old->new/permission_denied',
+      'opencode_app_mcp_transport_changed:old->new;visible_reply_missing_task_refs',
+    ]) {
+      expect(
+        isOpenCodeSessionRefreshResponseState({
+          reason,
+        })
+      ).toBe(false);
+    }
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        diagnostics: ['resolved_behavior_changed:old->new', 'cancelled'],
+      })
+    ).toBe(false);
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        diagnostics: ['resolved_behavior_changed:old->new', 'login required'],
+      })
+    ).toBe(false);
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        reason: 'opencode_app_mcp_transport_changed:old->new/permission_denied',
+      })
+    ).toBe(false);
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        diagnostics: ['opencode_app_mcp_transport_changed:old->new:permission_denied'],
+      })
+    ).toBe(false);
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        responseState: 'session_stale',
+        diagnostics: ['permission denied'],
+      })
+    ).toBe(false);
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        responseState: 'session_stale',
+        diagnostics: ['permission_blocked'],
+      })
+    ).toBe(false);
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        responseState: 'session_stale',
+        diagnostics: ['authentication_failed'],
+      })
+    ).toBe(false);
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        responseState: 'session_stale',
+        diagnostics: ['Free usage exceeded, subscribe to Go'],
+      })
+    ).toBe(false);
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        responseState: 'session_stale',
+        diagnostics: ['visible_reply_missing_task_refs'],
+      })
+    ).toBe(false);
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        responseState: 'session_stale',
+        diagnostics: ['OpenCode session reconcile skipped because the stored session is stale'],
+      })
+    ).toBe(true);
+  });
+
+  it('does not treat session_stale with action-required diagnostics as a refresh retry', async () => {
+    const store = createStore();
+    const record = await store.ensurePending({
+      teamName: 'team-a',
+      memberName: 'jack',
+      laneId: 'secondary:opencode:jack',
+      inboxMessageId: 'msg-session-stale-auth-error',
+      inboxTimestamp: '2026-04-25T09:59:00.000Z',
+      source: 'watcher',
+      replyRecipient: 'user',
+      payloadHash: 'sha256:session-stale-auth-error',
+      now: '2026-04-25T10:00:00.000Z',
+    });
+
+    const staleWithAuthFailure = await store.applyDeliveryResult({
+      id: record.id,
+      accepted: false,
+      attempted: true,
+      responseObservation: {
+        state: 'session_stale',
+        deliveredUserMessageId: null,
+        assistantMessageId: null,
+        toolCallNames: [],
+        visibleMessageToolCallId: null,
+        visibleReplyMessageId: null,
+        visibleReplyCorrelation: null,
+        latestAssistantPreview: null,
+        reason: 'permission denied',
+      },
+      diagnostics: ['permission denied'],
+      now: '2026-04-25T10:00:05.000Z',
+    });
+
+    expect(staleWithAuthFailure.attempts).toBe(1);
+    expect(staleWithAuthFailure.responseState).toBe('session_stale');
+    expect(staleWithAuthFailure.lastSessionRefreshReason).toBeNull();
+    expect(buildOpenCodePromptDeliveryAttemptId(staleWithAuthFailure)).toBe(
+      `${record.id}:2:${record.payloadHash.slice(0, 12)}`
+    );
   });
 
   it('keeps schema-1 legacy prompt-id fields compatible and normalizes when touched', async () => {
