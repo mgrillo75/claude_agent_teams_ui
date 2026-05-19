@@ -1,7 +1,6 @@
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
-
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
@@ -191,6 +190,52 @@ describe('TeamLaunchFailureArtifactPack', () => {
 
     expect(classifyLaunchFailureArtifact(input).code).toBe('model_no_bootstrap');
     expect(extractLaunchBootstrapTransportBreadcrumb(input)).toMatchObject({
+      noStdinWarning: true,
+      bootstrapSubmitted: false,
+    });
+  });
+
+  it('keeps inbox poller bootstrap stalls out of stdin_missing classification', () => {
+    const input = {
+      teamName: 'artifact-team',
+      runId: 'run-inbox-ready-no-submit',
+      reason:
+        'atlas: Teammate process atlas@signal-ops did not submit bootstrap prompt: timed out waiting for bootstrap_submitted; last transport stage: inbox_poller_ready: initial poll observed bootstrap prompt Last stderr: Warning: no stdin data received in 3s, proceeding without it.',
+      progressTraceLines: [
+        'mailbox_bootstrap_written detail=messageId=bootstrap-atlas-2',
+        'inbox_poller_ready detail=initial poll observed bootstrap prompt',
+        'Warning: no stdin data received in 3s, proceeding without it.',
+      ],
+    };
+
+    expect(classifyLaunchFailureArtifact(input).code).toBe('model_no_bootstrap');
+    expect(extractLaunchBootstrapTransportBreadcrumb(input)).toMatchObject({
+      lastTransportStage: expect.stringContaining(
+        'inbox_poller_ready: initial poll observed bootstrap prompt'
+      ),
+      noStdinWarning: true,
+      bootstrapSubmitted: false,
+    });
+  });
+
+  it('keeps submit-attempt stalls out of stdin_missing classification', () => {
+    const input = {
+      teamName: 'artifact-team',
+      runId: 'run-submit-attempt-no-submit',
+      reason:
+        'bob: Teammate process bob@signal-ops did not submit bootstrap prompt: timed out waiting for bootstrap_submitted; last transport stage: bootstrap_submit_attempted: submitting bootstrap prompt Last stderr: Warning: no stdin data received in 3s, proceeding without it.',
+      progressTraceLines: [
+        'mailbox_bootstrap_written detail=messageId=bootstrap-bob-1',
+        'bootstrap_submit_attempted detail=submitting bootstrap prompt',
+        'Warning: no stdin data received in 3s, proceeding without it.',
+      ],
+    };
+
+    expect(classifyLaunchFailureArtifact(input).code).toBe('model_no_bootstrap');
+    expect(extractLaunchBootstrapTransportBreadcrumb(input)).toMatchObject({
+      lastTransportStage: expect.stringContaining(
+        'bootstrap_submit_attempted: submitting bootstrap prompt'
+      ),
       noStdinWarning: true,
       bootstrapSubmitted: false,
     });

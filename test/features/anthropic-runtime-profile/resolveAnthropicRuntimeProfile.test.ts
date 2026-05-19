@@ -227,6 +227,58 @@ describe('resolveAnthropicRuntimeProfile', () => {
     });
   });
 
+  it('keeps Default effort empty for Anthropic 1M models that do not support effort', () => {
+    const selection = resolveAnthropicRuntimeSelection({
+      source: createAnthropicSource({
+        defaultLaunchModel: 'opus[1m]',
+        models: [
+          {
+            id: 'opus[1m]',
+            launchModel: 'opus[1m]',
+            displayName: 'Opus 4.7 (1M)',
+            hidden: false,
+            supportedReasoningEfforts: [],
+            defaultReasoningEffort: null,
+            inputModalities: ['text', 'image'],
+            supportsFastMode: false,
+            supportsPersonality: false,
+            isDefault: true,
+            upgrade: false,
+            source: 'anthropic-models-api',
+          },
+        ],
+      }),
+      selectedModel: 'opus[1m]',
+      limitContext: false,
+    });
+
+    expect(selection.supportedEfforts).toEqual([]);
+    expect(selection.defaultEffort).toBeNull();
+    expect(
+      reconcileAnthropicRuntimeSelections({
+        selection,
+        selectedEffort: '',
+        selectedFastMode: 'inherit',
+        providerFastModeDefault: false,
+      })
+    ).toEqual({
+      nextEffort: '',
+      effortResetReason: null,
+      nextFastMode: 'inherit',
+      fastModeResetReason: null,
+    });
+    expect(
+      resolveAnthropicEffortSupport({
+        selection,
+        effort: 'medium',
+        runtimeCapabilities: createAnthropicSource({
+          defaultLaunchModel: 'opus[1m]',
+          models: [],
+        }).runtimeCapabilities,
+      })
+    ).toEqual({ kind: 'unsupported-by-catalog', supportedEfforts: [] });
+  });
+
   it('does not reset explicit max or fast while runtime catalog truth is still unavailable', () => {
     const selection = resolveAnthropicRuntimeSelection({
       source: {
