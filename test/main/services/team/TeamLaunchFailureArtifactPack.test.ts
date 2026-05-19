@@ -190,6 +190,7 @@ describe('TeamLaunchFailureArtifactPack', () => {
 
     expect(classifyLaunchFailureArtifact(input).code).toBe('model_no_bootstrap');
     expect(extractLaunchBootstrapTransportBreadcrumb(input)).toMatchObject({
+      lastTransportStage: 'mailbox_bootstrap_written',
       noStdinWarning: true,
       bootstrapSubmitted: false,
     });
@@ -210,9 +211,7 @@ describe('TeamLaunchFailureArtifactPack', () => {
 
     expect(classifyLaunchFailureArtifact(input).code).toBe('model_no_bootstrap');
     expect(extractLaunchBootstrapTransportBreadcrumb(input)).toMatchObject({
-      lastTransportStage: expect.stringContaining(
-        'inbox_poller_ready: initial poll observed bootstrap prompt'
-      ),
+      lastTransportStage: 'inbox_poller_ready: initial poll observed bootstrap prompt',
       noStdinWarning: true,
       bootstrapSubmitted: false,
     });
@@ -233,9 +232,7 @@ describe('TeamLaunchFailureArtifactPack', () => {
 
     expect(classifyLaunchFailureArtifact(input).code).toBe('model_no_bootstrap');
     expect(extractLaunchBootstrapTransportBreadcrumb(input)).toMatchObject({
-      lastTransportStage: expect.stringContaining(
-        'bootstrap_submit_attempted: submitting bootstrap prompt'
-      ),
+      lastTransportStage: 'bootstrap_submit_attempted: submitting bootstrap prompt',
       noStdinWarning: true,
       bootstrapSubmitted: false,
     });
@@ -257,9 +254,7 @@ describe('TeamLaunchFailureArtifactPack', () => {
 
     expect(classifyLaunchFailureArtifact(input).code).toBe('model_no_bootstrap');
     expect(extractLaunchBootstrapTransportBreadcrumb(input)).toMatchObject({
-      lastTransportStage: expect.stringContaining(
-        'bootstrap_submit_attempted: submitting bootstrap prompt'
-      ),
+      lastTransportStage: 'bootstrap_submit_attempted: submitting bootstrap prompt',
       noStdinWarning: true,
       bootstrapSubmitted: false,
     });
@@ -281,9 +276,7 @@ describe('TeamLaunchFailureArtifactPack', () => {
 
     expect(classifyLaunchFailureArtifact(input).code).toBe('model_no_bootstrap');
     expect(extractLaunchBootstrapTransportBreadcrumb(input)).toMatchObject({
-      lastTransportStage: expect.stringContaining(
-        'bootstrap_submitted: messageId=bootstrap-alice-1'
-      ),
+      lastTransportStage: 'bootstrap_submitted: messageId=bootstrap-alice-1',
       noStdinWarning: true,
       bootstrapSubmitted: true,
     });

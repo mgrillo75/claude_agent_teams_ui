@@ -341,7 +341,7 @@ export function extractLaunchBootstrapTransportBreadcrumb(
   ).map(redactLaunchFailureArtifactText);
   const retryableRaw = retryableMatches.at(-1)?.[1]?.toLowerCase();
   return {
-    lastTransportStage: lastStageMatches.at(-1)?.[1]?.trim() ?? null,
+    lastTransportStage: normalizeLastTransportStage(lastStageMatches.at(-1)?.[1]),
     submitRejected: /bootstrap_submit_rejected|submit rejected by local prompt handler/i.test(
       combined
     ),
@@ -353,6 +353,11 @@ export function extractLaunchBootstrapTransportBreadcrumb(
       ),
     evidence,
   };
+}
+
+function normalizeLastTransportStage(stage: string | undefined): string | null {
+  const normalized = stage?.replace(/\s+Last\s+(?:stderr|stdout):.*$/i, '').trim();
+  return normalized || null;
 }
 
 async function readBoundedTextFile(sourcePath: string): Promise<{ text?: string; issue?: string }> {
