@@ -491,7 +491,7 @@ export function drawColumnHeaders(
         ctx,
         header.label,
         header.x - TASK_PILL.width / 2 + 4,
-        header.y + 4,
+        header.y + 10,
         KANBAN_HEADER_LETTER_SPACING
       );
     }
