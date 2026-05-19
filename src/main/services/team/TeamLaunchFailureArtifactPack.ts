@@ -240,6 +240,8 @@ const MODEL_NO_BOOTSTRAP_PATTERN = new RegExp(
     'bootstrap not confirmed',
     'check-in not yet received',
     'bootstrap_stalled',
+    'did not submit bootstrap prompt',
+    'bootstrap_submit_accepted_without_uuid',
     'timed out waiting for bootstrap_submitted',
     'last transport stage:\\s*(?:mailbox_bootstrap_written|bootstrap_prompt_observed|bootstrap_submit_attempted|bootstrap_submitted)',
   ].join('|'),
@@ -346,7 +348,7 @@ export function extractLaunchBootstrapTransportBreadcrumb(
     retryable: retryableRaw === 'true' ? true : retryableRaw === 'false' ? false : null,
     noStdinWarning: /no stdin data received|proceeding without it/i.test(combined),
     bootstrapSubmitted:
-      /(?:event["']?\s*:\s*["']bootstrap_submitted["']|bootstrap_submit_accepted|bootstrap submitted)/i.test(
+      /(?:(?:event|type)["']?\s*[:=]\s*["']bootstrap_submitted["']|bootstrap_submit_accepted|bootstrap submitted)/i.test(
         combined
       ),
     evidence,

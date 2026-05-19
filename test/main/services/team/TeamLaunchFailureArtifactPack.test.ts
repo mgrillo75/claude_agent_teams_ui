@@ -265,6 +265,51 @@ describe('TeamLaunchFailureArtifactPack', () => {
     });
   });
 
+  it('keeps submitted bootstrap prompts out of stdin_missing classification while waiting for confirmation', () => {
+    const input = {
+      teamName: 'artifact-team',
+      runId: 'run-submitted-no-confirm',
+      reason:
+        'alice: Teammate was registered but did not bootstrap-confirm before timeout. Last transport stage: bootstrap_submitted: messageId=bootstrap-alice-1 Last stderr: Warning: no stdin data received in 3s, proceeding without it.',
+      progressTraceLines: [
+        'mailbox_bootstrap_written detail=messageId=bootstrap-alice-1',
+        'bootstrap_submit_attempted detail=submitting bootstrap prompt',
+        'event="bootstrap_submitted" detail=messageId=bootstrap-alice-1',
+        'Warning: no stdin data received in 3s, proceeding without it.',
+      ],
+    };
+
+    expect(classifyLaunchFailureArtifact(input).code).toBe('model_no_bootstrap');
+    expect(extractLaunchBootstrapTransportBreadcrumb(input)).toMatchObject({
+      lastTransportStage: expect.stringContaining(
+        'bootstrap_submitted: messageId=bootstrap-alice-1'
+      ),
+      noStdinWarning: true,
+      bootstrapSubmitted: true,
+    });
+  });
+
+  it('classifies accepted-without-uuid bootstrap submit failures as transport evidence', () => {
+    const input = {
+      teamName: 'artifact-team',
+      runId: 'run-submit-accepted-without-uuid',
+      reason:
+        'jack: Teammate process jack@signal-ops did not submit bootstrap prompt: teammate runtime failed before bootstrap_submitted (bootstrap_submit_accepted_without_uuid) Last stderr: Warning: no stdin data received in 3s, proceeding without it.',
+      progressTraceLines: [
+        'mailbox_bootstrap_written detail=messageId=bootstrap-jack-1',
+        'bootstrap_submit_attempted detail=submitting bootstrap prompt',
+        'bootstrap_submit_accepted_without_uuid detail=submit accepted without userMessageUuid',
+        'Warning: no stdin data received in 3s, proceeding without it.',
+      ],
+    };
+
+    expect(classifyLaunchFailureArtifact(input).code).toBe('model_no_bootstrap');
+    expect(extractLaunchBootstrapTransportBreadcrumb(input)).toMatchObject({
+      noStdinWarning: true,
+      bootstrapSubmitted: true,
+    });
+  });
+
   it('classifies provider quota separately from protocol errors', () => {
     expect(
       classifyLaunchFailureArtifact({
