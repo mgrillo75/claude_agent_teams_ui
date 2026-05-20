@@ -2821,6 +2821,332 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
     vi.mocked(console.warn).mockClear();
   });
 
+  it('resolves the OpenCode default model when CLI JSON is surrounded by noisy structured logs', async () => {
+    const modelList = {
+      schemaVersion: 1,
+      providers: {
+        opencode: {
+          defaultModel: 'opencode/big-pickle',
+          models: [
+            {
+              id: 'opencode/big-pickle',
+              label: 'Big Pickle',
+              description: 'Default OpenCode free model',
+            },
+            {
+              id: 'opencode/minimax-m2.5-free',
+              label: 'MiniMax M2.5 Free',
+              description: 'Free OpenCode model',
+            },
+          ],
+        },
+      },
+    };
+    execCliMock.mockResolvedValue({
+      stdout: [
+        'debug {"event":"starting model list"}',
+        JSON.stringify(modelList),
+        'debug {"providers":"log-only"}',
+      ].join('\n'),
+      stderr: '',
+      exitCode: 0,
+    });
+
+    const svc = new TeamProvisioningService();
+    const serviceWithDefaultModelResolver = svc as unknown as {
+      resolveProviderDefaultModel: (
+        claudePath: string,
+        cwd: string,
+        providerId: string,
+        env: NodeJS.ProcessEnv,
+        providerArgs: string[],
+        limitContext: boolean
+      ) => Promise<string | null>;
+    };
+    await expect(
+      serviceWithDefaultModelResolver.resolveProviderDefaultModel(
+        '/fake/claude',
+        tempRoot,
+        'opencode',
+        { PATH: '/usr/bin' },
+        [],
+        false
+      )
+    ).resolves.toBe('opencode/big-pickle');
+  });
+
+  it('falls back to OpenCode runtime status when the default model list is truncated', async () => {
+    execCliMock.mockImplementation(async (_binaryPath: string | null, args: string[]) => {
+      if (args[0] === 'model' && args[1] === 'list' && args.includes('opencode')) {
+        return {
+          stdout: [
+            '{',
+            '  "schemaVersion": 1,',
+            '  "providers": {',
+            '    "opencode": {',
+            '      "defaultModel": "opencode/big-pickle",',
+            '      "models": [',
+            '        {"id":"opencode/big-pickle","label":"Big Pickle","description":"Free"}',
+          ].join('\n'),
+          stderr: '',
+          exitCode: 0,
+        };
+      }
+      if (args[0] === 'runtime' && args[1] === 'status' && args.includes('opencode')) {
+        return {
+          stdout: JSON.stringify({
+            providers: {
+              opencode: {
+                providerId: 'opencode',
+                modelCatalog: {
+                  schemaVersion: 1,
+                  providerId: 'opencode',
+                  source: 'app-server',
+                  status: 'ready',
+                  fetchedAt: new Date(0).toISOString(),
+                  staleAt: new Date(60_000).toISOString(),
+                  defaultModelId: 'opencode/big-pickle',
+                  defaultLaunchModel: 'opencode/big-pickle',
+                  models: [
+                    {
+                      id: 'opencode/big-pickle',
+                      launchModel: 'opencode/big-pickle',
+                      displayName: 'Big Pickle',
+                      hidden: false,
+                      supportedReasoningEfforts: [],
+                      defaultReasoningEffort: null,
+                      inputModalities: ['text'],
+                      supportsPersonality: true,
+                      isDefault: true,
+                      upgrade: false,
+                      source: 'app-server',
+                      badgeLabel: 'Free',
+                      statusMessage: null,
+                      metadata: { free: true },
+                    },
+                  ],
+                  diagnostics: {
+                    configReadState: 'ready',
+                    appServerState: 'healthy',
+                  },
+                },
+              },
+            },
+          }),
+          stderr: '',
+          exitCode: 0,
+        };
+      }
+      return defaultExecCliMockImplementation(_binaryPath, args);
+    });
+
+    const svc = new TeamProvisioningService();
+    const serviceWithDefaultModelResolver = svc as unknown as {
+      resolveProviderDefaultModel: (
+        claudePath: string,
+        cwd: string,
+        providerId: string,
+        env: NodeJS.ProcessEnv,
+        providerArgs: string[],
+        limitContext: boolean
+      ) => Promise<string | null>;
+    };
+
+    await expect(
+      serviceWithDefaultModelResolver.resolveProviderDefaultModel(
+        '/fake/claude',
+        tempRoot,
+        'opencode',
+        { PATH: '/usr/bin' },
+        [],
+        false
+      )
+    ).resolves.toBe('opencode/big-pickle');
+  });
+
+  it('falls back to OpenCode runtime status when the default model list command fails', async () => {
+    execCliMock.mockImplementation(async (_binaryPath: string | null, args: string[]) => {
+      if (args[0] === 'model' && args[1] === 'list' && args.includes('opencode')) {
+        const error = new Error('stdout maxBuffer exceeded');
+        Object.assign(error, { stdout: '{"providers":', stderr: '' });
+        throw error;
+      }
+      if (args[0] === 'runtime' && args[1] === 'status' && args.includes('opencode')) {
+        return {
+          stdout: JSON.stringify({
+            providers: {
+              opencode: {
+                providerId: 'opencode',
+                modelCatalog: {
+                  schemaVersion: 1,
+                  providerId: 'opencode',
+                  source: 'app-server',
+                  status: 'ready',
+                  fetchedAt: new Date(0).toISOString(),
+                  staleAt: new Date(60_000).toISOString(),
+                  defaultModelId: 'opencode/big-pickle',
+                  defaultLaunchModel: 'opencode/big-pickle',
+                  models: [],
+                  diagnostics: {
+                    configReadState: 'ready',
+                    appServerState: 'healthy',
+                  },
+                },
+              },
+            },
+          }),
+          stderr: '',
+          exitCode: 0,
+        };
+      }
+      return defaultExecCliMockImplementation(_binaryPath, args);
+    });
+
+    const svc = new TeamProvisioningService();
+    const serviceWithDefaultModelResolver = svc as unknown as {
+      resolveProviderDefaultModel: (
+        claudePath: string,
+        cwd: string,
+        providerId: string,
+        env: NodeJS.ProcessEnv,
+        providerArgs: string[],
+        limitContext: boolean
+      ) => Promise<string | null>;
+    };
+
+    await expect(
+      serviceWithDefaultModelResolver.resolveProviderDefaultModel(
+        '/fake/claude',
+        tempRoot,
+        'opencode',
+        { PATH: '/usr/bin' },
+        [],
+        false
+      )
+    ).resolves.toBe('opencode/big-pickle');
+  });
+
+  it('materializes pure OpenCode runtime adapter Default selections before launch', async () => {
+    execCliMock.mockImplementation(async (_binaryPath: string | null, args: string[]) => {
+      if (args[0] === 'model' && args[1] === 'list' && args.includes('opencode')) {
+        return {
+          stdout: JSON.stringify({
+            schemaVersion: 1,
+            providers: {
+              opencode: {
+                defaultModel: 'opencode/big-pickle',
+                models: [
+                  {
+                    id: 'opencode/big-pickle',
+                    label: 'Big Pickle',
+                    description: 'Free OpenCode model',
+                  },
+                ],
+              },
+            },
+          }),
+          stderr: '',
+          exitCode: 0,
+        };
+      }
+      return defaultExecCliMockImplementation(_binaryPath, args);
+    });
+
+    const svc = new TeamProvisioningService();
+    const serviceWithMaterializer = svc as unknown as {
+      materializeOpenCodeRuntimeAdapterDefaults: (params: {
+        request: {
+          teamName: string;
+          cwd: string;
+          providerId: 'opencode';
+          skipPermissions: boolean;
+          model?: string;
+        };
+        members: Array<{
+          name: string;
+          providerId?: 'opencode';
+          model?: string;
+        }>;
+      }) => Promise<{
+        request: { model?: string };
+        members: Array<{ name: string; model?: string }>;
+      }>;
+    };
+
+    const result = await serviceWithMaterializer.materializeOpenCodeRuntimeAdapterDefaults({
+      request: {
+        teamName: 'default-opencode-team',
+        cwd: tempRoot,
+        providerId: 'opencode',
+        skipPermissions: true,
+      },
+      members: [
+        {
+          name: 'atlas',
+          providerId: 'opencode',
+        },
+      ],
+    });
+
+    expect(result.request.model).toBe('opencode/big-pickle');
+    expect(result.members).toEqual([
+      {
+        name: 'atlas',
+        providerId: 'opencode',
+        model: 'opencode/big-pickle',
+        effort: undefined,
+      },
+    ]);
+    expect(execCliMock).toHaveBeenCalledWith(
+      '/fake/claude',
+      ['model', 'list', '--json', '--provider', 'opencode'],
+      expect.objectContaining({ cwd: tempRoot })
+    );
+  });
+
+  it('materializes pure OpenCode runtime adapter root model from a saved teammate model', async () => {
+    const svc = new TeamProvisioningService();
+    const serviceWithMaterializer = svc as unknown as {
+      materializeOpenCodeRuntimeAdapterDefaults: (params: {
+        request: {
+          teamName: string;
+          cwd: string;
+          providerId: 'opencode';
+          skipPermissions: boolean;
+          model?: string;
+        };
+        members: Array<{
+          name: string;
+          providerId?: 'opencode';
+          model?: string;
+        }>;
+      }) => Promise<{
+        request: { model?: string };
+        members: Array<{ name: string; model?: string }>;
+      }>;
+    };
+
+    const result = await serviceWithMaterializer.materializeOpenCodeRuntimeAdapterDefaults({
+      request: {
+        teamName: 'saved-opencode-team',
+        cwd: tempRoot,
+        providerId: 'opencode',
+        skipPermissions: true,
+      },
+      members: [
+        {
+          name: 'atlas',
+          providerId: 'opencode',
+          model: 'opencode/big-pickle',
+        },
+      ],
+    });
+
+    expect(result.request.model).toBe('opencode/big-pickle');
+    expect(result.members[0]?.model).toBe('opencode/big-pickle');
+    expect(execCliMock).not.toHaveBeenCalled();
+  });
+
   it('maps ANTHROPIC_AUTH_TOKEN into ANTHROPIC_API_KEY for headless preflight', async () => {
     const svc = new TeamProvisioningService();
     vi.mocked(resolveInteractiveShellEnv).mockResolvedValue({

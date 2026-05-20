@@ -674,6 +674,8 @@ const TEAM_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,127}$/;
 const RUN_TIMEOUT_MS = 300_000;
 const VERIFY_TIMEOUT_MS = 15_000;
 const MCP_PREFLIGHT_INITIALIZE_TIMEOUT_MS = 45_000;
+const PROVIDER_MODEL_LIST_TIMEOUT_MS = 30_000;
+const PROVIDER_RUNTIME_STATUS_TIMEOUT_MS = 20_000;
 const TASK_ACTIVITY_RUNTIME_PAUSE_GRACE_MS = 5_000;
 
 function asRuntimeRecord(value: unknown): Record<string, unknown> {
@@ -1344,14 +1346,75 @@ function extractJsonObjectFromCli<T>(raw: string): T {
   const trimmed = raw.trim();
   try {
     return JSON.parse(trimmed) as T;
-  } catch {
-    const start = trimmed.indexOf('{');
-    const end = trimmed.lastIndexOf('}');
-    if (start >= 0 && end > start) {
-      return JSON.parse(trimmed.slice(start, end + 1)) as T;
+  } catch (initialError) {
+    const candidates: T[] = [];
+    let lastParseError: unknown = null;
+    for (let start = trimmed.indexOf('{'); start >= 0; start = trimmed.indexOf('{', start + 1)) {
+      const end = findJsonObjectEnd(trimmed, start);
+      if (end < 0) {
+        continue;
+      }
+      try {
+        candidates.push(JSON.parse(trimmed.slice(start, end + 1)) as T);
+      } catch (error) {
+        lastParseError = error;
+      }
+    }
+
+    let providerResponse: T | null = null;
+    for (let index = candidates.length - 1; index >= 0; index -= 1) {
+      const record = candidates[index] as Record<string, unknown> | null;
+      const providers = record && typeof record === 'object' ? record.providers : null;
+      if (providers && typeof providers === 'object' && !Array.isArray(providers)) {
+        providerResponse = candidates[index];
+        break;
+      }
+    }
+    if (providerResponse) {
+      return providerResponse;
+    }
+    if (candidates.length > 0) {
+      throw new Error('No provider JSON object found in CLI output');
+    }
+    if (lastParseError instanceof Error) {
+      throw lastParseError;
+    }
+    if (trimmed.includes('{') && initialError instanceof Error) {
+      throw initialError;
     }
     throw new Error('No JSON object found in CLI output');
   }
+}
+
+function findJsonObjectEnd(source: string, start: number): number {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < source.length; index += 1) {
+    const char = source[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+    } else if (char === '{') {
+      depth += 1;
+    } else if (char === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        return index;
+      }
+    }
+  }
+  return -1;
 }
 
 function getExplicitLaunchModelSelection(model: string | undefined): string | undefined {
@@ -7256,7 +7319,7 @@ export class TeamProvisioningService {
       {
         cwd: params.cwd,
         env: params.env,
-        timeout: 10_000,
+        timeout: PROVIDER_MODEL_LIST_TIMEOUT_MS,
       }
     );
     const runtimeStatusPromise =
@@ -20440,28 +20503,39 @@ export class TeamProvisioningService {
     providerArgs: string[] = [],
     limitContext: boolean
   ): Promise<string | null> {
-    const { stdout } = await execCli(
-      claudePath,
-      buildProviderCliCommandArgs(providerArgs, [
-        'model',
-        'list',
-        '--json',
-        '--provider',
-        providerId,
-      ]),
-      {
-        cwd,
-        env,
-        timeout: 10_000,
-      }
-    );
     let parsed: ProviderModelListCommandResponse;
     try {
+      const { stdout } = await execCli(
+        claudePath,
+        buildProviderCliCommandArgs(providerArgs, [
+          'model',
+          'list',
+          '--json',
+          '--provider',
+          providerId,
+        ]),
+        {
+          cwd,
+          env,
+          timeout: PROVIDER_MODEL_LIST_TIMEOUT_MS,
+        }
+      );
       parsed = extractJsonObjectFromCli<ProviderModelListCommandResponse>(stdout);
     } catch (error) {
+      const fallbackDefaultModel = await this.resolveProviderDefaultModelFromRuntimeStatus(
+        claudePath,
+        cwd,
+        providerId,
+        env,
+        providerArgs,
+        limitContext
+      ).catch(() => null);
+      if (fallbackDefaultModel) {
+        return fallbackDefaultModel;
+      }
       const message = error instanceof Error ? error.message : String(error);
       throw new Error(
-        `Failed to parse runtime default model list for ${getTeamProviderLabel(providerId)} (${providerId}): ${message}`
+        `Failed to load runtime default model list for ${getTeamProviderLabel(providerId)} (${providerId}): ${message}`
       );
     }
     const defaultModel = parsed.providers?.[providerId]?.defaultModel;
@@ -20480,6 +20554,46 @@ export class TeamProvisioningService {
     }
 
     return normalizedDefaultModel;
+  }
+
+  private async resolveProviderDefaultModelFromRuntimeStatus(
+    claudePath: string,
+    cwd: string,
+    providerId: TeamProviderId,
+    env: NodeJS.ProcessEnv,
+    providerArgs: string[] = [],
+    limitContext: boolean
+  ): Promise<string | null> {
+    const { stdout } = await execCli(
+      claudePath,
+      buildProviderCliCommandArgs(providerArgs, [
+        'runtime',
+        'status',
+        '--json',
+        '--provider',
+        providerId,
+      ]),
+      {
+        cwd,
+        env,
+        timeout: PROVIDER_RUNTIME_STATUS_TIMEOUT_MS,
+      }
+    );
+    const parsed = extractJsonObjectFromCli<RuntimeStatusCommandResponse>(stdout);
+    const providerStatus = parsed.providers?.[providerId] ?? null;
+    const modelCatalog =
+      providerStatus?.modelCatalog?.providerId === providerId ? providerStatus.modelCatalog : null;
+    const defaultLaunchModel = modelCatalog?.defaultLaunchModel?.trim() || null;
+
+    if (providerId === 'anthropic') {
+      return resolveAnthropicLaunchModel({
+        limitContext,
+        availableLaunchModels: modelCatalog?.models.map((model) => model.launchModel) ?? [],
+        defaultLaunchModel,
+      });
+    }
+
+    return defaultLaunchModel;
   }
 
   private async materializeEffectiveTeamMemberSpecs(params: {
@@ -20603,6 +20717,111 @@ export class TeamProvisioningService {
     throw new Error(
       'OpenCode runtime lanes support exactly one project path in this release. Use mixed-team OpenCode side lanes for per-teammate worktree isolation.'
     );
+  }
+
+  private async materializeOpenCodeRuntimeAdapterDefaults<
+    TRequest extends TeamCreateRequest | TeamLaunchRequest,
+  >(params: {
+    request: TRequest;
+    members: TeamCreateRequest['members'];
+  }): Promise<{
+    request: TRequest;
+    members: TeamCreateRequest['members'];
+  }> {
+    const effectiveMembers = buildEffectiveTeamMemberSpecs(params.members, {
+      providerId: params.request.providerId,
+      model: params.request.model,
+      effort: params.request.effort,
+    });
+    const explicitRootModel = getExplicitLaunchModelSelection(params.request.model);
+    const memberModels = [
+      ...new Set(
+        effectiveMembers
+          .map((member) => member.model?.trim())
+          .filter((model): model is string => Boolean(model))
+      ),
+    ];
+    if (!explicitRootModel && memberModels.length > 1) {
+      throw new Error(
+        'OpenCode runtime adapter launch supports one selected model per lane. Select one team model or align OpenCode teammate models.'
+      );
+    }
+    const inheritedRootModel = explicitRootModel ? undefined : memberModels[0];
+    const rootModel = explicitRootModel ?? inheritedRootModel;
+    const needsMemberModel = effectiveMembers.some((member) => {
+      const providerId = normalizeTeamMemberProviderId(member.providerId) ?? 'opencode';
+      return providerId === 'opencode' && !member.model?.trim();
+    });
+    if (rootModel && !needsMemberModel) {
+      return {
+        request: {
+          ...params.request,
+          model: rootModel,
+        } as TRequest,
+        members: effectiveMembers,
+      };
+    }
+    if (rootModel) {
+      return {
+        request: {
+          ...params.request,
+          model: rootModel,
+        } as TRequest,
+        members: effectiveMembers.map((member) => {
+          const providerId = normalizeTeamMemberProviderId(member.providerId) ?? 'opencode';
+          if (providerId !== 'opencode' || member.model?.trim()) {
+            return member;
+          }
+          return {
+            ...member,
+            model: rootModel,
+          };
+        }),
+      };
+    }
+
+    const claudePath = await ClaudeBinaryResolver.resolve();
+    if (!claudePath) {
+      throw buildMissingCliError();
+    }
+    const provisioningEnv = await this.buildProvisioningEnv(
+      'opencode',
+      params.request.providerBackendId
+    );
+    if (provisioningEnv.warning) {
+      throw new Error(provisioningEnv.warning);
+    }
+    const resolvedDefaultModel = await this.resolveProviderDefaultModel(
+      claudePath,
+      params.request.cwd,
+      'opencode',
+      provisioningEnv.env,
+      provisioningEnv.providerArgs ?? [],
+      params.request.limitContext === true
+    );
+    const normalizedDefaultModel = resolvedDefaultModel?.trim();
+    if (!normalizedDefaultModel) {
+      throw new Error(
+        'Could not resolve the runtime default model for OpenCode teammates. Select an explicit model and retry.'
+      );
+    }
+
+    return {
+      request: {
+        ...params.request,
+        model: normalizedDefaultModel,
+      } as TRequest,
+      members: effectiveMembers.map((member) => {
+        const providerId = normalizeTeamMemberProviderId(member.providerId) ?? 'opencode';
+        if (providerId !== 'opencode' || member.model?.trim()) {
+          return member;
+        }
+        return {
+          ...member,
+          model: normalizedDefaultModel,
+        };
+      }),
+    };
   }
 
   private async resolveOpenCodeMemberWorkspacesForRuntime(params: {
@@ -22228,46 +22447,47 @@ export class TeamProvisioningService {
     }
 
     await ensureCwdExists(request.cwd);
-    const effectiveMembers = await this.resolveOpenCodeMemberWorkspacesForRuntime({
-      teamName: request.teamName,
-      baseCwd: request.cwd,
-      leadProviderId: request.providerId,
-      members: buildEffectiveTeamMemberSpecs(request.members, {
-        providerId: request.providerId,
-        model: request.model,
-        effort: request.effort,
-      }),
+    const materialized = await this.materializeOpenCodeRuntimeAdapterDefaults({
+      request,
+      members: request.members,
     });
-    const teamDir = path.join(getTeamsBasePath(), request.teamName);
-    const tasksDir = path.join(getTasksBasePath(), request.teamName);
+    const launchRequest = materialized.request;
+    const effectiveMembers = await this.resolveOpenCodeMemberWorkspacesForRuntime({
+      teamName: launchRequest.teamName,
+      baseCwd: launchRequest.cwd,
+      leadProviderId: launchRequest.providerId,
+      members: materialized.members,
+    });
+    const teamDir = path.join(getTeamsBasePath(), launchRequest.teamName);
+    const tasksDir = path.join(getTasksBasePath(), launchRequest.teamName);
     await fs.promises.mkdir(teamDir, { recursive: true });
     await fs.promises.mkdir(tasksDir, { recursive: true });
-    await this.teamMetaStore.writeMeta(request.teamName, {
-      displayName: request.displayName,
-      description: request.description,
-      color: request.color,
-      cwd: request.cwd,
-      prompt: request.prompt,
-      providerId: request.providerId,
-      providerBackendId: request.providerBackendId,
-      model: request.model,
-      effort: request.effort,
-      skipPermissions: request.skipPermissions,
-      worktree: request.worktree,
-      extraCliArgs: request.extraCliArgs,
-      limitContext: request.limitContext,
+    await this.teamMetaStore.writeMeta(launchRequest.teamName, {
+      displayName: launchRequest.displayName,
+      description: launchRequest.description,
+      color: launchRequest.color,
+      cwd: launchRequest.cwd,
+      prompt: launchRequest.prompt,
+      providerId: launchRequest.providerId,
+      providerBackendId: launchRequest.providerBackendId,
+      model: launchRequest.model,
+      effort: launchRequest.effort,
+      skipPermissions: launchRequest.skipPermissions,
+      worktree: launchRequest.worktree,
+      extraCliArgs: launchRequest.extraCliArgs,
+      limitContext: launchRequest.limitContext,
       createdAt: Date.now(),
     });
     const membersToWrite = this.buildMembersMetaWritePayload(effectiveMembers);
-    await this.membersMetaStore.writeMembers(request.teamName, membersToWrite, {
-      providerBackendId: request.providerBackendId,
+    await this.membersMetaStore.writeMembers(launchRequest.teamName, membersToWrite, {
+      providerBackendId: launchRequest.providerBackendId,
     });
-    await this.writeOpenCodeTeamConfig(request, effectiveMembers);
+    await this.writeOpenCodeTeamConfig(launchRequest, effectiveMembers);
 
     return this.runOpenCodeTeamRuntimeAdapterLaunch({
-      request,
+      request: launchRequest,
       members: effectiveMembers,
-      prompt: request.prompt?.trim() ?? '',
+      prompt: launchRequest.prompt?.trim() ?? '',
       sourceWarning: undefined,
       onProgress,
     });
@@ -22291,17 +22511,18 @@ export class TeamProvisioningService {
       configRaw,
       request.providerId
     );
-    const effectiveMembers = await this.resolveOpenCodeMemberWorkspacesForRuntime({
-      teamName: request.teamName,
-      baseCwd: request.cwd,
-      leadProviderId: request.providerId,
-      members: buildEffectiveTeamMemberSpecs(members, {
-        providerId: request.providerId,
-        model: request.model,
-        effort: request.effort,
-      }),
+    const materialized = await this.materializeOpenCodeRuntimeAdapterDefaults({
+      request,
+      members,
     });
-    await this.updateConfigProjectPath(request.teamName, request.cwd);
+    const launchRequest = materialized.request;
+    const effectiveMembers = await this.resolveOpenCodeMemberWorkspacesForRuntime({
+      teamName: launchRequest.teamName,
+      baseCwd: launchRequest.cwd,
+      leadProviderId: launchRequest.providerId,
+      members: materialized.members,
+    });
+    await this.updateConfigProjectPath(launchRequest.teamName, launchRequest.cwd);
 
     let existingTasks: TeamTask[] = [];
     try {
@@ -22312,14 +22533,14 @@ export class TeamProvisioningService {
       );
     }
     const prompt = buildDeterministicLaunchHydrationPrompt(
-      request,
+      launchRequest,
       effectiveMembers,
       existingTasks,
       false
     );
 
     return this.runOpenCodeTeamRuntimeAdapterLaunch({
-      request,
+      request: launchRequest,
       members: effectiveMembers,
       prompt,
       sourceWarning: warning,
@@ -22695,7 +22916,7 @@ export class TeamProvisioningService {
       name: member.name,
       providerId: 'opencode',
       providerBackendId: undefined,
-      model: member.model?.trim() || undefined,
+      model: member.model?.trim() || evidence?.model?.trim() || undefined,
       effort: member.effort,
       cwd: member.cwd?.trim() || undefined,
       laneId: 'primary',
@@ -26842,9 +27063,10 @@ export class TeamProvisioningService {
       }
       const activeRunMember = this.findEffectiveRunMember(run, memberName);
       const activeRunModel = activeRunMember?.model?.trim();
+      const evidenceModel = currentRuntimeAdapterRun?.members?.[memberName]?.model?.trim();
       const activeRunProviderId =
         normalizeOptionalTeamProviderId(activeRunMember?.providerId) ??
-        inferTeamProviderIdFromModel(activeRunModel);
+        inferTeamProviderIdFromModel(activeRunModel ?? evidenceModel);
       const effectiveProviderId = activeRunProviderId ?? persistedMember.providerId;
       const currentRuntimeAdapterEvidence = currentRuntimeAdapterRun?.members?.[memberName];
       upsertMetadata(memberName, {
@@ -26865,9 +27087,11 @@ export class TeamProvisioningService {
           persistedMember.lastRuntimeAliveAt,
         ...(activeRunModel
           ? { model: activeRunModel }
-          : persistedMember.model?.trim()
-            ? { model: persistedMember.model.trim() }
-            : {}),
+          : evidenceModel
+            ? { model: evidenceModel }
+            : persistedMember.model?.trim()
+              ? { model: persistedMember.model.trim() }
+              : {}),
         ...(typeof currentRuntimeAdapterEvidence?.runtimePid === 'number' &&
         currentRuntimeAdapterEvidence.runtimePid > 0
           ? { metricsPid: currentRuntimeAdapterEvidence.runtimePid }
