@@ -271,6 +271,26 @@ describe('providerConnectionUi', () => {
         modelCatalogRefreshState: 'error',
       })
     ).toBe(false);
+    expect(
+      isOpenCodeCatalogHydrating({
+        ...provider,
+        modelCatalog: {
+          schemaVersion: 1,
+          providerId: 'opencode',
+          source: 'app-server',
+          status: 'ready',
+          fetchedAt: '2026-05-20T00:00:00.000Z',
+          staleAt: '2026-05-20T00:10:00.000Z',
+          defaultModelId: null,
+          defaultLaunchModel: null,
+          models: [],
+          diagnostics: {
+            configReadState: 'ready',
+            appServerState: 'healthy',
+          },
+        },
+      })
+    ).toBe(false);
   });
 
   it('does not describe Anthropic API key mode as subscription connected when the key is missing', () => {

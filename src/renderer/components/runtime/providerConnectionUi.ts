@@ -116,7 +116,7 @@ export function isOpenCodeCatalogHydrating(
     return false;
   }
 
-  if (provider.modelCatalog?.providerId === 'opencode' && provider.modelCatalog.models.length > 0) {
+  if (provider.modelCatalog?.providerId === 'opencode') {
     return false;
   }
 

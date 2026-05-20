@@ -259,6 +259,65 @@ describe('cliInstallerSlice', () => {
       expect(getModelOnlyFallbackProviderIds(status)).toEqual([]);
     });
 
+    it('treats an empty OpenCode model catalog as hydrated', () => {
+      const status = createMultimodelStatus([
+        createMultimodelProvider({
+          providerId: 'opencode',
+          displayName: 'OpenCode',
+          authenticated: false,
+          authMethod: null,
+          models: [],
+          backend: { kind: 'opencode-cli', label: 'OpenCode CLI' },
+          modelCatalogRefreshState: 'ready',
+          modelCatalog: {
+            schemaVersion: 1,
+            providerId: 'opencode',
+            source: 'app-server',
+            status: 'ready',
+            fetchedAt: '2026-05-20T00:00:00.000Z',
+            staleAt: '2026-05-20T00:10:00.000Z',
+            defaultModelId: null,
+            defaultLaunchModel: null,
+            models: [],
+            diagnostics: {
+              configReadState: 'ready',
+              appServerState: 'healthy',
+            },
+          },
+          runtimeCapabilities: {
+            modelCatalog: {
+              dynamic: true,
+              source: 'app-server',
+            },
+          },
+        }),
+      ]);
+
+      expect(getIncompleteMultimodelProviderIds(status)).toEqual([]);
+    });
+
+    it('does not keep OpenCode catalog errors marked as incomplete', () => {
+      const status = createMultimodelStatus([
+        createMultimodelProvider({
+          providerId: 'opencode',
+          displayName: 'OpenCode',
+          verificationState: 'error',
+          statusMessage: 'Catalog hydration failed',
+          models: [],
+          modelCatalog: null,
+          modelCatalogRefreshState: 'error',
+          runtimeCapabilities: {
+            modelCatalog: {
+              dynamic: true,
+              source: 'app-server',
+            },
+          },
+        }),
+      ]);
+
+      expect(getIncompleteMultimodelProviderIds(status)).toEqual([]);
+    });
+
     it('keeps connection-enriched checking placeholders incomplete until provider hydration finishes', () => {
       const status = createMultimodelStatus([
         createMultimodelProvider({

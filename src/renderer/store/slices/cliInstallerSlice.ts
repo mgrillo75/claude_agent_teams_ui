@@ -98,7 +98,11 @@ function isOpenCodeSummaryOnlyCatalogStatus(provider: CliProviderStatus | undefi
     return false;
   }
 
-  if (provider.modelCatalog?.providerId === 'opencode' && provider.modelCatalog.models.length > 0) {
+  if (provider.modelCatalog?.providerId === 'opencode') {
+    return false;
+  }
+
+  if (provider.modelCatalogRefreshState === 'error') {
     return false;
   }
 
