@@ -1341,8 +1341,7 @@ export class AgentTeamsMcpHttpServer {
   ): Promise<number[]> {
     const ownedPids = [rootPid];
     const visited = new Set(ownedPids);
-    for (let index = 0; index < ownedPids.length; index += 1) {
-      const parentPid = ownedPids[index];
+    for (const parentPid of ownedPids) {
       for (const row of rows) {
         if (row.ppid !== parentPid || visited.has(row.pid)) {
           continue;
