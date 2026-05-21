@@ -278,6 +278,29 @@ describe('CodexRuntimeInstallerService package safety helpers', () => {
     );
   });
 
+  it('extracts the current Codex platform package layout', () => {
+    const tarball = createTarball([
+      { name: 'package/vendor/x86_64-unknown-linux-musl/bin/codex', data: 'codex-binary' },
+      { name: 'package/vendor/x86_64-unknown-linux-musl/codex-path/rg', data: 'rg-binary' },
+      { name: 'package/vendor/x86_64-unknown-linux-musl/codex-resources/bwrap', data: 'bwrap' },
+    ]);
+
+    const files = extractCodexRuntimePackageFilesFromTarball(
+      tarball,
+      'x86_64-unknown-linux-musl',
+      'codex'
+    );
+
+    expect(files.map((file) => file.relativePath).sort((a, b) => a.localeCompare(b))).toEqual([
+      'bin/codex',
+      'codex-path/rg',
+      'codex-resources/bwrap',
+    ]);
+    expect(files.find((file) => file.relativePath === 'bin/codex')?.data.toString()).toBe(
+      'codex-binary'
+    );
+  });
+
   it('rejects tar path traversal before extraction', () => {
     const tarball = createTarball([
       { name: '../codex', data: 'unsafe' },

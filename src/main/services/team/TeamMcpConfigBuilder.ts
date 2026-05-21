@@ -220,6 +220,26 @@ function getNodeRuntimeCommandCandidates(): string[] {
   });
 }
 
+function shouldPreferShellNodeProbe(): boolean {
+  if (process.platform === 'win32') {
+    return false;
+  }
+
+  const pathValue = process.env.PATH?.trim();
+  if (!pathValue) {
+    return true;
+  }
+
+  const minimalGuiPathEntries = new Set(['/usr/bin', '/bin', '/usr/sbin', '/sbin']);
+  const entries = pathValue
+    .split(path.delimiter)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  return (
+    entries.length > 0 && entries.every((entry) => minimalGuiPathEntries.has(path.resolve(entry)))
+  );
+}
+
 function mergePathValues(...values: (string | undefined)[]): string | undefined {
   const seen = new Set<string>();
   const merged: string[] = [];
@@ -281,23 +301,9 @@ async function probeNodeRuntimePath(
   return { ok: false, error: lastError ?? 'no Node.js candidates were available' };
 }
 
-/**
- * Find the real `node` binary path. In Electron, process.execPath is the
- * Electron binary — NOT node — so we must resolve node separately.
- * Uses the user's shell/enriched PATH so packaged GUI launches do not depend
- * on the minimal Finder/Dock PATH.
- */
-async function resolveNodePath(options?: McpLaunchSpecResolveOptions): Promise<string> {
-  if (_resolvedNodePath) return _resolvedNodePath;
-
-  emitProgress(options, 'node-runtime', 'Resolving Node.js runtime for MCP server...');
-  const fastProbe = await probeNodeRuntimePath(buildNodeResolveEnv({}));
-  if (fastProbe.ok) {
-    _resolvedNodePath = fastProbe.path;
-    emitProgress(options, 'node-runtime-found', 'Using resolved Node.js runtime...');
-    return _resolvedNodePath;
-  }
-
+async function probeShellNodeRuntimePath(
+  options?: McpLaunchSpecResolveOptions
+): Promise<{ ok: true; path: string } | { ok: false; error: unknown }> {
   let shellEnv: NodeJS.ProcessEnv = {};
   try {
     shellEnv = await resolveInteractiveShellEnv({
@@ -310,8 +316,36 @@ async function resolveNodePath(options?: McpLaunchSpecResolveOptions): Promise<s
     logger.warn(`Failed to resolve shell env before Node.js lookup: ${stringifyError(error)}`);
   }
 
-  const env = buildNodeResolveEnv(shellEnv);
-  const shellProbe = await probeNodeRuntimePath(env);
+  return probeNodeRuntimePath(buildNodeResolveEnv(shellEnv));
+}
+
+/**
+ * Find the real `node` binary path. In Electron, process.execPath is the
+ * Electron binary — NOT node — so we must resolve node separately.
+ * Uses the user's shell/enriched PATH so packaged GUI launches do not depend
+ * on the minimal Finder/Dock PATH.
+ */
+async function resolveNodePath(options?: McpLaunchSpecResolveOptions): Promise<string> {
+  if (_resolvedNodePath) return _resolvedNodePath;
+
+  emitProgress(options, 'node-runtime', 'Resolving Node.js runtime for MCP server...');
+  if (shouldPreferShellNodeProbe()) {
+    const shellProbe = await probeShellNodeRuntimePath(options);
+    if (shellProbe.ok) {
+      _resolvedNodePath = shellProbe.path;
+      emitProgress(options, 'node-runtime-found', 'Using resolved Node.js runtime...');
+      return _resolvedNodePath;
+    }
+  }
+
+  const fastProbe = await probeNodeRuntimePath(buildNodeResolveEnv({}));
+  if (fastProbe.ok) {
+    _resolvedNodePath = fastProbe.path;
+    emitProgress(options, 'node-runtime-found', 'Using resolved Node.js runtime...');
+    return _resolvedNodePath;
+  }
+
+  const shellProbe = await probeShellNodeRuntimePath(options);
   if (shellProbe.ok) {
     _resolvedNodePath = shellProbe.path;
     emitProgress(options, 'node-runtime-found', 'Using resolved Node.js runtime...');

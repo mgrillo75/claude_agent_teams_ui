@@ -1,9 +1,6 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
       release_tag:
@@ -20,13 +17,13 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || inputs.release_tag || github.ref }}
+  group: release-${{ inputs.release_tag || github.ref }}
   cancel-in-progress: false
 
 env:
-  IS_RELEASE_BUILD: ${{ startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
-  RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || inputs.release_tag }}
-  PUBLISH_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.publish_release }}
+  IS_RELEASE_BUILD: ${{ github.event_name == 'workflow_dispatch' }}
+  RELEASE_TAG: ${{ inputs.release_tag }}
+  PUBLISH_RELEASE: ${{ inputs.publish_release }}
 
 jobs:
   build:
@@ -81,8 +78,8 @@ jobs:
       - name: Build app
         env:
           NODE_OPTIONS: '--max-old-space-size=8192'
-          SENTRY_DSN: ${{ (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && secrets.SENTRY_DSN || '' }}
-          SENTRY_AUTH_TOKEN: ${{ (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && secrets.SENTRY_AUTH_TOKEN || '' }}
+          SENTRY_DSN: ${{ github.event_name == 'workflow_dispatch' && secrets.SENTRY_DSN || '' }}
+          SENTRY_AUTH_TOKEN: ${{ github.event_name == 'workflow_dispatch' && secrets.SENTRY_AUTH_TOKEN || '' }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
         run: pnpm build
@@ -102,8 +99,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF#refs/tags/}"
-          TAG="${RELEASE_TAG:-$TAG}"
+          TAG="${RELEASE_TAG}"
           existing_is_draft="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft' 2>/dev/null || true)"
           if [ -n "$existing_is_draft" ]; then
             if [ "${PUBLISH_RELEASE}" != "true" ] && [ "$existing_is_draft" != "true" ]; then
@@ -155,8 +151,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF#refs/tags/}"
-          TAG="${RELEASE_TAG:-$TAG}"
+          TAG="${RELEASE_TAG}"
           existing_is_draft="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft' 2>/dev/null || true)"
           if [ -n "$existing_is_draft" ]; then
             if [ "${PUBLISH_RELEASE}" != "true" ] && [ "$existing_is_draft" != "true" ]; then
@@ -184,8 +179,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF#refs/tags/}"
-          TAG="${RELEASE_TAG:-$TAG}"
+          TAG="${RELEASE_TAG}"
           existing="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' 2>/dev/null || true)"
           missing=0
           while IFS= read -r asset; do
@@ -278,8 +272,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF#refs/tags/}"
-          TAG="${RELEASE_TAG:-$TAG}"
+          TAG="${RELEASE_TAG}"
           for attempt in $(seq 1 12); do
             existing="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' 2>/dev/null || true)"
             all_found=1
@@ -377,8 +370,8 @@ jobs:
       - name: Build app (macOS ${{ matrix.arch }})
         env:
           NODE_OPTIONS: '--max-old-space-size=8192'
-          SENTRY_DSN: ${{ (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && secrets.SENTRY_DSN || '' }}
-          SENTRY_AUTH_TOKEN: ${{ (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && secrets.SENTRY_AUTH_TOKEN || '' }}
+          SENTRY_DSN: ${{ github.event_name == 'workflow_dispatch' && secrets.SENTRY_DSN || '' }}
+          SENTRY_AUTH_TOKEN: ${{ github.event_name == 'workflow_dispatch' && secrets.SENTRY_AUTH_TOKEN || '' }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
         run: pnpm build
@@ -494,8 +487,8 @@ jobs:
       - name: Build app (Windows)
         env:
           NODE_OPTIONS: '--max-old-space-size=8192'
-          SENTRY_DSN: ${{ (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && secrets.SENTRY_DSN || '' }}
-          SENTRY_AUTH_TOKEN: ${{ (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && secrets.SENTRY_AUTH_TOKEN || '' }}
+          SENTRY_DSN: ${{ github.event_name == 'workflow_dispatch' && secrets.SENTRY_DSN || '' }}
+          SENTRY_AUTH_TOKEN: ${{ github.event_name == 'workflow_dispatch' && secrets.SENTRY_AUTH_TOKEN || '' }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
         run: pnpm build
@@ -614,8 +607,8 @@ jobs:
       - name: Build app (Linux)
         env:
           NODE_OPTIONS: '--max-old-space-size=8192'
-          SENTRY_DSN: ${{ (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && secrets.SENTRY_DSN || '' }}
-          SENTRY_AUTH_TOKEN: ${{ (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && secrets.SENTRY_AUTH_TOKEN || '' }}
+          SENTRY_DSN: ${{ github.event_name == 'workflow_dispatch' && secrets.SENTRY_DSN || '' }}
+          SENTRY_AUTH_TOKEN: ${{ github.event_name == 'workflow_dispatch' && secrets.SENTRY_AUTH_TOKEN || '' }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
         run: pnpm build
@@ -670,7 +663,7 @@ jobs:
     needs: [release-mac, release-win, release-linux]
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    if: ${{ startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name == 'workflow_dispatch' }}
 
     steps:
       - name: Upload stable download aliases
@@ -794,7 +787,7 @@ jobs:
           gh release upload "${TAG}" latest.yml latest-linux.yml latest-mac.yml --repo "${REPO}" --clobber
 
       - name: Publish release
-        if: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.publish_release }}
+        if: ${{ inputs.publish_release }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

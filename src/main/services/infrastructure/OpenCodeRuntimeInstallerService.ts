@@ -233,7 +233,6 @@ async function probeFirstWorkingPathOpenCodeBinary(
   const shellEnv = await resolveInteractiveShellEnvBestEffort({
     timeoutMs: options.shellEnvTimeoutMs ?? RUNTIME_PATH_SHELL_ENV_TIMEOUT_MS,
     fallbackEnv: process.env,
-    background: false,
   });
   const shellProbe = await probeFirstWorkingOpenCodeBinaryCandidate(
     collectPathOpenCodeBinaryCandidates([shellEnv], {

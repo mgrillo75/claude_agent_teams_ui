@@ -352,7 +352,11 @@ export function extractCodexRuntimePackageFilesFromTarball(
 ): CodexRuntimePackageFile[] {
   const tar = gunzipSync(tarball, { maxOutputLength: MAX_UNPACKED_BYTES });
   const targetPrefix = `package/vendor/${vendorTarget}/`;
-  const targetBinaryName = `${targetPrefix}codex/${executableName}`;
+  const targetBinaryNames = new Set(
+    getCodexRuntimeBinaryRelativePathCandidates(executableName).map(
+      (relativePath) => `${targetPrefix}${relativePath}`
+    )
+  );
   const files: CodexRuntimePackageFile[] = [];
   let foundBinary = false;
   let offset = 0;
@@ -383,7 +387,7 @@ export function extractCodexRuntimePackageFilesFromTarball(
           data: Buffer.from(tar.subarray(dataStart, dataEnd)),
           mode,
         });
-        foundBinary = foundBinary || fullName === targetBinaryName;
+        foundBinary = foundBinary || targetBinaryNames.has(fullName);
       }
     } else if (
       fullName.startsWith(targetPrefix) &&
@@ -398,9 +402,29 @@ export function extractCodexRuntimePackageFilesFromTarball(
   }
 
   if (!foundBinary) {
-    throw new Error(`Codex package did not contain ${targetBinaryName}`);
+    throw new Error(
+      `Codex package did not contain one of ${Array.from(targetBinaryNames).join(', ')}`
+    );
   }
   return files;
+}
+
+function getCodexRuntimeBinaryRelativePathCandidates(executableName: string): string[] {
+  return [`bin/${executableName}`, `codex/${executableName}`];
+}
+
+function resolveCodexRuntimeBinaryRelativePath(
+  files: readonly CodexRuntimePackageFile[],
+  executableName = getExecutableName()
+): string {
+  const filePaths = new Set(files.map((file) => file.relativePath));
+  const binaryPath = getCodexRuntimeBinaryRelativePathCandidates(executableName).find((candidate) =>
+    filePaths.has(candidate)
+  );
+  if (!binaryPath) {
+    throw new Error(`Extracted Codex package is missing ${executableName}`);
+  }
+  return binaryPath;
 }
 
 async function readCurrentManifest(): Promise<CodexRuntimeManifest | null> {
@@ -592,6 +616,7 @@ export class CodexRuntimeInstallerService implements CodexRuntimeInstallerPort {
 
       this.publishProgress({ phase: 'installing', detail: 'Extracting Codex runtime...' });
       const files = extractCodexRuntimePackageFilesFromTarball(tarball, selected.vendorTarget);
+      const binaryRelativePath = resolveCodexRuntimeBinaryRelativePath(files);
       const runtimeRoot = getRuntimeRootPath();
       tempDir = path.join(runtimeRoot, `installing-${process.pid}-${randomUUID()}`);
       const versionDir = path.join(
@@ -600,14 +625,14 @@ export class CodexRuntimeInstallerService implements CodexRuntimeInstallerPort {
         platformMetadata.version!,
         selected.vendorTarget
       );
-      const binaryPath = path.join(versionDir, 'codex', getExecutableName());
+      const binaryPath = path.join(versionDir, binaryRelativePath);
 
       await fsp.rm(tempDir, { recursive: true, force: true });
       await fsp.mkdir(tempDir, { recursive: true });
       await writePackageFiles(tempDir, files);
 
       this.publishProgress({ phase: 'installing', detail: 'Verifying Codex binary...' });
-      const tempBinaryPath = path.join(tempDir, 'codex', getExecutableName());
+      const tempBinaryPath = path.join(tempDir, binaryRelativePath);
       const { stdout } = await execCli(tempBinaryPath, ['--version'], {
         timeout: VERSION_TIMEOUT_MS,
         windowsHide: true,
