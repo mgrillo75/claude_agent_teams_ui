@@ -263,6 +263,7 @@ async function resolveCodexBinaryForAccountSnapshot(): Promise<string | null> {
   await resolveInteractiveShellEnvBestEffort({
     timeoutMs: CODEX_BINARY_COLD_RETRY_TIMEOUT_MS,
     fallbackEnv: process.env,
+    background: false,
   });
   CodexBinaryResolver.clearCache();
   return CodexBinaryResolver.resolve();

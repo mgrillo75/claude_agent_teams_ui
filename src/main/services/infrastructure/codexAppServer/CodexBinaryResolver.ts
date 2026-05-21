@@ -73,6 +73,8 @@ function isPathLikeCandidate(candidate: string): boolean {
 }
 
 function getPathEntries(): string[] {
+  // TODO: Consider sharing runtimePathBinaryResolver here after preserving this resolver's
+  // path-like candidate support and Windows PATHEXT normalization exactly.
   const delimiter = process.platform === 'win32' ? ';' : path.delimiter;
   const shellEnv = getCachedShellEnv() ?? {};
   const seen = new Set<string>();

@@ -2,8 +2,8 @@ import { createHash } from 'crypto';
 import { chmod, mkdir, mkdtemp, rm, writeFile } from 'fs/promises';
 import os from 'os';
 import path from 'path';
-import { gzipSync } from 'zlib';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { gzipSync } from 'zlib';
 
 const execCliMock = vi.hoisted(() => vi.fn());
 const buildMergedCliPathMock = vi.hoisted(() => vi.fn(() => process.env.PATH ?? ''));
