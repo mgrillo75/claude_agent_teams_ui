@@ -29,6 +29,7 @@ import {
   isTeamTaskNeedsFixActionable,
 } from '@shared/utils/teamTaskState';
 
+import { selectTeamDataForName } from '../team/teamDataSelectors';
 import {
   areInboxMessageArraysEquivalent,
   clearTeamMessageSelectorCaches,
@@ -95,6 +96,12 @@ import type {
 } from '@shared/types';
 import type { StateCreator } from 'zustand';
 
+export {
+  selectTeamDataForName,
+  selectTeamIsAliveForName,
+  selectTeamMemberSnapshotsForName,
+  selectTeamTasksForName,
+} from '../team/teamDataSelectors';
 export type {
   RefreshTeamMessagesHeadResult,
   TeamMessagesCacheEntry,
@@ -1763,9 +1770,6 @@ const resolvedMemberSelectorCache = new Map<
     result: ResolvedTeamMember | null;
   }
 >();
-const EMPTY_TEAM_MEMBER_SNAPSHOTS: TeamMemberSnapshot[] = [];
-const EMPTY_TEAM_TASKS: TeamViewSnapshot['tasks'] = [];
-
 function resolveMemberStatus(
   snapshot: TeamMemberSnapshot,
   activity: MemberActivityMetaEntry | undefined
@@ -2187,27 +2191,6 @@ function structurallyShareMemberActivityFacts(
   return changed ? shared : previous;
 }
 
-type TeamDataSelectorState = Pick<
-  TeamSlice,
-  'teamDataCacheByName' | 'selectedTeamName' | 'selectedTeamData'
->;
-
-export function selectTeamDataForName(
-  state: TeamDataSelectorState,
-  teamName: string | null | undefined
-): TeamViewSnapshot | null {
-  if (!teamName) {
-    return null;
-  }
-  if (state.selectedTeamName === teamName && state.selectedTeamData) {
-    return state.selectedTeamData;
-  }
-  return (
-    state.teamDataCacheByName[teamName] ??
-    (state.selectedTeamName === teamName ? state.selectedTeamData : null)
-  );
-}
-
 type ResolvedMemberSelectorState = Pick<
   TeamSlice,
   'teamDataCacheByName' | 'selectedTeamName' | 'selectedTeamData' | 'memberActivityMetaByTeam'
@@ -2314,27 +2297,6 @@ export function selectResolvedMemberForTeamName(
     result,
   });
   return result;
-}
-
-export function selectTeamMemberSnapshotsForName(
-  state: TeamDataSelectorState,
-  teamName: string | null | undefined
-): TeamViewSnapshot['members'] {
-  return selectTeamDataForName(state, teamName)?.members ?? EMPTY_TEAM_MEMBER_SNAPSHOTS;
-}
-
-export function selectTeamTasksForName(
-  state: TeamDataSelectorState,
-  teamName: string | null | undefined
-): TeamViewSnapshot['tasks'] {
-  return selectTeamDataForName(state, teamName)?.tasks ?? EMPTY_TEAM_TASKS;
-}
-
-export function selectTeamIsAliveForName(
-  state: TeamDataSelectorState,
-  teamName: string | null | undefined
-): boolean | undefined {
-  return selectTeamDataForName(state, teamName)?.isAlive;
 }
 
 function isMemberActivityMetaStale(
