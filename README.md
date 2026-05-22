@@ -102,6 +102,7 @@ No prerequisites - the app can detect supported runtimes/providers and guide set
 - [Development](#development)
   - [Developer architecture docs](#developer-architecture-docs)
 - [Tech stack](#tech-stack)
+  - [Debug teammate runtimes](#debug-teammate-runtimes)
   - [Build for distribution](#build-for-distribution)
   - [Scripts](#scripts)
 - [Roadmap](#roadmap)
