@@ -795,6 +795,29 @@ jobs:
           TAG="${RELEASE_TAG}"
           gh release edit "${TAG}" --repo "${GITHUB_REPOSITORY}" --draft=false --latest
 
+      - name: Update README version badge
+        if: ${{ inputs.publish_release }}
+        run: |
+          set -euo pipefail
+          BADGE_LABEL_WIDTH=51
+          BADGE_VALUE="${RELEASE_TAG}"
+          BADGE_VALUE_WIDTH=$(( ${#BADGE_VALUE} * 7 + 10 ))
+          BADGE_WIDTH=$(( BADGE_LABEL_WIDTH + BADGE_VALUE_WIDTH ))
+          BADGE_LABEL_X=$(( BADGE_LABEL_WIDTH / 2 ))
+          BADGE_VALUE_X=$(( BADGE_LABEL_WIDTH + BADGE_VALUE_WIDTH / 2 ))
+          mkdir -p .github/badges
+          cat > .github/badges/version.svg <<EOF
+          <svg xmlns="http://www.w3.org/2000/svg" width="${BADGE_WIDTH}" height="20" role="img" aria-label="version: ${BADGE_VALUE}"><title>version: ${BADGE_VALUE}</title><g shape-rendering="crispEdges"><rect width="${BADGE_LABEL_WIDTH}" height="20" fill="#555"/><rect x="${BADGE_LABEL_WIDTH}" width="${BADGE_VALUE_WIDTH}" height="20" fill="#007ec6"/></g><g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11"><text x="${BADGE_LABEL_X}" y="14">version</text><text x="${BADGE_VALUE_X}" y="14">${BADGE_VALUE}</text></g></svg>
+          EOF
+          if git diff --quiet -- .github/badges/version.svg; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/badges/version.svg
+          git commit -m "docs(readme): update release badge to ${BADGE_VALUE}"
+          git push
+
       - name: Keep release as draft
         if: ${{ github.event_name == 'workflow_dispatch' && !inputs.publish_release }}
         run: echo "Draft release ${RELEASE_TAG} is ready. It was not published because publish_release=false."
