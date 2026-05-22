@@ -26,8 +26,9 @@
   <sub>Free desktop app for AI agent teams. Start with a free model with no auth - no signup, API key, or card - or connect Claude/Codex/OpenCode provider access for more models. Not just coding agents.</sub>
 </p>
 
+<!--
 <img width="1304" height="820" alt="image" src="https://github.com/user-attachments/assets/dea53a01-68b3-4c36-bcf6-e4d1ad4cdb31" />
-
+-->
 https://github.com/user-attachments/assets/d1a85fe5-fb49-4009-b2c1-79ae8818e8c4
 
 <table>
@@ -98,6 +99,7 @@ No prerequisites - the app can detect supported runtimes/providers and guide set
 - [Development](#development)
   - [Developer architecture docs](#developer-architecture-docs)
 - [Tech stack](#tech-stack)
+  - [Debug teammate runtimes](#debug-teammate-runtimes)
   - [Build for distribution](#build-for-distribution)
   - [Scripts](#scripts)
 - [Roadmap](#roadmap)
