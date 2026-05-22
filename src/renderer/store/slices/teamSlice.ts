@@ -46,6 +46,11 @@ import {
 } from '../team/teamDataRequestKeys';
 import { selectTeamDataForName } from '../team/teamDataSelectors';
 import {
+  mapReviewError,
+  mapSendMessageError,
+  shouldInvalidateCachedTeamDataForError,
+} from '../team/teamErrorPolicies';
+import {
   captureTeamLocalStateEpoch,
   clearAllTeamLocalStateEpochs,
   hasTeamLocalStateEpoch,
@@ -1202,24 +1207,6 @@ function preserveKnownTaskChangePresence(
   return changed ? mergedTasks : nextTasks;
 }
 
-function mapSendMessageError(error: unknown): string {
-  const message =
-    error instanceof IpcError ? error.message : error instanceof Error ? error.message : '';
-  if (message.includes('Failed to verify inbox write')) {
-    return 'Message was written but not verified (race). Please try again.';
-  }
-  return message || 'Failed to send message';
-}
-
-function mapReviewError(error: unknown): string {
-  const message =
-    error instanceof IpcError ? error.message : error instanceof Error ? error.message : '';
-  if (message.includes('Task status update verification failed')) {
-    return 'Failed to update task status (possible agent conflict).';
-  }
-  return message || 'Failed to perform review action';
-}
-
 export interface GlobalTaskDetailState {
   teamName: string;
   taskId: string;
@@ -1941,15 +1928,6 @@ function isVisibleInActiveTeamSurface(
       (activeTab?.type === 'team' || activeTab?.type === 'graph') && activeTab.teamName === teamName
     );
   });
-}
-
-function shouldInvalidateCachedTeamDataForError(teamName: string, message: string): boolean {
-  return (
-    message === 'TEAM_DRAFT' ||
-    message.includes('TEAM_DRAFT') ||
-    message === `Team not found: ${teamName}` ||
-    message === 'Team config not found'
-  );
 }
 
 export interface TeamSlice {
