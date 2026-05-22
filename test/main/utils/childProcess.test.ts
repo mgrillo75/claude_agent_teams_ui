@@ -102,6 +102,36 @@ function createExtensionlessNpmNodeLauncher(): {
   return { dir, launcher, target };
 }
 
+function createNpmNativeExeLauncher(): {
+  dir: string;
+  launcher: string;
+  target: string;
+} {
+  const dir = mkdtempSync(path.join(tmpdir(), 'cat-cli-native-launcher-'));
+  const targetDir = path.join(dir, 'node_modules', 'opencode-ai', 'bin');
+  mkdirSync(targetDir, { recursive: true });
+  const target = path.join(targetDir, 'opencode.exe');
+  writeFileSync(target, '', 'utf8');
+  const launcher = path.join(dir, 'opencode.cmd');
+  writeFileSync(
+    launcher,
+    [
+      '@ECHO off',
+      'GOTO start',
+      ':find_dp0',
+      'SET dp0=%~dp0',
+      'EXIT /b',
+      ':start',
+      'SETLOCAL',
+      'CALL :find_dp0',
+      'endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%dp0%\\node_modules\\opencode-ai\\bin\\opencode.exe" %*',
+      '',
+    ].join('\r\n'),
+    'utf8'
+  );
+  return { dir, launcher, target };
+}
+
 describe('cli child process helpers', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -214,6 +244,25 @@ describe('cli child process helpers', () => {
         expect(spawnMock.mock.calls[0][0]).toBe('node');
         expect(spawnMock.mock.calls[0][1]).toEqual([target, '--model', 'test%PATH%"arg']);
         expect(spawnMock.mock.calls[0][2]).not.toHaveProperty('shell');
+        expect(result).toBe(fake);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it('runs npm native exe cmd launchers directly', () => {
+      setPlatform('win32');
+      const fake = new EventEmitter() as ReturnType<typeof spawnCli>;
+      const spawnMock = child.spawn as unknown as Mock;
+      spawnMock.mockReturnValue(fake);
+      const { dir, launcher, target } = createNpmNativeExeLauncher();
+      try {
+        const result = spawnCli(launcher, ['serve', '--hostname', '127.0.0.1']);
+        expect(spawnMock).toHaveBeenCalledTimes(1);
+        expect(spawnMock.mock.calls[0][0]).toBe(target);
+        expect(spawnMock.mock.calls[0][1]).toEqual(['serve', '--hostname', '127.0.0.1']);
+        expect(spawnMock.mock.calls[0][2]).not.toHaveProperty('shell');
+        expect(spawnMock.mock.calls[0][2]).toMatchObject({ windowsHide: true });
         expect(result).toBe(fake);
       } finally {
         rmSync(dir, { recursive: true, force: true });

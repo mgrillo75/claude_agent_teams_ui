@@ -33,6 +33,9 @@ export async function ensureAgentTeamsMcpLocalLaunchEnv(
       return;
     }
 
+    for (const [key, value] of Object.entries(launchSpec.env ?? {})) {
+      env[key] = value;
+    }
     env[MCP_COMMAND_ENV] = command;
     env[MCP_ENTRY_ENV] = entry;
     env[MCP_ARGS_JSON_ENV] = JSON.stringify(launchSpec.args);

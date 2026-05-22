@@ -276,6 +276,25 @@ describe('buildProviderAwareCliEnv', () => {
     );
   });
 
+  it('propagates Agent Teams MCP launch env overrides for OpenCode provider commands', async () => {
+    resolveAgentTeamsMcpLaunchSpecMock.mockResolvedValue({
+      command: '/opt/Agent Teams AI/agent-teams-ai',
+      args: ['/app/mcp-server/index.js'],
+      env: { ELECTRON_RUN_AS_NODE: '1' },
+    });
+    const { buildProviderAwareCliEnv } =
+      await import('../../../../src/main/services/runtime/providerAwareCliEnv');
+
+    const result = await buildProviderAwareCliEnv({
+      providerId: 'opencode',
+    });
+
+    expect(result.env.ELECTRON_RUN_AS_NODE).toBe('1');
+    expect(result.env.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_COMMAND).toBe(
+      '/opt/Agent Teams AI/agent-teams-ai'
+    );
+  });
+
   it('preserves explicit local Agent Teams MCP launch env for OpenCode provider commands', async () => {
     const { buildProviderAwareCliEnv } =
       await import('../../../../src/main/services/runtime/providerAwareCliEnv');

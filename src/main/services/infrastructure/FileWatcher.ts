@@ -435,6 +435,10 @@ export class FileWatcher extends EventEmitter {
       // Guard: stop() may have been called while awaiting pathExists
       if (!this.isWatching) return;
 
+      // Teams deliberately use TeamTaskWatchRegistry instead of recursive fs.watch.
+      // Linux recursive watching expands across the whole team runtime tree and can
+      // hit EMFILE/ENOSPC. The registry keeps the watched surface aligned with
+      // processTeamsChange(): team root JSON files plus inbox JSON files only.
       const registry = new TeamTaskWatchRegistry({
         kind: 'teams',
         rootPath: this.teamsPath,
@@ -479,6 +483,8 @@ export class FileWatcher extends EventEmitter {
       // Guard: stop() may have been called while awaiting pathExists
       if (!this.isWatching) return;
 
+      // Tasks share the same shallow registry rule as teams. Keep polling out of
+      // the normal path here; it is only the known-error fallback below.
       const registry = new TeamTaskWatchRegistry({
         kind: 'tasks',
         rootPath: this.tasksPath,
@@ -647,6 +653,9 @@ export class FileWatcher extends EventEmitter {
     error: unknown,
     watcher?: CloseableWatcher
   ): boolean {
+    // Polling fallback is intentionally narrow. Projects/todos keep their native
+    // watcher retry behavior, while teams/tasks can switch to scoped polling only
+    // after known OS watcher-limit or platform errors from Chokidar/fs.watch.
     if ((watcherType !== 'teams' && watcherType !== 'tasks') || !this.isWatchLimitError(error)) {
       return false;
     }
@@ -721,6 +730,8 @@ export class FileWatcher extends EventEmitter {
     };
 
     runPoll();
+    // This is fallback content polling after watcher failure, not the default mode.
+    // Keep intervals conservative and scoped to the same shallow artifacts as the registry.
     const timer = setInterval(runPoll, this.getTeamTaskPollIntervalMs(watcherType));
     timer.unref();
 
@@ -799,6 +810,8 @@ export class FileWatcher extends EventEmitter {
     const snapshot = new Map<string, string>();
     const teamEntries = await this.safeReadDir(this.teamsPath);
 
+    // Fallback polling mirrors TeamTaskWatchRegistry. Do not recurse into members,
+    // runtime, .opencode-runtime, logs, or other deep trees from here.
     for (const teamEntry of teamEntries) {
       if (!teamEntry.isDirectory()) {
         continue;
@@ -825,6 +838,8 @@ export class FileWatcher extends EventEmitter {
     const snapshot = new Map<string, string>();
     const teamEntries = await this.safeReadDir(this.tasksPath);
 
+    // Keep task fallback scoped to tasks/<team>/*.json. Hidden files and nested
+    // runtime directories are intentionally outside the public team-change surface.
     for (const teamEntry of teamEntries) {
       if (!teamEntry.isDirectory()) {
         continue;
@@ -1351,6 +1366,9 @@ export class FileWatcher extends EventEmitter {
       return;
     }
 
+    // Keep this classifier in lockstep with TeamTaskWatchRegistry.shouldEmit().
+    // If a path is emitted by the registry but ignored here, the UI will miss it.
+    // If a path is added here but not emitted there, Chokidar mode will never see it.
     if (relative === 'processes.json') {
       const event: TeamChangeEvent = { type: 'process', teamName, detail: relative };
       this.emit('team-change', event);
@@ -1414,6 +1432,8 @@ export class FileWatcher extends EventEmitter {
       return;
     }
 
+    // Keep this in sync with the tasks registry and fallback polling filters:
+    // only tasks/<team>/*.json is a user-visible task event.
     // Ignore known non-task files in ~/.claude/tasks
     if (
       relative === '.lock' ||

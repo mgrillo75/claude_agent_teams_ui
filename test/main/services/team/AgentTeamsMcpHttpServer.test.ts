@@ -127,6 +127,7 @@ describe('AgentTeamsMcpHttpServer', () => {
       resolveLaunchSpec: async () => ({
         command: 'node',
         args: ['mcp-server/dist/index.js'],
+        env: { ELECTRON_RUN_AS_NODE: '1' },
       }),
       allocatePort: async () => 41001,
       spawnProcess,
@@ -167,6 +168,7 @@ describe('AgentTeamsMcpHttpServer', () => {
         '/mcp',
       ],
       expect.objectContaining({
+        ELECTRON_RUN_AS_NODE: '1',
         AGENT_TEAMS_MCP_TRANSPORT: 'httpStream',
         AGENT_TEAMS_MCP_HTTP_HOST: '127.0.0.1',
         AGENT_TEAMS_MCP_HTTP_PORT: '41001',
@@ -521,6 +523,7 @@ describe('AgentTeamsMcpHttpServer', () => {
       allocatePort,
       spawnProcess,
       waitForPort,
+      canListenOnPort: async () => true,
       probeHealth: vi.fn(async () => ({ healthy: false, statusCode: null, identity: null })),
     });
 

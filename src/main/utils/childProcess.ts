@@ -231,6 +231,20 @@ function resolveNpmNodeShim(content: string, launcherDir: string): DirectWindows
   };
 }
 
+function resolveNpmNativeShim(content: string, launcherDir: string): DirectWindowsLauncher | null {
+  const nativeTarget = /(?:^|[&|])\s*"([^"]+\.(?:exe|com))"\s+%\*/im.exec(content)?.[1];
+  if (!nativeTarget) {
+    return null;
+  }
+
+  const target = resolveCmdPathTemplate(nativeTarget, launcherDir);
+  if (!existsSync(target)) {
+    return null;
+  }
+
+  return { command: target, argsPrefix: [] };
+}
+
 /**
  * Some Windows launchers are thin wrappers around a real JS entrypoint.
  * Running that entrypoint directly with an argv array avoids cmd.exe's
@@ -245,7 +259,9 @@ function resolveDirectWindowsLauncher(binaryPath: string): DirectWindowsLauncher
     const content = readFileSync(binaryPath, 'utf8');
     const launcherDir = path.dirname(binaryPath);
     return (
-      resolveGeneratedBunLauncher(content, launcherDir) ?? resolveNpmNodeShim(content, launcherDir)
+      resolveGeneratedBunLauncher(content, launcherDir) ??
+      resolveNpmNodeShim(content, launcherDir) ??
+      resolveNpmNativeShim(content, launcherDir)
     );
   } catch {
     return null;

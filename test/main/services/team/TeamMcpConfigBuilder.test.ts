@@ -60,6 +60,7 @@ vi.mock('@main/utils/shellEnv', async (importOriginal) => {
 
 import {
   clearResolvedNodePathForTests,
+  resolveAgentTeamsMcpLaunchSpec,
   TeamMcpConfigBuilder,
 } from '@main/services/team/TeamMcpConfigBuilder';
 import { setAppDataBasePath, setClaudeBasePathOverride } from '@main/utils/pathDecoder';
@@ -352,6 +353,53 @@ describe('TeamMcpConfigBuilder', () => {
     expect(readGeneratedServer(configPath)?.command).toBe('/mock-shell-node-bin/node');
     expect(readGeneratedServer(configPath)?.command).not.toBe('node');
     expect(hoisted.resolveInteractiveShellEnvMock).not.toHaveBeenCalled();
+  });
+
+  it('uses the packaged Electron Node runtime for Linux packaged MCP launches', async () => {
+    const platformDescriptor = Object.getOwnPropertyDescriptor(process, 'platform');
+    const execPathDescriptor = Object.getOwnPropertyDescriptor(process, 'execPath');
+    const electronBinary = '/opt/Agent Teams AI/agent-teams-ai';
+    setPackagedMode(true, '3.0.0');
+    const resourcesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'team-mcp-resources-'));
+    createdDirs.push(resourcesDir);
+    createPackagedServerBundle(resourcesDir, '// packaged linux server');
+    setResourcesPath(resourcesDir);
+
+    Object.defineProperty(process, 'platform', {
+      value: 'linux',
+      configurable: true,
+    });
+    Object.defineProperty(process, 'execPath', {
+      value: electronBinary,
+      configurable: true,
+      writable: true,
+    });
+
+    try {
+      const launchSpec = await resolveAgentTeamsMcpLaunchSpec();
+      const builder = new TeamMcpConfigBuilder();
+      const configPath = await builder.writeConfigFile();
+      createdPaths.push(configPath);
+      const server = readGeneratedServer(configPath);
+      const expectedEntry = path.join(tempAppData, 'mcp-server', '3.0.0', 'index.js');
+
+      expect(launchSpec).toEqual({
+        command: electronBinary,
+        args: [expectedEntry],
+        env: { ELECTRON_RUN_AS_NODE: '1' },
+      });
+      expect(server?.command).toBe(electronBinary);
+      expect(server?.args).toEqual([expectedEntry]);
+      expect(server?.env?.ELECTRON_RUN_AS_NODE).toBe('1');
+      expect(hoisted.execCliMock).not.toHaveBeenCalled();
+    } finally {
+      if (platformDescriptor) {
+        Object.defineProperty(process, 'platform', platformDescriptor);
+      }
+      if (execPathDescriptor) {
+        Object.defineProperty(process, 'execPath', execPathDescriptor);
+      }
+    }
   });
 
   it('falls back to strict shell env lookup when fast Node lookup cannot resolve Node', async () => {

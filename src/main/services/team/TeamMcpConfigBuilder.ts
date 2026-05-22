@@ -21,6 +21,7 @@ import type { TeamMemberMcpPolicy, TeamMemberMcpScope } from '@shared/types';
 export interface McpLaunchSpec {
   command: string;
   args: string[];
+  env?: Record<string, string>;
 }
 
 export interface McpLaunchSpecResolveProgress {
@@ -40,6 +41,7 @@ interface WriteMcpConfigOptions {
 const MCP_SERVER_NAME = 'agent-teams';
 const MCP_CLAUDE_DIR_ENV = 'AGENT_TEAMS_MCP_CLAUDE_DIR';
 const MCP_CONTROL_URL_ENV = 'CLAUDE_TEAM_CONTROL_URL';
+const ELECTRON_RUN_AS_NODE_ENV = 'ELECTRON_RUN_AS_NODE';
 const logger = createLogger('Service:TeamMcpConfigBuilder');
 const MCP_CONFIG_PREFIX = 'agent-teams-mcp-';
 const MCP_CONFIG_REMOVE_RETRY_DELAYS_MS = [25, 75, 150] as const;
@@ -58,6 +60,7 @@ const MCP_CONFIG_SCOPE_PRECEDENCE: readonly TeamMemberMcpScope[] = ['user', 'pro
 
 function isPackagedApp(): boolean {
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { app } = require('electron') as typeof import('electron');
     return app.isPackaged;
   } catch {
@@ -86,6 +89,25 @@ function getPackagedServerEntry(): string {
 
 function getWorkspaceRoot(): string {
   return process.cwd();
+}
+
+function shouldUsePackagedElectronNodeRuntime(): boolean {
+  return (
+    isPackagedApp() &&
+    process.platform === 'linux' &&
+    typeof process.execPath === 'string' &&
+    process.execPath.trim().length > 0
+  );
+}
+
+function buildPackagedElectronNodeLaunchSpec(entry: string): McpLaunchSpec {
+  return {
+    command: process.execPath,
+    args: [entry],
+    env: {
+      [ELECTRON_RUN_AS_NODE_ENV]: '1',
+    },
+  };
 }
 
 function getWorkspaceMcpServerDir(): string {
@@ -450,6 +472,14 @@ export async function resolveAgentTeamsMcpLaunchSpec(
     const packagedEntry = await resolvePackagedServerEntry(options);
     checked.push(packagedEntry);
     if (await pathExists(packagedEntry)) {
+      if (shouldUsePackagedElectronNodeRuntime()) {
+        emitProgress(
+          options,
+          'electron-node-runtime-found',
+          'Using bundled Electron Node runtime...'
+        );
+        return buildPackagedElectronNodeLaunchSpec(packagedEntry);
+      }
       return {
         command: await resolveNodePath(options),
         args: [packagedEntry],
@@ -520,6 +550,7 @@ export class TeamMcpConfigBuilder {
       args: launchSpec.args,
       enabled: true,
       env: {
+        ...launchSpec.env,
         [MCP_CLAUDE_DIR_ENV]: getClaudeBasePath(),
         ...(controlApiBaseUrl ? { [MCP_CONTROL_URL_ENV]: controlApiBaseUrl } : {}),
       },
