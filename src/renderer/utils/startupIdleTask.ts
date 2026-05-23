@@ -1,19 +1,17 @@
 type StartupIdleTask = () => void;
-type StartupIdleDeadline = {
+
+interface StartupIdleDeadline {
   didTimeout: boolean;
   timeRemaining: () => number;
-};
+}
+
 type StartupIdleCallback = (deadline: StartupIdleDeadline) => void;
-type StartupIdleHandle = number;
 
 export interface StartupIdleTaskScheduler {
   setTimeout: typeof setTimeout;
   clearTimeout: typeof clearTimeout;
-  requestIdleCallback?: (
-    callback: StartupIdleCallback,
-    options?: { timeout?: number }
-  ) => StartupIdleHandle;
-  cancelIdleCallback?: (handle: StartupIdleHandle) => void;
+  requestIdleCallback?: (callback: StartupIdleCallback, options?: { timeout?: number }) => number;
+  cancelIdleCallback?: (handle: number) => void;
 }
 
 export interface StartupIdleTaskOptions {
@@ -34,8 +32,8 @@ function getDefaultStartupIdleTaskScheduler(): StartupIdleTaskScheduler {
           });
 
   return {
-    setTimeout: timerHost.setTimeout.bind(timerHost) as typeof setTimeout,
-    clearTimeout: timerHost.clearTimeout.bind(timerHost) as typeof clearTimeout,
+    setTimeout: timerHost.setTimeout.bind(timerHost),
+    clearTimeout: timerHost.clearTimeout.bind(timerHost),
     requestIdleCallback: idleWindow?.requestIdleCallback?.bind(idleWindow),
     cancelIdleCallback: idleWindow?.cancelIdleCallback?.bind(idleWindow),
   };
@@ -51,7 +49,7 @@ export function scheduleStartupIdleTask(
   let cancelled = false;
   let ran = false;
   let delayTimer: ReturnType<typeof setTimeout> | null = null;
-  let idleHandle: StartupIdleHandle | null = null;
+  let idleHandle: number | null = null;
 
   const runOnce = (): void => {
     if (cancelled || ran) {

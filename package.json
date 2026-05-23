@@ -251,10 +251,29 @@
       "output": "release"
     },
     "files": [
-      "out/renderer/**",
-      "dist-electron/**",
-      "package.json",
-      "!**/*.map"
+      {
+        "from": "out/renderer",
+        "to": "out/renderer",
+        "filter": [
+          "**/*",
+          "!**/*.map"
+        ]
+      },
+      {
+        "from": "dist-electron",
+        "to": "dist-electron",
+        "filter": [
+          "**/*",
+          "!**/*.map"
+        ]
+      },
+      {
+        "from": ".",
+        "to": ".",
+        "filter": [
+          "package.json"
+        ]
+      }
     ],
     "asar": true,
     "asarUnpack": [

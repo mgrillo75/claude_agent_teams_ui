@@ -46,6 +46,7 @@ jobs:
           cache: pnpm
 
       - name: Restore pnpm node-gyp executable bit
+        shell: bash
         run: |
           PNPM_STORE="$(pnpm store path)"
           find "$PNPM_STORE" -path '*/node-gyp/gyp/gyp_main.py' -exec chmod +x {} \; 2>/dev/null || true
@@ -463,6 +464,7 @@ jobs:
           python-version: '3.11'
 
       - name: Restore pnpm node-gyp executable bit
+        shell: bash
         run: |
           PNPM_STORE="$(pnpm store path)"
           find "$PNPM_STORE" -path '*/node-gyp/gyp/gyp_main.py' -exec chmod +x {} \; 2>/dev/null || true
