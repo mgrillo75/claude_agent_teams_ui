@@ -275,6 +275,112 @@ describe('cliInstaller IPC handlers', () => {
     expect(cached.data?.providers[0]?.statusMessage).toBe('ChatGPT account ready');
   });
 
+  it('keeps lightweight startup status cache separate from full provider status cache', async () => {
+    const deferredStartupStatus = status([
+      provider({
+        providerId: 'anthropic',
+        supported: false,
+        statusMessage: 'Provider status will refresh when needed.',
+      }),
+      provider({
+        providerId: 'codex',
+        supported: false,
+        statusMessage: 'Provider status will refresh when needed.',
+      }),
+    ]);
+    const fullStatus = status([
+      provider({
+        providerId: 'anthropic',
+        authenticated: true,
+        authMethod: 'oauth_token',
+        verificationState: 'verified',
+        statusMessage: 'Connected',
+      }),
+      provider({
+        providerId: 'codex',
+        authenticated: true,
+        authMethod: 'chatgpt',
+        verificationState: 'verified',
+        statusMessage: 'ChatGPT account ready',
+      }),
+    ]);
+    const startupRequest = deferred<CliInstallationStatus>();
+    const fullRequest = deferred<CliInstallationStatus>();
+    service.getStatus.mockImplementation((options?: { providerStatusMode?: string }) =>
+      options?.providerStatusMode === 'defer' ? startupRequest.promise : fullRequest.promise
+    );
+
+    const startupInvoke = ipcMain.invoke(CLI_INSTALLER_GET_STATUS, {
+      providerStatusMode: 'defer',
+    }) as Promise<IpcResult<CliInstallationStatus>>;
+    const fullInvoke = ipcMain.invoke(CLI_INSTALLER_GET_STATUS) as Promise<
+      IpcResult<CliInstallationStatus>
+    >;
+    await vi.waitFor(() => expect(service.getStatus).toHaveBeenCalledTimes(2));
+
+    startupRequest.resolve(deferredStartupStatus);
+    fullRequest.resolve(fullStatus);
+
+    await expect(startupInvoke).resolves.toMatchObject({
+      success: true,
+      data: { authLoggedIn: false },
+    });
+    await expect(fullInvoke).resolves.toMatchObject({
+      success: true,
+      data: { authLoggedIn: true, authMethod: 'oauth_token' },
+    });
+
+    const cachedStartup = (await ipcMain.invoke(CLI_INSTALLER_GET_STATUS, {
+      providerStatusMode: 'defer',
+    })) as IpcResult<CliInstallationStatus>;
+    const cachedFull = (await ipcMain.invoke(
+      CLI_INSTALLER_GET_STATUS
+    )) as IpcResult<CliInstallationStatus>;
+
+    expect(service.getStatus).toHaveBeenCalledTimes(2);
+    expect(cachedStartup.data?.authLoggedIn).toBe(false);
+    expect(cachedStartup.data?.providers[0]?.statusMessage).toBe(
+      'Provider status will refresh when needed.'
+    );
+    expect(cachedFull.data?.authLoggedIn).toBe(true);
+    expect(cachedFull.data?.providers[1]?.statusMessage).toBe('ChatGPT account ready');
+  });
+
+  it('does not replace a cached full provider status with a deferred startup snapshot', async () => {
+    const fullStatus = status([
+      provider({
+        providerId: 'anthropic',
+        authenticated: true,
+        authMethod: 'oauth_token',
+        verificationState: 'verified',
+        statusMessage: 'Connected',
+      }),
+    ]);
+    const deferredStartupStatus = status([
+      provider({
+        providerId: 'anthropic',
+        supported: false,
+        verificationState: 'unknown',
+        statusMessage: 'Provider status will refresh when needed.',
+      }),
+    ]);
+    service.getStatus.mockResolvedValueOnce(fullStatus);
+
+    const first = (await ipcMain.invoke(CLI_INSTALLER_GET_STATUS)) as IpcResult<CliInstallationStatus>;
+    expect(first.success).toBe(true);
+    expect(first.data?.providers[0]?.statusMessage).toBe('Connected');
+
+    service.getLatestStatusSnapshot.mockReturnValue(deferredStartupStatus);
+    const cached = (await ipcMain.invoke(
+      CLI_INSTALLER_GET_STATUS
+    )) as IpcResult<CliInstallationStatus>;
+
+    expect(service.getStatus).toHaveBeenCalledTimes(1);
+    expect(cached.success).toBe(true);
+    expect(cached.data?.authLoggedIn).toBe(true);
+    expect(cached.data?.providers[0]?.statusMessage).toBe('Connected');
+  });
+
   it('does not let a stale in-flight provider refresh patch the cache after invalidation', async () => {
     const staleProviderRequest = deferred<CliProviderStatus | null>();
     service.getStatus

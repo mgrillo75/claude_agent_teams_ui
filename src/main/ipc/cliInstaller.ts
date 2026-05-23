@@ -24,6 +24,8 @@ import { ClaudeBinaryResolver } from '../services/team/ClaudeBinaryResolver';
 import type { CliInstallerService } from '../services';
 import type {
   CliInstallationStatus,
+  CliInstallerGetStatusOptions,
+  CliInstallerProviderStatusMode,
   CliProviderId,
   CliProviderStatus,
   IpcResult,
@@ -33,12 +35,16 @@ import type { IpcMain, IpcMainInvokeEvent } from 'electron';
 const logger = createLogger('IPC:cliInstaller');
 
 let service: CliInstallerService;
-let statusInFlight: Promise<CliInstallationStatus> | null = null;
+const statusInFlight = new Map<CliInstallerProviderStatusMode, Promise<CliInstallationStatus>>();
 const providerStatusInFlight = new Map<CliProviderId, Promise<CliProviderStatus | null>>();
-let cachedStatus: { value: CliInstallationStatus; at: number } | null = null;
+const cachedStatus = new Map<
+  CliInstallerProviderStatusMode,
+  { value: CliInstallationStatus; at: number }
+>();
 let statusCacheGeneration = 0;
 const STATUS_CACHE_TTL_MS = 5_000;
 const FRONTEND_MULTIMODEL_PROVIDER_IDS = new Set<CliProviderId>(['anthropic', 'codex', 'opencode']);
+const DEFERRED_PROVIDER_STATUS_MESSAGE = 'Provider status will refresh when needed.';
 
 function isFrontendMultimodelProviderId(providerId: CliProviderId): boolean {
   return FRONTEND_MULTIMODEL_PROVIDER_IDS.has(providerId);
@@ -52,6 +58,39 @@ function getCachedStatusAuthenticatedProvider(
       (provider) => isFrontendMultimodelProviderId(provider.providerId) && provider.authenticated
     ) ?? null
   );
+}
+
+function normalizeGetStatusOptions(options: unknown): Required<CliInstallerGetStatusOptions> {
+  if (
+    typeof options === 'object' &&
+    options !== null &&
+    (options as CliInstallerGetStatusOptions).providerStatusMode === 'defer'
+  ) {
+    return { providerStatusMode: 'defer' };
+  }
+
+  return { providerStatusMode: 'full' };
+}
+
+function isDeferredProviderStatusSnapshot(status: CliInstallationStatus): boolean {
+  return (
+    status.flavor === 'agent_teams_orchestrator' &&
+    status.providers.length > 0 &&
+    status.providers.every(
+      (provider) =>
+        provider.supported === false &&
+        provider.authenticated === false &&
+        provider.verificationState === 'unknown' &&
+        provider.statusMessage === DEFERRED_PROVIDER_STATUS_MESSAGE
+    )
+  );
+}
+
+function canUseLatestSnapshotForCacheKey(
+  cacheKey: CliInstallerProviderStatusMode,
+  status: CliInstallationStatus
+): boolean {
+  return cacheKey === 'defer' || !isDeferredProviderStatusSnapshot(status);
 }
 
 /**
@@ -92,32 +131,36 @@ export function removeCliInstallerHandlers(ipcMain: IpcMain): void {
 // =============================================================================
 
 async function handleGetStatus(
-  _event: IpcMainInvokeEvent
+  _event: IpcMainInvokeEvent,
+  options?: CliInstallerGetStatusOptions
 ): Promise<IpcResult<CliInstallationStatus>> {
   try {
+    const normalizedOptions = normalizeGetStatusOptions(options);
+    const cacheKey = normalizedOptions.providerStatusMode;
     const latestSnapshot = service.getLatestStatusSnapshot();
-    if (cachedStatus && Date.now() - cachedStatus.at < STATUS_CACHE_TTL_MS) {
-      if (latestSnapshot) {
-        cachedStatus = { value: latestSnapshot, at: Date.now() };
+    const cached = cachedStatus.get(cacheKey);
+    if (cached && Date.now() - cached.at < STATUS_CACHE_TTL_MS) {
+      if (latestSnapshot && canUseLatestSnapshotForCacheKey(cacheKey, latestSnapshot)) {
+        cachedStatus.set(cacheKey, { value: latestSnapshot, at: Date.now() });
         return { success: true, data: latestSnapshot };
       }
-      return { success: true, data: cachedStatus.value };
+      return { success: true, data: cached.value };
     }
 
-    if (!statusInFlight) {
+    if (!statusInFlight.has(cacheKey)) {
       const startedAt = Date.now();
       const generation = statusCacheGeneration;
       const request = service
-        .getStatus()
+        .getStatus(normalizedOptions)
         .then((status) => {
           if (generation === statusCacheGeneration) {
-            cachedStatus = { value: status, at: Date.now() };
+            cachedStatus.set(cacheKey, { value: status, at: Date.now() });
           }
           return status;
         })
         .catch((err) => {
           if (generation === statusCacheGeneration) {
-            cachedStatus = null;
+            cachedStatus.delete(cacheKey);
           }
           throw err;
         })
@@ -126,14 +169,14 @@ async function handleGetStatus(
           if (ms >= 2000) {
             logger.warn(`cliInstaller:getStatus slow ms=${ms}`);
           }
-          if (statusInFlight === request) {
-            statusInFlight = null;
+          if (statusInFlight.get(cacheKey) === request) {
+            statusInFlight.delete(cacheKey);
           }
         });
-      statusInFlight = request;
+      statusInFlight.set(cacheKey, request);
     }
 
-    const status = await statusInFlight;
+    const status = await statusInFlight.get(cacheKey)!;
     return { success: true, data: status };
   } catch (error) {
     const msg = getErrorMessage(error);
@@ -143,42 +186,44 @@ async function handleGetStatus(
 }
 
 function patchCachedProviderStatus(providerStatus: CliProviderStatus | null): void {
-  if (!cachedStatus || !providerStatus) {
+  if (!providerStatus) {
     return;
   }
 
-  if (
-    cachedStatus.value.flavor === 'agent_teams_orchestrator' &&
-    !isFrontendMultimodelProviderId(providerStatus.providerId)
-  ) {
-    return;
+  for (const [cacheKey, cached] of cachedStatus) {
+    if (
+      cached.value.flavor === 'agent_teams_orchestrator' &&
+      !isFrontendMultimodelProviderId(providerStatus.providerId)
+    ) {
+      continue;
+    }
+
+    const hasProvider = cached.value.providers.some(
+      (provider) => provider.providerId === providerStatus.providerId
+    );
+    const nextProviders = hasProvider
+      ? cached.value.providers.map((provider) =>
+          provider.providerId === providerStatus.providerId ? providerStatus : provider
+        )
+      : [...cached.value.providers, providerStatus];
+    const authenticatedProvider =
+      cached.value.flavor === 'agent_teams_orchestrator'
+        ? getCachedStatusAuthenticatedProvider(nextProviders)
+        : (nextProviders.find((provider) => provider.authenticated) ?? null);
+
+    cachedStatus.set(cacheKey, {
+      value: {
+        ...cached.value,
+        providers: nextProviders,
+        authLoggedIn:
+          cached.value.flavor === 'agent_teams_orchestrator'
+            ? authenticatedProvider !== null
+            : nextProviders.some((provider) => provider.authenticated),
+        authMethod: authenticatedProvider?.authMethod ?? null,
+      },
+      at: Date.now(),
+    });
   }
-
-  const hasProvider = cachedStatus.value.providers.some(
-    (provider) => provider.providerId === providerStatus.providerId
-  );
-  const nextProviders = hasProvider
-    ? cachedStatus.value.providers.map((provider) =>
-        provider.providerId === providerStatus.providerId ? providerStatus : provider
-      )
-    : [...cachedStatus.value.providers, providerStatus];
-  const authenticatedProvider =
-    cachedStatus.value.flavor === 'agent_teams_orchestrator'
-      ? getCachedStatusAuthenticatedProvider(nextProviders)
-      : (nextProviders.find((provider) => provider.authenticated) ?? null);
-
-  cachedStatus = {
-    value: {
-      ...cachedStatus.value,
-      providers: nextProviders,
-      authLoggedIn:
-        cachedStatus.value.flavor === 'agent_teams_orchestrator'
-          ? authenticatedProvider !== null
-          : nextProviders.some((provider) => provider.authenticated),
-      authMethod: authenticatedProvider?.authMethod ?? null,
-    },
-    at: Date.now(),
-  };
 }
 
 async function handleGetProviderStatus(
@@ -248,8 +293,8 @@ async function handleVerifyProviderModels(
 
 function handleInvalidateStatus(_event: IpcMainInvokeEvent): IpcResult<void> {
   statusCacheGeneration += 1;
-  cachedStatus = null;
-  statusInFlight = null;
+  cachedStatus.clear();
+  statusInFlight.clear();
   providerStatusInFlight.clear();
   ClaudeBinaryResolver.clearCache();
   CodexBinaryResolver.clearCache();

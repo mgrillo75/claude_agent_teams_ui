@@ -888,6 +888,67 @@ describe('cliInstallerSlice', () => {
       expect(api.cliInstaller.getProviderStatus).not.toHaveBeenCalled();
     });
 
+    it('does not hydrate pending providers when startup asks to defer provider status checks', async () => {
+      const mockStatus = createMultimodelStatus([
+        createMultimodelProvider({
+          providerId: 'anthropic',
+          displayName: 'Anthropic',
+          supported: false,
+          authenticated: false,
+          authMethod: null,
+          verificationState: 'unknown',
+          statusMessage: 'Provider status will refresh when needed.',
+          models: [],
+          backend: null,
+          availableBackends: [],
+        }),
+        createMultimodelProvider({
+          providerId: 'codex',
+          displayName: 'Codex',
+          supported: false,
+          authenticated: false,
+          authMethod: null,
+          verificationState: 'unknown',
+          statusMessage: 'Provider status will refresh when needed.',
+          models: [],
+          backend: null,
+          availableBackends: [],
+        }),
+        createMultimodelProvider({
+          providerId: 'opencode',
+          displayName: 'OpenCode',
+          supported: false,
+          authenticated: false,
+          authMethod: null,
+          verificationState: 'unknown',
+          statusMessage: 'Provider status will refresh when needed.',
+          models: [],
+          backend: null,
+          availableBackends: [],
+          canLoginFromUi: false,
+        }),
+      ]);
+      vi.mocked(api.cliInstaller.getStatus).mockResolvedValue(mockStatus);
+
+      await useStore
+        .getState()
+        .bootstrapCliStatus({ multimodelEnabled: true, providerStatusMode: 'defer' });
+
+      expect(api.cliInstaller.getStatus).toHaveBeenCalledWith({ providerStatusMode: 'defer' });
+      expect(api.cliInstaller.getProviderStatus).not.toHaveBeenCalled();
+      expect(useStore.getState().cliStatusLoading).toBe(false);
+      expect(useStore.getState().cliProviderStatusLoading).toEqual({
+        anthropic: false,
+        codex: false,
+        opencode: false,
+      });
+      expect(useStore.getState().cliStatus?.providers.map((provider) => provider.statusMessage)).toEqual([
+        'Provider status will refresh when needed.',
+        'Provider status will refresh when needed.',
+        'Provider status will refresh when needed.',
+      ]);
+    });
+
     it('drops global loading once metadata is ready and keeps only unresolved providers loading', async () => {
       let resolveCodexStatus!: (value: CliInstallationStatus['providers'][number]) => void;
       const pendingCodexStatus = new Promise<CliInstallationStatus['providers'][number]>(

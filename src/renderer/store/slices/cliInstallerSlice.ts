@@ -659,7 +659,10 @@ export interface CliInstallerSlice {
   codexRuntimeError: string | null;
 
   // Actions
-  bootstrapCliStatus: (options?: { multimodelEnabled?: boolean }) => Promise<void>;
+  bootstrapCliStatus: (options?: {
+    multimodelEnabled?: boolean;
+    providerStatusMode?: 'full' | 'defer';
+  }) => Promise<void>;
   fetchCliStatus: () => Promise<void>;
   fetchCliProviderStatus: (
     providerId: CliProviderId,
@@ -714,13 +717,15 @@ export const createCliInstallerSlice: StateCreator<AppState, [], [], CliInstalle
   bootstrapCliStatus: async (options) => {
     if (!api.cliInstaller) return;
     const multimodelEnabled = options?.multimodelEnabled ?? true;
+    const providerStatusMode = options?.providerStatusMode ?? 'full';
+    const hydrateProviders = providerStatusMode !== 'defer';
     if (!multimodelEnabled) {
       return get().fetchCliStatus();
     }
 
     const epoch = ++cliStatusEpoch;
     const providerLoading = Object.fromEntries(
-      MULTIMODEL_PROVIDER_IDS.map((providerId) => [providerId, true])
+      MULTIMODEL_PROVIDER_IDS.map((providerId) => [providerId, hydrateProviders])
     ) as Partial<Record<CliProviderId, boolean>>;
 
     set({
@@ -731,7 +736,9 @@ export const createCliInstallerSlice: StateCreator<AppState, [], [], CliInstalle
     });
 
     try {
-      const metadata = await api.cliInstaller.getStatus();
+      const metadata = await api.cliInstaller.getStatus(
+        providerStatusMode === 'defer' ? { providerStatusMode } : undefined
+      );
       if (metadata.flavor !== 'agent_teams_orchestrator') {
         set((state) => {
           if (epoch !== cliStatusEpoch) {
@@ -756,9 +763,10 @@ export const createCliInstallerSlice: StateCreator<AppState, [], [], CliInstalle
       const nextProviderLoading = Object.fromEntries(
         MULTIMODEL_PROVIDER_IDS.map((providerId) => [
           providerId,
-          !isHydratedMultimodelProviderStatus(
-            metadata.providers.find((provider) => provider.providerId === providerId)
-          ),
+          hydrateProviders &&
+            !isHydratedMultimodelProviderStatus(
+              metadata.providers.find((provider) => provider.providerId === providerId)
+            ),
         ])
       ) as Partial<Record<CliProviderId, boolean>>;
       const pendingProviderIds = MULTIMODEL_PROVIDER_IDS.filter(
@@ -800,7 +808,7 @@ export const createCliInstallerSlice: StateCreator<AppState, [], [], CliInstalle
         return;
       }
 
-      if (pendingProviderIds.length === 0) {
+      if (!hydrateProviders || pendingProviderIds.length === 0) {
         return;
       }
 
@@ -818,14 +826,16 @@ export const createCliInstallerSlice: StateCreator<AppState, [], [], CliInstalle
     }
 
     try {
-      await Promise.allSettled(
-        MULTIMODEL_PROVIDER_IDS.map((providerId) =>
-          get().fetchCliProviderStatus(providerId, {
-            silent: false,
-            epoch,
-          })
-        )
-      );
+      if (hydrateProviders) {
+        await Promise.allSettled(
+          MULTIMODEL_PROVIDER_IDS.map((providerId) =>
+            get().fetchCliProviderStatus(providerId, {
+              silent: false,
+              epoch,
+            })
+          )
+        );
+      }
     } finally {
       if (epoch === cliStatusEpoch) {
         set({ cliStatusLoading: false });

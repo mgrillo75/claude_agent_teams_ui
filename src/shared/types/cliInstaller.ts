@@ -351,6 +351,16 @@ export interface CliInstallerProgress {
   status?: CliInstallationStatus;
 }
 
+export type CliInstallerProviderStatusMode = 'full' | 'defer';
+
+export interface CliInstallerGetStatusOptions {
+  /**
+   * `defer` keeps startup lightweight by checking only the runtime binary/version.
+   * Explicit refreshes should keep the default `full` mode.
+   */
+  providerStatusMode?: CliInstallerProviderStatusMode;
+}
+
 // =============================================================================
 // Preload API
 // =============================================================================
@@ -360,7 +370,7 @@ export interface CliInstallerProgress {
  */
 export interface CliInstallerAPI {
   /** Get current CLI installation status */
-  getStatus: () => Promise<CliInstallationStatus>;
+  getStatus: (options?: CliInstallerGetStatusOptions) => Promise<CliInstallationStatus>;
   /** Get current runtime/auth status for a single provider */
   getProviderStatus: (providerId: CliProviderId) => Promise<CliProviderStatus | null>;
   /** Start on-demand model verification for a single runtime provider */

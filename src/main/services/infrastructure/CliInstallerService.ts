@@ -49,7 +49,9 @@ import { getCliFlavorUiOptions, getConfiguredCliFlavor } from '../team/cliFlavor
 
 import type {
   CliInstallationStatus,
+  CliInstallerGetStatusOptions,
   CliInstallerProgress,
+  CliInstallerProviderStatusMode,
   CliPlatform,
   CliProviderId,
   CliProviderModelAvailability,
@@ -868,8 +870,9 @@ export class CliInstallerService {
   // Public: getStatus
   // ---------------------------------------------------------------------------
 
-  async getStatus(): Promise<CliInstallationStatus> {
+  async getStatus(options: CliInstallerGetStatusOptions = {}): Promise<CliInstallationStatus> {
     const statusStartedAt = Date.now();
+    const providerStatusMode: CliInstallerProviderStatusMode = options.providerStatusMode ?? 'full';
     const generation = ++this.statusGatherGeneration;
     const result = this.createInitialStatus();
     this.latestProviderSignatures.clear();
@@ -882,7 +885,7 @@ export class CliInstallerService {
     let timer: ReturnType<typeof setTimeout> | null = null;
     try {
       await Promise.race([
-        this.gatherStatus(ref, runDiag, generation),
+        this.gatherStatus(ref, runDiag, generation, providerStatusMode),
         new Promise<void>((resolve) => {
           timer = setTimeout(() => {
             logger.warn(
@@ -1023,7 +1026,8 @@ export class CliInstallerService {
   private async gatherStatus(
     ref: { current: CliInstallationStatus },
     diag: CliInstallerStatusRunDiag,
-    generation: number
+    generation: number,
+    providerStatusMode: CliInstallerProviderStatusMode
   ): Promise<void> {
     resetGatherDiag(diag);
     const shellEnvStartedAt = Date.now();
@@ -1048,6 +1052,14 @@ export class CliInstallerService {
         r.installedVersion = versionProbe.version;
         r.launchError = null;
         r.authStatusChecking = true;
+
+        if (r.flavor === 'agent_teams_orchestrator' && providerStatusMode === 'defer') {
+          r.authStatusChecking = false;
+          this.markProvidersDeferred(r);
+          this.publishStatusSnapshotIfCurrent(r, generation);
+          return;
+        }
+
         this.rememberHealthyStatus(r);
         this.publishStatusSnapshotIfCurrent(r, generation);
 
@@ -1180,6 +1192,28 @@ export class CliInstallerService {
       models: [],
       modelAvailability: [],
       canLoginFromUi: false,
+      backend: null,
+    }));
+    result.authLoggedIn = false;
+    result.authMethod = null;
+  }
+
+  private markProvidersDeferred(result: CliInstallationStatus): void {
+    if (result.flavor !== 'agent_teams_orchestrator') {
+      return;
+    }
+
+    result.providers = result.providers.map((provider) => ({
+      ...provider,
+      authenticated: false,
+      authMethod: null,
+      verificationState: 'unknown',
+      modelVerificationState: 'idle',
+      modelCatalogRefreshState: 'idle',
+      statusMessage: 'Provider status will refresh when needed.',
+      detailMessage: null,
+      models: [],
+      modelAvailability: [],
       backend: null,
     }));
     result.authLoggedIn = false;

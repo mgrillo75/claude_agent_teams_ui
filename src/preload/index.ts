@@ -273,6 +273,7 @@ import type {
   ClaudeRootFolderSelection,
   ClaudeRootInfo,
   CliInstallationStatus,
+  CliInstallerGetStatusOptions,
   CliInstallerProgress,
   CliProviderId,
   ConflictCheckResult,
@@ -1554,8 +1555,8 @@ const electronAPI: ElectronAPI = {
 
   // ===== CLI Installer API =====
   cliInstaller: {
-    getStatus: async (): Promise<CliInstallationStatus> => {
-      return invokeIpcWithResult<CliInstallationStatus>(CLI_INSTALLER_GET_STATUS);
+    getStatus: async (options?: CliInstallerGetStatusOptions): Promise<CliInstallationStatus> => {
+      return invokeIpcWithResult<CliInstallationStatus>(CLI_INSTALLER_GET_STATUS, options);
     },
     getProviderStatus: async (providerId: CliProviderId) => {
       return invokeIpcWithResult(CLI_INSTALLER_GET_PROVIDER_STATUS, providerId);

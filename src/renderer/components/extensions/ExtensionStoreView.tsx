@@ -260,6 +260,7 @@ export const ExtensionStoreView = (): React.JSX.Element => {
   useEffect(() => {
     void refreshCliStatusForCurrentMode({
       multimodelEnabled,
+      providerStatusMode: 'defer',
       bootstrapCliStatus,
       fetchCliStatus,
     });

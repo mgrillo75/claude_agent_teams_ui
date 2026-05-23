@@ -95,6 +95,7 @@ const TEAM_VISIBLE_IDLE_WATCHDOG_POLL_MS = 10_000;
 const TEAM_VISIBLE_IDLE_WATCHDOG_STALE_MS = 30_000;
 const TEAM_MESSAGE_FALLBACK_POLL_MS = 10_000;
 const TASK_LOG_ACTIVITY_PULSE_MS = 3_500;
+const STARTUP_RUNTIME_STATUS_IDLE_DELAY_MS = 30_000;
 const ACTIVE_PROVISIONING_STATES_FOR_PROCESS_LITE: ReadonlySet<TeamProvisioningProgress['state']> =
   new Set(['validating', 'spawning', 'configuring', 'assembling', 'finalizing', 'verifying']);
 export const TEAM_PROCESS_LITE_FANOUT_STORAGE_KEY = 'team:processLiteFanout';
@@ -209,6 +210,7 @@ export function initializeNotificationListeners(): () => void {
   const cleanupFns: (() => void)[] = [];
   cleanupFns.push(installTeamRefreshFanoutDebugBridge());
   let cliStatusTimer: ReturnType<typeof setTimeout> | null = null;
+  let runtimeStatusTimer: ReturnType<typeof setTimeout> | null = null;
   useStore.getState().subscribeProvisioningProgress();
   cleanupFns.push(() => {
     useStore.getState().unsubscribeProvisioningProgress();
@@ -241,19 +243,24 @@ export function initializeNotificationListeners(): () => void {
       cliStatusTimer = setTimeout(() => {
         const multimodelEnabled = useStore.getState().appConfig?.general?.multimodelEnabled ?? true;
         if (multimodelEnabled) {
-          void useStore.getState().bootstrapCliStatus({ multimodelEnabled: true });
+          void useStore
+            .getState()
+            .bootstrapCliStatus({ multimodelEnabled: true, providerStatusMode: 'defer' });
         } else {
           void useStore.getState().fetchCliStatus();
         }
         cliStatusTimer = null;
       }, delayMs);
     }
-    if (api.openCodeRuntime) {
-      void useStore.getState().fetchOpenCodeRuntimeStatus();
-    }
-    if (api.codexRuntime) {
-      void useStore.getState().fetchCodexRuntimeStatus();
-    }
+    runtimeStatusTimer = setTimeout(() => {
+      if (api.openCodeRuntime) {
+        void useStore.getState().fetchOpenCodeRuntimeStatus();
+      }
+      if (api.codexRuntime) {
+        void useStore.getState().fetchCodexRuntimeStatus();
+      }
+      runtimeStatusTimer = null;
+    }, STARTUP_RUNTIME_STATUS_IDLE_DELAY_MS);
 
     // Remaining fetches have no data dependency on each other — run in parallel
     // to avoid blocking teams/notifications behind a slow repository scan.
@@ -267,6 +274,7 @@ export function initializeNotificationListeners(): () => void {
   })();
   cleanupFns.push(() => {
     if (cliStatusTimer) clearTimeout(cliStatusTimer);
+    if (runtimeStatusTimer) clearTimeout(runtimeStatusTimer);
   });
   // TODO(task-change-presence): re-enable this only after the board uses a bounded
   // batch/priority presence pipeline. The old one-task-per-tick poll was accurate

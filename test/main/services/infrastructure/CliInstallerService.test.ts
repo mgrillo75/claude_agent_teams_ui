@@ -325,6 +325,70 @@ describe('CliInstallerService', () => {
       expect(service.getLatestStatusSnapshot()?.authLoggedIn).toBe(false);
     });
 
+    it('defers multimodel provider status probes during lightweight startup status checks', async () => {
+      allowConsoleLogs();
+      vi.mocked(getConfiguredCliFlavor).mockReturnValue('agent_teams_orchestrator');
+      vi.mocked(getCliFlavorUiOptions).mockReturnValue({
+        displayName: 'agent_teams_orchestrator',
+        supportsSelfUpdate: false,
+        showVersionDetails: false,
+        showBinaryPath: false,
+      });
+      vi.mocked(ClaudeBinaryResolver.resolve).mockResolvedValue('/mock/agent_teams_orchestrator');
+      vi.mocked(execCli).mockResolvedValueOnce({ stdout: '0.0.46', stderr: '' });
+      const getProviderStatusesSpy = vi
+        .spyOn(ClaudeMultimodelBridgeService.prototype, 'getProviderStatuses')
+        .mockResolvedValue([
+          createTestProviderStatus('anthropic', true, 'oauth_token'),
+          createTestProviderStatus('codex', true, 'chatgpt'),
+          createTestProviderStatus('opencode', true, 'opencode_managed'),
+        ]);
+      const mockWindow = {
+        isDestroyed: () => false,
+        webContents: { send: vi.fn(), isDestroyed: () => false },
+      };
+      service.setMainWindow(mockWindow as unknown as import('electron').BrowserWindow);
+
+      const status = await service.getStatus({ providerStatusMode: 'defer' });
+      const statusEvents = mockWindow.webContents.send.mock.calls
+        .filter((call: unknown[]) => call[0] === 'cliInstaller:progress')
+        .map((call: unknown[]) => call[1] as { type?: string; status?: { providers?: unknown[] } })
+        .filter((event) => event.type === 'status');
+
+      expect(status.installed).toBe(true);
+      expect(status.authStatusChecking).toBe(false);
+      expect(status.authLoggedIn).toBe(false);
+      expect(status.providers).toHaveLength(3);
+      expect(
+        status.providers.every(
+          (provider) => provider.statusMessage === 'Provider status will refresh when needed.'
+        )
+      ).toBe(true);
+      expect(statusEvents.length).toBeGreaterThan(0);
+      expect(
+        statusEvents.every((event) =>
+          event.status?.providers?.every(
+            (provider) =>
+              typeof provider === 'object' &&
+              provider !== null &&
+              'statusMessage' in provider &&
+              'models' in provider &&
+              (provider as { statusMessage?: string }).statusMessage ===
+                'Provider status will refresh when needed.' &&
+              Array.isArray((provider as { models?: unknown[] }).models) &&
+              (provider as { models?: unknown[] }).models?.length === 0
+          )
+        )
+      ).toBe(true);
+      expect(getProviderStatusesSpy).not.toHaveBeenCalled();
+      expect(execCli).toHaveBeenCalledTimes(1);
+      expect(execCli).toHaveBeenCalledWith(
+        '/mock/agent_teams_orchestrator',
+        ['--version'],
+        expect.objectContaining({ timeout: expect.any(Number) })
+      );
+    });
+
     it('does not mark the CLI installed when the version probe cannot confirm the binary', async () => {
       allowConsoleLogs();
       vi.mocked(ClaudeBinaryResolver.resolve).mockResolvedValue('/usr/local/bin/claude');
