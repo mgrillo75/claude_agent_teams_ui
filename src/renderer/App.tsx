@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 
+import { LocalizationProvider } from '@features/localization/renderer';
 import { TooltipProvider } from '@renderer/components/ui/tooltip';
 
 import { ConfirmDialog } from './components/common/ConfirmDialog';
@@ -33,6 +34,7 @@ const SPLASH_REDUCED_AVATAR_READY_MAX_WAIT_MS = 160;
 export const App = (): React.JSX.Element => {
   // Initialize theme on app load
   useTheme();
+  const appConfig = useStore((s) => s.appConfig);
 
   // Upgrade the static preload splash, then dismiss it after the scene is visible.
   useEffect(() => {
@@ -104,13 +106,15 @@ export const App = (): React.JSX.Element => {
   }, []);
 
   return (
-    <ErrorBoundary>
-      <TooltipProvider delayDuration={150} skipDelayDuration={1500}>
-        <ContextSwitchOverlay />
-        <TabbedLayout />
-        <ConfirmDialog />
-        <ToolApprovalSheet />
-      </TooltipProvider>
-    </ErrorBoundary>
+    <LocalizationProvider appConfig={appConfig}>
+      <ErrorBoundary>
+        <TooltipProvider delayDuration={150} skipDelayDuration={1500}>
+          <ContextSwitchOverlay />
+          <TabbedLayout />
+          <ConfirmDialog />
+          <ToolApprovalSheet />
+        </TooltipProvider>
+      </ErrorBoundary>
+    </LocalizationProvider>
   );
 };

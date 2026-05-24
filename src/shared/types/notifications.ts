@@ -342,6 +342,8 @@ export interface AppConfig {
     claudeRootPath: string | null;
     /** Agent communication language ('system' = use OS locale) */
     agentLanguage: string;
+    /** Application interface locale preference ('system' = use OS locale) */
+    appLocale: string;
     /** Whether to auto-expand AI response groups when opening a transcript or receiving new messages */
     autoExpandAIGroups: boolean;
     /** Whether to use the native OS title bar instead of the custom one (Linux/Windows) */

@@ -5,6 +5,7 @@
 
 import { lazy, Suspense, useEffect, useState } from 'react';
 
+import { useAppTranslation } from '@features/localization/renderer';
 import { TabUIProvider } from '@renderer/contexts/TabUIContext';
 
 import { DashboardView } from '../dashboard/DashboardView';
@@ -69,15 +70,19 @@ interface PaneTabSlotProps {
   isPaneFocused: boolean;
 }
 
-const PaneLazyFallback = (): React.JSX.Element => (
-  <div className="flex flex-1 items-center justify-center bg-surface">
-    <div
-      className="size-5 animate-spin rounded-full border border-border border-t-text-muted"
-      aria-label="Loading tab"
-      role="status"
-    />
-  </div>
-);
+const PaneLazyFallback = (): React.JSX.Element => {
+  const { t } = useAppTranslation('common');
+
+  return (
+    <div className="flex flex-1 items-center justify-center bg-surface">
+      <div
+        className="size-5 animate-spin rounded-full border border-border border-t-text-muted"
+        aria-label={t('layout.loadingTab')}
+        role="status"
+      />
+    </div>
+  );
+};
 
 const PaneTabSlot = ({ tab, isActive, isPaneFocused }: PaneTabSlotProps): React.JSX.Element => {
   const [hasActivated, setHasActivated] = useState(isActive);

@@ -9,6 +9,7 @@
  * - Handle JSON parse errors gracefully
  */
 
+import { normalizeAppLocalePreference } from '@features/localization';
 import { getClaudeBasePath, setClaudeBasePathOverride } from '@main/utils/pathDecoder';
 import { validateRegexPattern } from '@main/utils/regexValidation';
 import { createLogger } from '@shared/utils/logger';
@@ -258,6 +259,7 @@ export interface GeneralConfig {
   multimodelEnabled: boolean;
   claudeRootPath: string | null;
   agentLanguage: string;
+  appLocale: string;
   autoExpandAIGroups: boolean;
   useNativeTitleBar: boolean;
   /** Paths manually added via "Select Folder" that persist across app restarts */
@@ -373,6 +375,7 @@ const DEFAULT_CONFIG: AppConfig = {
     multimodelEnabled: true,
     claudeRootPath: null,
     agentLanguage: 'system',
+    appLocale: 'system',
     autoExpandAIGroups: false,
     useNativeTitleBar: false,
     customProjectPaths: [],
@@ -598,6 +601,7 @@ export class ConfigManager {
     };
     mergedGeneral.multimodelEnabled = true;
     mergedGeneral.claudeRootPath = normalizeConfiguredClaudeRootPath(mergedGeneral.claudeRootPath);
+    mergedGeneral.appLocale = normalizeAppLocalePreference(mergedGeneral.appLocale);
 
     // Merge triggers: preserve existing triggers, add missing builtin ones
     const mergedTriggers = TriggerManager.mergeTriggers(loadedTriggers, DEFAULT_TRIGGERS);

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 
+import { useAppTranslation } from '@features/localization/renderer';
 import { ProviderBrandLogo } from '@renderer/components/common/ProviderBrandLogo';
 import {
   ANTHROPIC_LONG_CONTEXT_PRICING_URL,
@@ -76,14 +77,18 @@ export const LeadModelRow = ({
   showAnthropicContextLimit = providerId === 'anthropic',
   disableAnthropicContextLimit,
 }: LeadModelRowProps): React.JSX.Element => {
+  const { t } = useAppTranslation('team');
   const { isLight } = useTheme();
   const hasActiveProviderNotice = Boolean(providerNoticeById?.[providerId]);
   const [modelExpanded, setModelExpanded] = useState(hasActiveProviderNotice);
   const leadColorSet = getTeamColorSet(resolveTeamLeadColorName());
   const modelButtonLabel = model.trim()
     ? getProviderScopedTeamModelLabel(providerId, model.trim())
-    : 'Default';
-  const modelButtonAriaLabel = `${getTeamProviderLabel(providerId)} provider, ${modelButtonLabel}`;
+    : t('members.leadModel.defaultModel');
+  const modelButtonAriaLabel = t('members.leadModel.providerModelAria', {
+    provider: getTeamProviderLabel(providerId),
+    model: modelButtonLabel,
+  });
   const selectedModelIssueText =
     model.trim() && modelIssueReasonByValue?.[model.trim()]
       ? modelIssueReasonByValue[model.trim()]
@@ -143,8 +148,12 @@ export const LeadModelRow = ({
             loading="lazy"
           />
           <div className="flex h-8 min-w-0 items-center gap-3">
-            <span className="truncate text-sm font-medium text-[var(--color-text)]">lead</span>
-            <span className="shrink-0 text-xs text-[var(--color-text-secondary)]">Team Lead</span>
+            <span className="truncate text-sm font-medium text-[var(--color-text)]">
+              {t('members.leadModel.leadShort')}
+            </span>
+            <span className="shrink-0 text-xs text-[var(--color-text-secondary)]">
+              {t('members.leadModel.teamLead')}
+            </span>
           </div>
         </div>
       </div>
@@ -160,7 +169,7 @@ export const LeadModelRow = ({
               htmlFor="sync-models-with-lead"
               className="cursor-pointer truncate text-xs font-normal text-text-secondary"
             >
-              Sync model with teammates
+              {t('members.leadModel.syncWithTeammates')}
             </Label>
           </div>
         </div>
@@ -237,15 +246,17 @@ export const LeadModelRow = ({
               checked={limitContext}
               onCheckedChange={onLimitContextChange}
               disabled={contextLimitDisabled}
-              scopeLabel={providerId === 'anthropic' ? undefined : 'Anthropic team-wide'}
+              scopeLabel={
+                providerId === 'anthropic' ? undefined : t('members.leadModel.anthropicTeamWide')
+              }
             />
           ) : null}
           <div className="flex items-start gap-2 rounded-md border border-sky-500/20 bg-sky-500/5 px-3 py-2">
             <Info className="mt-0.5 size-3.5 shrink-0 text-sky-400" />
             <p className="text-[11px] leading-relaxed text-sky-300">
-              Lead runtime applies to teammates unless they set their own provider or model.
+              {t('members.leadModel.runtimeInheritance')}
               {showAnthropicContextLimit
-                ? ' The 200K context limit is team-wide for Anthropic runtimes in this launch, including custom Anthropic teammates.'
+                ? ` ${t('members.leadModel.anthropicContextLimit')}`
                 : null}
             </p>
           </div>

@@ -42,6 +42,22 @@ describe('configValidation', () => {
     }
   });
 
+  it('accepts supported general.appLocale updates', () => {
+    const result = validateConfigUpdatePayload('general', { appLocale: 'ru' });
+    expect(result.valid).toBe(true);
+    if (result.valid) {
+      expect(result.data).toEqual({ appLocale: 'ru' });
+    }
+  });
+
+  it('rejects unsupported general.appLocale updates', () => {
+    const result = validateConfigUpdatePayload('general', { appLocale: 'uk' });
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.error).toContain('supported app locale');
+    }
+  });
+
   it('accepts absolute general.claudeRootPath updates', () => {
     const result = validateConfigUpdatePayload('general', {
       claudeRootPath: '/Users/test/.claude',

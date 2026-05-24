@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 
+import { useAppTranslation } from '@features/localization/renderer';
 import { Button } from '@renderer/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@renderer/components/ui/dialog';
 import { MemberSelect } from '@renderer/components/ui/MemberSelect';
@@ -108,6 +109,7 @@ const TeamLogsSourceSelector = ({
   onChange: (key: TeamLogSourceKey) => void;
   className?: string;
 }): React.JSX.Element | null => {
+  const { t } = useAppTranslation('team');
   const sourceMembers = useMemo(() => [leadMember, ...members], [leadMember, members]);
   const selectedMemberName =
     selectedKey === LEAD_LOG_SOURCE_KEY
@@ -129,12 +131,14 @@ const TeamLogsSourceSelector = ({
           }
           onChange(memberLogSourceKey(selectedMember.name));
         }}
-        placeholder="Select log source..."
-        searchPlaceholder="Search log sources..."
-        emptyMessage="No log sources found."
-        ariaLabel="Log source"
+        placeholder={t('claudeLogs.sourceSelect.placeholder')}
+        searchPlaceholder={t('claudeLogs.sourceSelect.searchPlaceholder')}
+        emptyMessage={t('claudeLogs.sourceSelect.emptyMessage')}
+        ariaLabel={t('claudeLogs.sourceSelect.ariaLabel')}
         getMemberLabel={(member) =>
-          isLeadMember(member) ? 'Lead' : formatMemberLogSourceLabel(member)
+          isLeadMember(member)
+            ? t('claudeLogs.sourceSelect.leadLabel')
+            : formatMemberLogSourceLabel(member)
         }
         getMemberDescription={formatMemberLogSourceDescription}
       />
@@ -200,6 +204,7 @@ const TeamLogsDialog = ({
   ctrl: ReturnType<typeof useClaudeLogsController>;
   selectedMember: ResolvedTeamMember | null;
 }): React.JSX.Element => {
+  const { t } = useAppTranslation('team');
   const sourceSelector =
     members.length > 0 ? (
       <TeamLogsSourceSelector
@@ -219,7 +224,7 @@ const TeamLogsDialog = ({
             <span className="inline-flex size-5 items-center justify-center rounded-md border border-[var(--color-border)] bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] shadow-sm">
               <Terminal size={12} />
             </span>
-            Logs
+            {t('claudeLogs.logsTitle')}
             {showingLeadLogs && ctrl.badge != null ? (
               <span className="font-mono text-[11px] text-[var(--color-text-muted)]">
                 ({ctrl.badge})
@@ -257,7 +262,7 @@ const TeamLogsDialog = ({
             </>
           ) : (
             <div className="py-4 text-center text-xs text-[var(--color-text-muted)]">
-              Select a log source.
+              {t('claudeLogs.sourceSelect.selectSourceEmpty')}
             </div>
           )}
         </div>
@@ -276,6 +281,7 @@ export const ClaudeLogsSection = memo(function ClaudeLogsSection({
   sidebarViewerMaxHeight,
   onOpenChange,
 }: ClaudeLogsSectionProps): React.JSX.Element {
+  const { t } = useAppTranslation('team');
   const teamMembers = useStore((state) => selectResolvedMembersForTeamName(state, teamName));
   const [selectedSourceState, setSelectedSourceState] = useState<{
     teamName: string;
@@ -389,12 +395,12 @@ export const ClaudeLogsSection = memo(function ClaudeLogsSection({
             e.stopPropagation();
             setDialogOpen(true);
           }}
-          aria-label="Open fullscreen logs"
+          aria-label={t('claudeLogs.openFullscreen')}
         >
           <Expand size={14} />
         </Button>
       </TooltipTrigger>
-      <TooltipContent side="top">Fullscreen</TooltipContent>
+      <TooltipContent side="top">{t('claudeLogs.fullscreen')}</TooltipContent>
     </Tooltip>
   ) : undefined;
 
@@ -402,7 +408,7 @@ export const ClaudeLogsSection = memo(function ClaudeLogsSection({
     <>
       <CollapsibleTeamSection
         sectionId="claude-logs"
-        title="Logs"
+        title={t('claudeLogs.logsTitle')}
         icon={null}
         badge={showingLeadLogs ? ctrl.badge : undefined}
         afterBadge={afterBadge}
@@ -425,7 +431,7 @@ export const ClaudeLogsSection = memo(function ClaudeLogsSection({
         {dialogOpen ? (
           <div className="flex items-center gap-2 p-2 text-xs text-[var(--color-text-muted)]">
             <Expand size={12} />
-            Viewing in fullscreen mode
+            {t('claudeLogs.viewingFullscreen')}
           </div>
         ) : showingLeadLogs ? (
           <ClaudeLogsPanel
@@ -443,7 +449,7 @@ export const ClaudeLogsSection = memo(function ClaudeLogsSection({
           />
         ) : (
           <div className="py-4 text-center text-xs text-[var(--color-text-muted)]">
-            Select a log source.
+            {t('claudeLogs.sourceSelect.selectSourceEmpty')}
           </div>
         )}
       </CollapsibleTeamSection>

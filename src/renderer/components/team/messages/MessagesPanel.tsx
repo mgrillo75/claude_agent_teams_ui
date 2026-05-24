@@ -11,6 +11,7 @@ import {
 } from 'react';
 import { Sheet, type SheetRef } from 'react-modal-sheet';
 
+import { useAppTranslation } from '@features/localization/renderer';
 import { Badge } from '@renderer/components/ui/badge';
 import { Button } from '@renderer/components/ui/button';
 import {
@@ -279,6 +280,7 @@ const MessagesTimelineSection = memo(function MessagesTimelineSection({
   onExpandContent,
   viewport,
 }: MessagesTimelineSectionProps): React.JSX.Element {
+  const { t } = useAppTranslation('team');
   return (
     <>
       <ActivityTimeline
@@ -317,7 +319,7 @@ const MessagesTimelineSection = memo(function MessagesTimelineSection({
             disabled={loadingOlderMessages}
             onClick={onLoadOlderMessages}
           >
-            Load older messages
+            {t('messages.actions.loadOlder')}
           </Button>
         </div>
       )}
@@ -363,6 +365,7 @@ export const MessagesPanel = memo(function MessagesPanel({
   onFloatingComposerHeightChange,
   inlineScrollContainerRef,
 }: MessagesPanelProps): React.JSX.Element {
+  const { t } = useAppTranslation('team');
   const {
     sendTeamMessage,
     sendCrossTeamMessage,
@@ -916,26 +919,26 @@ export const MessagesPanel = memo(function MessagesPanel({
                 variant="ghost"
                 size="sm"
                 className="size-6 p-0 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] data-[state=open]:bg-[var(--color-surface-raised)] data-[state=open]:text-[var(--color-text-secondary)]"
-                aria-label="Message panel mode"
+                aria-label={t('messages.panelMode')}
               >
                 <MoreHorizontal size={14} />
               </Button>
             </DropdownMenuTrigger>
           </TooltipTrigger>
-          <TooltipContent side="top">Message panel mode</TooltipContent>
+          <TooltipContent side="top">{t('messages.panelMode')}</TooltipContent>
         </Tooltip>
         <DropdownMenuContent align="end" side="top" className="w-48">
           <DropdownMenuItem onSelect={moveToInline}>
             <PanelBottom size={14} className="shrink-0" />
-            <span>Move to inline</span>
+            <span>{t('messages.actions.moveToInline')}</span>
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={moveToBottomSheet}>
             <PanelBottomOpen size={14} className="shrink-0" />
-            <span>Move to bottom sheet</span>
+            <span>{t('messages.actions.moveToBottomSheet')}</span>
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={moveToSidebar}>
             <PanelLeft size={14} className="shrink-0" />
-            <span>Move to sidebar</span>
+            <span>{t('messages.actions.moveToSidebar')}</span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -1046,7 +1049,7 @@ export const MessagesPanel = memo(function MessagesPanel({
         <Search size={12} className="shrink-0 text-[var(--color-text-muted)]" />
         <input
           type="text"
-          placeholder="Search..."
+          placeholder={t('messages.search.placeholder')}
           value={messagesSearchQuery}
           onChange={(e) => setMessagesSearchQuery(e.target.value)}
           onPointerDown={(e) => e.stopPropagation()}
@@ -1114,7 +1117,9 @@ export const MessagesPanel = memo(function MessagesPanel({
         {/* Header */}
         <div className="flex shrink-0 items-center gap-2 border-b border-[var(--color-border)] bg-[var(--color-surface-sidebar)] px-3 py-2">
           <MessageSquare size={14} className="shrink-0 text-[var(--color-text-muted)]" />
-          <span className="text-sm font-medium text-[var(--color-text)]">Messages</span>
+          <span className="text-sm font-medium text-[var(--color-text)]">
+            {t('messages.title')}
+          </span>
           {filteredMessages.length > 0 && (
             <Badge
               variant="secondary"
@@ -1130,10 +1135,12 @@ export const MessagesPanel = memo(function MessagesPanel({
                   variant="secondary"
                   className="bg-blue-500/20 px-1.5 py-0.5 text-[10px] font-normal leading-none text-blue-600 dark:text-blue-400"
                 >
-                  {messagesUnreadCount} new
+                  {t('messages.unread.new', { count: messagesUnreadCount })}
                 </Badge>
               </TooltipTrigger>
-              <TooltipContent side="bottom">{messagesUnreadCount} unread</TooltipContent>
+              <TooltipContent side="bottom">
+                {t('messages.unread.unread', { count: messagesUnreadCount })}
+              </TooltipContent>
             </Tooltip>
           )}
           {messagesUnreadCount > 0 && (
@@ -1147,7 +1154,7 @@ export const MessagesPanel = memo(function MessagesPanel({
                   <CheckCheck size={12} />
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="bottom">Mark all as read</TooltipContent>
+              <TooltipContent side="bottom">{t('messages.actions.markAllRead')}</TooltipContent>
             </Tooltip>
           )}
           <div className="ml-auto flex items-center gap-1">
@@ -1159,13 +1166,15 @@ export const MessagesPanel = memo(function MessagesPanel({
                       variant="ghost"
                       size="sm"
                       className="size-7 p-0 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] data-[state=open]:bg-[var(--color-surface-raised)] data-[state=open]:text-[var(--color-text-secondary)]"
-                      aria-label="Message panel actions"
+                      aria-label={t('messages.actions.panelActions')}
                     >
                       <MoreHorizontal size={15} />
                     </Button>
                   </DropdownMenuTrigger>
                 </TooltipTrigger>
-                <TooltipContent side="bottom">Message actions</TooltipContent>
+                <TooltipContent side="bottom">
+                  {t('messages.actions.messageActions')}
+                </TooltipContent>
               </Tooltip>
               <DropdownMenuContent align="end" side="bottom" className="w-48">
                 <DropdownMenuItem onSelect={() => setMessagesCollapsed((v) => !v)}>
@@ -1174,7 +1183,11 @@ export const MessagesPanel = memo(function MessagesPanel({
                   ) : (
                     <ChevronsDownUp size={14} className="shrink-0" />
                   )}
-                  <span>{messagesCollapsed ? 'Expand all messages' : 'Collapse all messages'}</span>
+                  <span>
+                    {messagesCollapsed
+                      ? t('messages.actions.expandAll')
+                      : t('messages.actions.collapseAll')}
+                  </span>
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => setMessagesSearchBarVisible((v) => !v)}>
                   {messagesSearchBarVisible ? (
@@ -1182,19 +1195,23 @@ export const MessagesPanel = memo(function MessagesPanel({
                   ) : (
                     <Search size={14} className="shrink-0" />
                   )}
-                  <span>{messagesSearchBarVisible ? 'Hide search' : 'Search messages'}</span>
+                  <span>
+                    {messagesSearchBarVisible
+                      ? t('messages.actions.hideSearch')
+                      : t('messages.actions.searchMessages')}
+                  </span>
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={moveToInline}>
                   <PanelLeftClose size={14} className="shrink-0" />
-                  <span>Move to inline</span>
+                  <span>{t('messages.actions.moveToInline')}</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={moveToBottomSheet}>
                   <PanelBottomOpen size={14} className="shrink-0" />
-                  <span>Move to bottom sheet</span>
+                  <span>{t('messages.actions.moveToBottomSheet')}</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={moveToFloatingComposer}>
                   <Dock size={14} className="shrink-0" />
-                  <span>Float composer</span>
+                  <span>{t('messages.actions.floatComposer')}</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -1278,7 +1295,9 @@ export const MessagesPanel = memo(function MessagesPanel({
               </div>
               <div className="flex h-full items-center gap-1.5">
                 <MessageSquare size={13} className="shrink-0 text-[var(--color-text-muted)]" />
-                <span className="text-[13px] font-medium text-[var(--color-text)]">Messages</span>
+                <span className="text-[13px] font-medium text-[var(--color-text)]">
+                  {t('messages.title')}
+                </span>
                 {filteredMessages.length > 0 && (
                   <Badge
                     variant="secondary"
@@ -1294,10 +1313,12 @@ export const MessagesPanel = memo(function MessagesPanel({
                         variant="secondary"
                         className="bg-blue-500/20 px-1 py-0 text-[9px] font-normal leading-none text-blue-600 dark:text-blue-400"
                       >
-                        {messagesUnreadCount} new
+                        {t('messages.unread.new', { count: messagesUnreadCount })}
                       </Badge>
                     </TooltipTrigger>
-                    <TooltipContent side="top">{messagesUnreadCount} unread</TooltipContent>
+                    <TooltipContent side="top">
+                      {t('messages.unread.unread', { count: messagesUnreadCount })}
+                    </TooltipContent>
                   </Tooltip>
                 )}
                 <div
@@ -1312,13 +1333,15 @@ export const MessagesPanel = memo(function MessagesPanel({
                             variant="ghost"
                             size="sm"
                             className="size-[22px] p-0 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] data-[state=open]:bg-[var(--color-surface-raised)] data-[state=open]:text-[var(--color-text-secondary)]"
-                            aria-label="Message bottom sheet actions"
+                            aria-label={t('messages.actions.bottomSheetActions')}
                           >
                             <MoreHorizontal size={14} />
                           </Button>
                         </DropdownMenuTrigger>
                       </TooltipTrigger>
-                      <TooltipContent side="top">Message actions</TooltipContent>
+                      <TooltipContent side="top">
+                        {t('messages.actions.messageActions')}
+                      </TooltipContent>
                     </Tooltip>
                     <DropdownMenuContent align="end" side="top" className="w-48">
                       {messagesUnreadCount > 0 && (
@@ -1327,7 +1350,7 @@ export const MessagesPanel = memo(function MessagesPanel({
                           onSelect={handleMarkAllRead}
                         >
                           <CheckCheck size={14} className="shrink-0" />
-                          <span>Mark all as read</span>
+                          <span>{t('messages.actions.markAllRead')}</span>
                         </DropdownMenuItem>
                       )}
                       <DropdownMenuItem onSelect={() => setMessagesCollapsed((value) => !value)}>
@@ -1337,7 +1360,9 @@ export const MessagesPanel = memo(function MessagesPanel({
                           <ChevronsDownUp size={14} className="shrink-0" />
                         )}
                         <span>
-                          {messagesCollapsed ? 'Expand all messages' : 'Collapse all messages'}
+                          {messagesCollapsed
+                            ? t('messages.actions.expandAll')
+                            : t('messages.actions.collapseAll')}
                         </span>
                       </DropdownMenuItem>
                       <DropdownMenuItem
@@ -1348,7 +1373,11 @@ export const MessagesPanel = memo(function MessagesPanel({
                         ) : (
                           <Search size={14} className="shrink-0" />
                         )}
-                        <span>{messagesSearchBarVisible ? 'Hide search' : 'Search messages'}</span>
+                        <span>
+                          {messagesSearchBarVisible
+                            ? t('messages.actions.hideSearch')
+                            : t('messages.actions.searchMessages')}
+                        </span>
                       </DropdownMenuItem>
                       <DropdownMenuItem onSelect={toggleBottomSheetExpansion}>
                         {isBottomSheetCollapsed ? (
@@ -1356,19 +1385,23 @@ export const MessagesPanel = memo(function MessagesPanel({
                         ) : (
                           <PanelBottomClose size={14} className="shrink-0" />
                         )}
-                        <span>{isBottomSheetCollapsed ? 'Expand sheet' : 'Collapse sheet'}</span>
+                        <span>
+                          {isBottomSheetCollapsed
+                            ? t('messages.actions.expandSheet')
+                            : t('messages.actions.collapseSheet')}
+                        </span>
                       </DropdownMenuItem>
                       <DropdownMenuItem onSelect={moveToInline}>
                         <PanelBottom size={14} className="shrink-0" />
-                        <span>Move to inline</span>
+                        <span>{t('messages.actions.moveToInline')}</span>
                       </DropdownMenuItem>
                       <DropdownMenuItem onSelect={moveToSidebar}>
                         <PanelLeft size={14} className="shrink-0" />
-                        <span>Move to sidebar</span>
+                        <span>{t('messages.actions.moveToSidebar')}</span>
                       </DropdownMenuItem>
                       <DropdownMenuItem onSelect={moveToFloatingComposer}>
                         <Dock size={14} className="shrink-0" />
-                        <span>Float composer</span>
+                        <span>{t('messages.actions.floatComposer')}</span>
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -1410,7 +1443,7 @@ export const MessagesPanel = memo(function MessagesPanel({
   return (
     <CollapsibleTeamSection
       sectionId="messages"
-      title="Messages"
+      title={t('messages.title')}
       icon={<MessageSquare size={14} />}
       badge={filteredMessages.length}
       secondaryBadge={
@@ -1431,7 +1464,7 @@ export const MessagesPanel = memo(function MessagesPanel({
                 <CheckCheck size={12} />
               </button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">Mark all as read</TooltipContent>
+            <TooltipContent side="bottom">{t('messages.actions.markAllRead')}</TooltipContent>
           </Tooltip>
         ) : undefined
       }
@@ -1447,12 +1480,12 @@ export const MessagesPanel = memo(function MessagesPanel({
                   e.stopPropagation();
                   moveToBottomSheet();
                 }}
-                aria-label="Move messages to bottom sheet"
+                aria-label={t('messages.actions.moveMessagesToBottomSheet')}
               >
                 <PanelBottom size={14} />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="top">Move to bottom sheet</TooltipContent>
+            <TooltipContent side="top">{t('messages.actions.moveToBottomSheet')}</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -1464,12 +1497,12 @@ export const MessagesPanel = memo(function MessagesPanel({
                   e.stopPropagation();
                   moveToFloatingComposer();
                 }}
-                aria-label="Float messages composer"
+                aria-label={t('messages.actions.floatMessagesComposer')}
               >
                 <Dock size={14} />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="top">Float composer</TooltipContent>
+            <TooltipContent side="top">{t('messages.actions.floatComposer')}</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -1481,12 +1514,12 @@ export const MessagesPanel = memo(function MessagesPanel({
                   e.stopPropagation();
                   moveToSidebar();
                 }}
-                aria-label="Move messages to sidebar"
+                aria-label={t('messages.actions.moveMessagesToSidebar')}
               >
                 <PanelLeft size={14} />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="top">Move to sidebar</TooltipContent>
+            <TooltipContent side="top">{t('messages.actions.moveToSidebar')}</TooltipContent>
           </Tooltip>
         </div>
       }

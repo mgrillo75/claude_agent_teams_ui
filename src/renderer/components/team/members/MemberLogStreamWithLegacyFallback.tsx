@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 
+import { useAppTranslation } from '@features/localization/renderer';
 import {
   isMemberLogStreamUiEnabled,
   MemberLogStreamSection,
@@ -20,6 +21,7 @@ export const MemberLogStreamWithLegacyFallback = ({
   member,
   enabled = true,
 }: Readonly<MemberLogStreamWithLegacyFallbackProps>): React.JSX.Element => {
+  const { t } = useAppTranslation('team');
   const streamUiEnabled = isMemberLogStreamUiEnabled();
   const [showLegacyLogsFallback, setShowLegacyLogsFallback] = useState(false);
 
@@ -42,7 +44,7 @@ export const MemberLogStreamWithLegacyFallback = ({
       {showLegacyLogsFallback ? (
         <div className="rounded-md border border-[var(--color-border)] p-3">
           <div className="mb-3 text-xs font-semibold uppercase text-[var(--color-text-muted)]">
-            Legacy Logs Fallback
+            {t('members.detail.legacyLogsFallback')}
           </div>
           <MemberLogsTab teamName={teamName} memberName={member.name} />
         </div>

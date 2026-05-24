@@ -10,6 +10,7 @@
 
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 
+import { useAppTranslation } from '@features/localization/renderer';
 import { useStore } from '@renderer/store';
 import { formatShortcut } from '@renderer/utils/stringUtils';
 import { PanelLeft } from 'lucide-react';
@@ -33,6 +34,7 @@ const MAX_WIDTH = 500;
 const DEFAULT_WIDTH = 280;
 
 export const Sidebar = (): React.JSX.Element => {
+  const { t } = useAppTranslation('common');
   const { sidebarCollapsed, toggleSidebar } = useStore(
     useShallow((s) => ({
       sidebarCollapsed: s.sidebarCollapsed,
@@ -129,13 +131,13 @@ export const Sidebar = (): React.JSX.Element => {
               color: isCollapseHovered ? 'var(--color-text-secondary)' : 'var(--color-text-muted)',
               backgroundColor: isCollapseHovered ? 'var(--color-surface-raised)' : 'transparent',
             }}
-            title={`Collapse sidebar (${formatShortcut('B')})`}
+            title={t('layout.collapseSidebarShortcut', { shortcut: formatShortcut('B') })}
           >
             <PanelLeft className="size-3.5" />
           </button>
 
           <div className="flex-1" />
-          <div className="flex" role="tablist" aria-label="Sidebar view">
+          <div className="flex" role="tablist" aria-label={t('layout.sidebarView')}>
             <button
               type="button"
               role="tab"
@@ -155,7 +157,7 @@ export const Sidebar = (): React.JSX.Element => {
               }
               onClick={() => setSidebarTab('tasks')}
             >
-              Tasks
+              {t('tasksPanel.title')}
             </button>
             <button
               type="button"
@@ -178,7 +180,7 @@ export const Sidebar = (): React.JSX.Element => {
               }
               onClick={() => setSidebarTab('sessions')}
             >
-              Sessions
+              {t('sessions.title')}
             </button>
           </div>
           <div className="flex-1" />
@@ -219,7 +221,7 @@ export const Sidebar = (): React.JSX.Element => {
       {!sidebarCollapsed && (
         <button
           type="button"
-          aria-label="Resize sidebar"
+          aria-label={t('layout.resizeSidebar')}
           className={`absolute left-0 top-0 z-20 h-full w-1 cursor-col-resize border-0 bg-transparent p-0 transition-colors hover:bg-blue-500/50 ${
             isResizing ? 'bg-blue-500/50' : ''
           }`}

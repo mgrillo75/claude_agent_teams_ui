@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 
+import { useAppTranslation } from '@features/localization/renderer';
 import { useTheme } from '@renderer/hooks/useTheme';
 import { cn } from '@renderer/lib/utils';
 import { ChevronRight, Settings2 } from 'lucide-react';
@@ -63,6 +64,7 @@ export const OptionalSettingsSection = ({
   className,
   children,
 }: OptionalSettingsSectionProps): React.JSX.Element => {
+  const { t } = useAppTranslation('team');
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const { isLight } = useTheme();
 
@@ -137,7 +139,7 @@ export const OptionalSettingsSection = ({
             className="shrink-0 rounded-full border border-[var(--color-border-emphasis)] bg-[var(--color-surface-raised)] px-1.5 py-0.5 text-[10px] font-medium"
             style={{ color: headerMutedColor }}
           >
-            Optional
+            {t('dialogs.optional.badge')}
           </span>
 
           {!isOpen && chips.length > 0 ? (

@@ -3,6 +3,7 @@
  * Prevents invalid/unknown data from mutating persisted config.
  */
 
+import { isAppLocalePreference } from '@features/localization';
 import { migrateProviderBackendId } from '@shared/utils/providerBackend';
 import * as path from 'path';
 
@@ -328,6 +329,7 @@ function validateGeneralSection(data: unknown): ValidationSuccess<'general'> | V
     'multimodelEnabled',
     'claudeRootPath',
     'agentLanguage',
+    'appLocale',
     'autoExpandAIGroups',
     'useNativeTitleBar',
     'telemetryEnabled',
@@ -406,6 +408,12 @@ function validateGeneralSection(data: unknown): ValidationSuccess<'general'> | V
           return { valid: false, error: 'general.agentLanguage must be a non-empty string' };
         }
         result.agentLanguage = value.trim();
+        break;
+      case 'appLocale':
+        if (!isAppLocalePreference(value)) {
+          return { valid: false, error: 'general.appLocale must be a supported app locale' };
+        }
+        result.appLocale = value;
         break;
       case 'autoExpandAIGroups':
         if (typeof value !== 'boolean') {

@@ -15,6 +15,7 @@ import {
   resolveCodexFastMode,
   resolveCodexRuntimeSelection,
 } from '@features/codex-runtime-profile/renderer';
+import { useAppTranslation } from '@features/localization/renderer';
 import { api } from '@renderer/api';
 import { ProviderActivityStatusStrip } from '@renderer/components/common/ProviderActivityStatusStrip';
 import {
@@ -259,15 +260,18 @@ function sanitizeTeamName(name: string): string {
   return result;
 }
 
-function validateTeamNameInline(name: string): string | null {
+function validateTeamNameInline(
+  name: string,
+  t: ReturnType<typeof useAppTranslation>['t']
+): string | null {
   const trimmed = name.trim();
   if (!trimmed) return null;
   const sanitized = sanitizeTeamName(trimmed);
   if (!sanitized) {
-    return 'Name must contain at least one letter or digit';
+    return t('create.validation.nameMustContainLetterOrDigit');
   }
   if (sanitized.length > 128) {
-    return 'Name is too long (max 128 chars)';
+    return t('create.validation.nameTooLong');
   }
   return null;
 }
@@ -281,6 +285,7 @@ function buildDefaultTeamDescription(teamName: string): string {
 
 function validateRequest(
   request: TeamCreateRequest,
+  t: ReturnType<typeof useAppTranslation>['t'],
   options?: { requireCwd?: boolean }
 ): ValidationResult {
   const requireCwd = options?.requireCwd ?? true;
@@ -289,7 +294,7 @@ function validateRequest(
     return {
       valid: false,
       errors: {
-        teamName: 'Name must contain at least one letter or digit',
+        teamName: t('create.validation.nameMustContainLetterOrDigit'),
       },
     };
   }
@@ -297,7 +302,7 @@ function validateRequest(
     return {
       valid: false,
       errors: {
-        teamName: 'Name is too long (max 128 chars)',
+        teamName: t('create.validation.nameTooLong'),
       },
     };
   }
@@ -305,7 +310,7 @@ function validateRequest(
     return {
       valid: false,
       errors: {
-        cwd: 'Select working directory (cwd)',
+        cwd: t('create.validation.selectWorkingDirectory'),
       },
     };
   }
@@ -313,7 +318,7 @@ function validateRequest(
     return {
       valid: false,
       errors: {
-        members: 'Member name cannot be empty',
+        members: t('create.validation.memberNameRequired'),
       },
     };
   }
@@ -321,7 +326,7 @@ function validateRequest(
     return {
       valid: false,
       errors: {
-        members: 'Member name must start with alphanumeric, use only [a-zA-Z0-9._-], max 128 chars',
+        members: t('create.validation.memberNameInvalid'),
       },
     };
   }
@@ -330,7 +335,7 @@ function validateRequest(
     return {
       valid: false,
       errors: {
-        members: 'Member names must be unique',
+        members: t('create.validation.memberNamesUnique'),
       },
     };
   }
@@ -393,6 +398,7 @@ export const CreateTeamDialog = ({
   onOpenTeam,
 }: CreateTeamDialogProps): React.JSX.Element => {
   const { isLight } = useTheme();
+  const { t } = useAppTranslation('team');
   const multimodelEnabled = useStore((s) => s.appConfig?.general?.multimodelEnabled ?? true);
   const anthropicProviderFastModeDefault = useStore(
     (s) => s.appConfig?.providerConnections?.anthropic.fastModeDefault ?? false
@@ -1000,9 +1006,7 @@ export const CreateTeamDialog = ({
       setPrepareState('failed');
       setPrepareWarnings([]);
       setPrepareChecks([]);
-      setPrepareMessage(
-        'Current preload version does not support team:prepareProvisioning. Restart the dev app.'
-      );
+      setPrepareMessage(t('create.prepare.unsupportedPreload'));
       return;
     }
 
@@ -1016,7 +1020,7 @@ export const CreateTeamDialog = ({
       setPrepareState('idle');
       setPrepareWarnings([]);
       setPrepareChecks([]);
-      setPrepareMessage('Select a working directory to validate the launch environment.');
+      setPrepareMessage(t('create.prepare.selectWorkingDirectory'));
       return;
     }
 
@@ -1046,7 +1050,8 @@ export const CreateTeamDialog = ({
     });
     const loadingMessage = getProvisioningProviderProgressMessage(
       changedPlans.map((plan) => plan.providerId),
-      selectedMemberProviders.length
+      selectedMemberProviders.length,
+      t
     );
     const getSelectedWarnings = (): string[] =>
       selectedMemberProviders.flatMap(
@@ -1074,14 +1079,14 @@ export const CreateTeamDialog = ({
         selectedWarnings.length > 0 || nextChecks.some((check) => check.status === 'notes');
       const failureMessage =
         getPrimaryProvisioningFailureDetail(nextChecks) ??
-        'Some selected providers need attention.';
+        t('create.prepare.someProvidersNeedAttention');
       setPrepareState(anyFailure ? 'failed' : 'ready');
       setPrepareMessage(
         anyFailure
           ? failureMessage
           : anyNotes
-            ? 'All selected providers are ready, with notes.'
-            : 'All selected providers are ready.'
+            ? t('create.prepare.readyWithNotes')
+            : t('create.prepare.ready')
       );
     };
 
@@ -1101,7 +1106,7 @@ export const CreateTeamDialog = ({
       changedPlans.length > 0
         ? loadingMessage
         : (prepareMessageRef.current ??
-            getProvisioningProviderProgressMessage([], selectedMemberProviders.length))
+            getProvisioningProviderProgressMessage([], selectedMemberProviders.length, t))
     );
 
     if (changedPlans.length === 0) {
@@ -1201,7 +1206,7 @@ export const CreateTeamDialog = ({
                 return;
               }
               const failureMessage =
-                error instanceof Error ? error.message : 'Failed to prepare selected providers';
+                error instanceof Error ? error.message : t('create.prepare.failed');
               const nextChecks = updateProviderCheck(prepareChecksRef.current, plan.providerId, {
                 status: 'failed',
                 backendSummary: plan.backendSummary,
@@ -1231,6 +1236,7 @@ export const CreateTeamDialog = ({
     selectedModelChecksByProviderSignature,
     selectedProviderId,
     selectedMemberProviders,
+    t,
   ]);
 
   useEffect(() => {
@@ -1254,7 +1260,9 @@ export const CreateTeamDialog = ({
         if (cancelled) {
           return;
         }
-        setProjectsError(error instanceof Error ? error.message : 'Failed to load projects');
+        setProjectsError(
+          error instanceof Error ? error.message : t('create.errors.loadProjectsFailed')
+        );
         setProjects([]);
       } finally {
         if (!cancelled) {
@@ -1266,7 +1274,7 @@ export const CreateTeamDialog = ({
     return () => {
       cancelled = true;
     };
-  }, [open, defaultProjectPath]);
+  }, [open, defaultProjectPath, t]);
 
   useEffect(() => {
     if (!open || !draftLoaded) {
@@ -1651,7 +1659,7 @@ export const CreateTeamDialog = ({
   ]);
 
   const sanitizedTeamName = sanitizeTeamName(teamName.trim());
-  const teamNameInlineError = validateTeamNameInline(teamName);
+  const teamNameInlineError = validateTeamNameInline(teamName, t);
   const isNameTakenByExistingTeam = existingTeamNames.includes(sanitizedTeamName);
   const isNameProvisioning =
     provisioningTeamNames.includes(sanitizedTeamName) && !isNameTakenByExistingTeam;
@@ -1702,19 +1710,19 @@ export const CreateTeamDialog = ({
     ]
   );
   const requestValidation = useMemo(
-    () => validateRequest(request, { requireCwd: launchTeam }),
-    [request, launchTeam]
+    () => validateRequest(request, t, { requireCwd: launchTeam }),
+    [request, launchTeam, t]
   );
   const modelValidationError = useMemo(() => {
     if (selectedProviderId === 'opencode') {
       if (!selectedModel.trim()) {
-        return 'OpenCode lead requires a selected model.';
+        return t('create.validation.openCodeLeadModelRequired');
       }
       const activeMemberCount = soloTeam
         ? 0
         : effectiveMemberDrafts.filter((member) => !member.removedAt && member.name.trim()).length;
       if (activeMemberCount === 0) {
-        return 'OpenCode lead requires at least one OpenCode teammate.';
+        return t('create.validation.openCodeTeammateRequired');
       }
     }
 
@@ -1753,6 +1761,7 @@ export const CreateTeamDialog = ({
     selectedModel,
     selectedProviderId,
     soloTeam,
+    t,
   ]);
   const leadModelIssueText = useMemo(() => {
     const issue = getProvisioningModelIssue(
@@ -1901,8 +1910,9 @@ export const CreateTeamDialog = ({
         message: prepareMessage,
         warnings: prepareWarnings,
         checks: prepareChecks,
+        t,
       }),
-    [prepareChecks, prepareMessage, prepareState, prepareWarnings]
+    [prepareChecks, prepareMessage, prepareState, prepareWarnings, t]
   );
   const showCodexReconnectPrompt = shouldShowCodexReconnectPrompt({
     effectiveCliStatus,
@@ -1927,17 +1937,19 @@ export const CreateTeamDialog = ({
 
   const handleSubmit = (): void => {
     if (allTakenTeamNames.includes(sanitizedTeamName)) {
-      const msg = isNameProvisioning ? 'Team is currently launching' : 'Team name already exists';
+      const msg = isNameProvisioning
+        ? t('create.validation.teamLaunching')
+        : t('create.validation.teamNameExists');
       setFieldErrors({ teamName: msg });
       setLocalError(msg);
       return;
     }
-    const validation = validateRequest(request, { requireCwd: launchTeam });
+    const validation = validateRequest(request, t, { requireCwd: launchTeam });
     if (!validation.valid) {
       const errors = validation.errors ?? {};
       setFieldErrors(errors);
       const messages = Object.values(errors).filter(Boolean);
-      setLocalError(messages.join(' · ') || 'Check form fields');
+      setLocalError(messages.join(' · ') || t('create.validation.checkFormFields'));
       return;
     }
     if (modelValidationError) {
@@ -1984,7 +1996,9 @@ export const CreateTeamDialog = ({
           resetFormState();
           onClose();
         } catch (error) {
-          setLocalError(error instanceof Error ? error.message : 'Failed to create team config');
+          setLocalError(
+            error instanceof Error ? error.message : t('create.errors.createConfigFailed')
+          );
         } finally {
           setIsSubmitting(false);
         }
@@ -2037,11 +2051,11 @@ export const CreateTeamDialog = ({
           htmlFor="solo-team"
           className="cursor-pointer text-xs font-normal text-text-secondary"
         >
-          Solo team
+          {t('create.solo.label')}
         </Label>
       </div>
     ),
-    [setSoloTeam, soloTeam]
+    [setSoloTeam, soloTeam, t]
   );
 
   const rosterHeaderBottom = useMemo(
@@ -2063,11 +2077,7 @@ export const CreateTeamDialog = ({
             <div className="flex items-start gap-2 rounded-md border border-sky-500/20 bg-sky-500/5 px-3 py-2">
               <Info className="mt-0.5 size-3.5 shrink-0 text-sky-400" />
               <p className="text-[11px] leading-relaxed text-sky-300">
-                Only the team lead (main process) will be started &mdash; no teammates will be
-                spawned. Works like a regular agent session in your chosen runtime (Claude Code,
-                Codex, OpenCode, Gemini) but with access to the task board for planning. Saves
-                tokens by avoiding teammate coordination overhead. You can add members later from
-                the team settings.
+                {t('create.solo.description')}
               </p>
             </div>
           ) : null}
@@ -2084,6 +2094,7 @@ export const CreateTeamDialog = ({
       showRosterTeammateRuntimeCompatibility,
       soloTeam,
       teammateRuntimeCompatibility,
+      t,
       worktreeGitReadiness,
     ]
   );
@@ -2100,11 +2111,11 @@ export const CreateTeamDialog = ({
     >
       <DialogContent className="max-w-[52rem]">
         <DialogHeader>
-          <DialogTitle className="text-sm">{initialData ? 'Copy Team' : 'Create Team'}</DialogTitle>
+          <DialogTitle className="text-sm">
+            {initialData ? t('create.title.copy') : t('create.title.create')}
+          </DialogTitle>
           <DialogDescription className="text-xs">
-            {initialData
-              ? 'Create a new team based on an existing one.'
-              : 'Set up your team and choose how it starts.'}
+            {initialData ? t('create.description.copy') : t('create.description.create')}
           </DialogDescription>
         </DialogHeader>
 
@@ -2121,15 +2132,12 @@ export const CreateTeamDialog = ({
               <AlertTriangle className="mt-0.5 size-4 shrink-0" />
               <div className="min-w-0 flex-1 space-y-1">
                 <p className="font-medium">
-                  Another team &ldquo;{conflictingTeam.displayName}&rdquo; is already running for
-                  this working directory
+                  {t('create.conflict.title', { team: conflictingTeam.displayName })}
                 </p>
-                <p className="opacity-80">
-                  Running two teams in the same directory is risky — they may conflict editing the
-                  same files. Consider using a different directory or a git worktree for isolation.
-                </p>
+                <p className="opacity-80">{t('create.conflict.description')}</p>
                 <p className="text-[11px] opacity-70">
-                  Working directory: <span className="font-mono">{effectiveCwd}</span>
+                  {t('create.conflict.workingDirectory')}{' '}
+                  <span className="font-mono">{effectiveCwd}</span>
                 </p>
               </div>
               <button
@@ -2152,13 +2160,13 @@ export const CreateTeamDialog = ({
               color: 'var(--warning-text)',
             }}
           >
-            Available only in local Electron mode.
+            {t('create.localOnly')}
           </p>
         ) : null}
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="space-y-1.5 md:col-span-2">
-            <Label htmlFor="team-name">Team name</Label>
+            <Label htmlFor="team-name">{t('create.fields.teamName')}</Label>
             <Input
               id="team-name"
               className={cn(
@@ -2172,7 +2180,7 @@ export const CreateTeamDialog = ({
             />
             {isNameTakenByExistingTeam ? (
               <p className="text-[11px]" style={{ color: 'var(--field-error-text)' }}>
-                Team name already exists
+                {t('create.errors.nameExists')}
               </p>
             ) : teamNameInlineError ? (
               <p className="text-[11px]" style={{ color: 'var(--field-error-text)' }}>
@@ -2180,7 +2188,7 @@ export const CreateTeamDialog = ({
               </p>
             ) : isNameProvisioning ? (
               <p className="text-[11px]" style={{ color: 'var(--warning-text)' }}>
-                A team with this name is currently launching
+                {t('create.errors.nameLaunching')}
               </p>
             ) : fieldErrors.teamName ? (
               <p className="text-[11px]" style={{ color: 'var(--field-error-text)' }}>
@@ -2189,7 +2197,7 @@ export const CreateTeamDialog = ({
             ) : null}
             {sanitizedTeamName && sanitizedTeamName !== teamName.trim() ? (
               <p className="text-[11px] text-[var(--color-text-muted)]">
-                On disk: <span className="font-mono">{sanitizedTeamName}</span>
+                {t('create.onDisk')} <span className="font-mono">{sanitizedTeamName}</span>
               </p>
             ) : null}
           </div>
@@ -2263,7 +2271,7 @@ export const CreateTeamDialog = ({
               />
               <div className="space-y-1">
                 <Label htmlFor="launch-team" className="cursor-pointer text-sm font-semibold">
-                  Run command after create
+                  {t('create.launchAfterCreate.label')}
                 </Label>
                 <p
                   className="text-xs"
@@ -2273,7 +2281,7 @@ export const CreateTeamDialog = ({
                       : 'var(--color-text-muted)',
                   }}
                 >
-                  Start the team immediately via local Claude CLI.
+                  {t('create.launchAfterCreate.description')}
                 </p>
               </div>
             </div>
@@ -2294,8 +2302,8 @@ export const CreateTeamDialog = ({
                 />
 
                 <OptionalSettingsSection
-                  title="Optional launch settings"
-                  description="Prompt, safety, and CLI overrides live here when you need them."
+                  title={t('create.optional.launchSettingsTitle')}
+                  description={t('create.optional.launchSettingsDescription')}
                   summary={launchOptionalSummary}
                 >
                   <div className="space-y-4">
@@ -2342,7 +2350,7 @@ export const CreateTeamDialog = ({
 
                     <div className="space-y-1.5">
                       <Label htmlFor="team-prompt" className="label-optional">
-                        Prompt for team lead (optional)
+                        {t('create.fields.prompt')}
                       </Label>
                       <MentionableTextarea
                         id="team-prompt"
@@ -2358,11 +2366,11 @@ export const CreateTeamDialog = ({
                         chips={promptChipDraft.chips}
                         onChipRemove={promptChipDraft.removeChip}
                         onFileChipInsert={promptChipDraft.addChip}
-                        placeholder="Instructions for the team lead during provisioning..."
+                        placeholder={t('create.placeholders.prompt')}
                         footerRight={
                           promptDraft.isSaved ? (
                             <span className="text-[10px] text-[var(--color-text-muted)]">
-                              Saved
+                              {t('create.saved')}
                             </span>
                           ) : null
                         }
@@ -2393,14 +2401,14 @@ export const CreateTeamDialog = ({
 
           <div className="md:col-span-2">
             <OptionalSettingsSection
-              title="Optional team details"
-              description="Keep the default flow compact and only open this when you want extra context or a custom color."
+              title={t('create.optional.teamDetailsTitle')}
+              description={t('create.optional.teamDetailsDescription')}
               summary={teamDetailsSummary}
             >
               <div className="space-y-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="team-description" className="label-optional">
-                    Description (optional)
+                    {t('create.fields.description')}
                   </Label>
                   <AutoResizeTextarea
                     id="team-description"
@@ -2409,15 +2417,17 @@ export const CreateTeamDialog = ({
                     maxRows={8}
                     value={description}
                     onChange={(event) => descriptionDraft.setValue(event.target.value)}
-                    placeholder="Brief description of the team purpose"
+                    placeholder={t('create.placeholders.description')}
                   />
                   {descriptionDraft.isSaved ? (
-                    <span className="text-[10px] text-[var(--color-text-muted)]">Saved</span>
+                    <span className="text-[10px] text-[var(--color-text-muted)]">
+                      {t('create.saved')}
+                    </span>
                   ) : null}
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="label-optional">Color (optional)</Label>
+                  <Label className="label-optional">{t('create.fields.color')}</Label>
                   <div className="flex flex-wrap gap-2">
                     {TEAM_COLOR_NAMES.map((colorName) => {
                       const colorSet = getTeamColorSet(colorName);
@@ -2488,11 +2498,13 @@ export const CreateTeamDialog = ({
                     <span>
                       {effectivePrepare.message ??
                         (effectivePrepare.state === 'idle'
-                          ? 'Checking selected providers...'
-                          : 'Preparing environment...')}
+                          ? t('create.prepare.checkingProviders')
+                          : t('create.prepare.preparingEnvironment'))}
                     </span>
                     <p className="mt-0.5 text-[10px] text-[var(--color-text-muted)] opacity-70">
-                      Pre-flight check to catch errors before launch
+                      {t('launch.prepare.preflight', {
+                        action: t('launch.prepare.action.launch'),
+                      })}
                     </p>
                   </div>
                 </div>
@@ -2511,8 +2523,8 @@ export const CreateTeamDialog = ({
                   <span>
                     {prepareChecks.some((check) => check.status === 'notes') ||
                     prepareWarnings.length > 0
-                      ? 'Selected providers ready (with notes)'
-                      : 'Selected providers ready'}
+                      ? t('create.prepare.selectedProvidersReadyWithNotes')
+                      : t('create.prepare.selectedProvidersReady')}
                   </span>
                 </div>
                 {effectivePrepare.message ? (
@@ -2543,13 +2555,17 @@ export const CreateTeamDialog = ({
                   <AlertTriangle className="mt-0.5 size-4 shrink-0" />
                   <div className="min-w-0">
                     <p className="font-medium">
-                      Runtime environment is not available - launch is blocked
+                      {t('launch.prepare.blocked', {
+                        action: t('launch.prepare.action.launch'),
+                      })}
                     </p>
                     <p className="mt-0.5 text-red-300/80">
-                      {effectivePrepare.message ?? 'Failed to prepare environment'}
+                      {effectivePrepare.message ?? t('launch.prepare.failed')}
                     </p>
                     <p className="mt-0.5 text-[10px] text-[var(--color-text-muted)] opacity-70">
-                      Pre-flight check to catch errors before launch
+                      {t('launch.prepare.preflight', {
+                        action: t('launch.prepare.action.launch'),
+                      })}
                     </p>
                   </div>
                 </div>
@@ -2577,7 +2593,7 @@ export const CreateTeamDialog = ({
                   </div>
                 ) : null}
                 <p className="mt-1 pl-6 text-[11px] text-[var(--color-text-muted)]">
-                  {getProvisioningFailureHint(effectivePrepare.message, prepareChecks)}
+                  {getProvisioningFailureHint(effectivePrepare.message, prepareChecks, t)}
                 </p>
                 {showCodexReconnectPrompt ? (
                   <div className="pl-6">
@@ -2604,7 +2620,7 @@ export const CreateTeamDialog = ({
                   onClose();
                 }}
               >
-                Open Existing Team
+                {t('create.actions.openExisting')}
               </Button>
             ) : null}
             <Button
@@ -2616,13 +2632,13 @@ export const CreateTeamDialog = ({
               {isSubmitting ? (
                 <>
                   <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                  Creating...
+                  {t('create.actions.creating')}
                 </>
               ) : launchTeam &&
                 (effectivePrepare.state === 'idle' || effectivePrepare.state === 'loading') ? (
-                'Skip preflight and create'
+                t('create.actions.skipPreflightAndCreate')
               ) : (
-                'Create'
+                t('create.actions.create')
               )}
             </Button>
           </div>
