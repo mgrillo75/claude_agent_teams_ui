@@ -4,7 +4,6 @@ import {
   formatCodexCreditsValue,
   formatCodexRemainingPercent,
   formatCodexResetWindowLabel,
-  formatCodexUsageExplanation,
   formatCodexUsagePercent,
   formatCodexUsageWindowLabel,
   formatCodexWindowDurationLong,
@@ -19,6 +18,7 @@ import {
   resolveCodexFastMode,
   resolveCodexRuntimeSelection,
 } from '@features/codex-runtime-profile/renderer';
+import { useAppTranslation } from '@features/localization/renderer';
 import { RuntimeProviderManagementPanel } from '@features/runtime-provider-management/renderer';
 import { api } from '@renderer/api';
 import { ProviderBrandLogo } from '@renderer/components/common/ProviderBrandLogo';
@@ -127,6 +127,35 @@ const API_KEY_PROVIDER_CONFIG: Record<
   },
 };
 
+const API_KEY_PROVIDER_TRANSLATION_KEYS = {
+  anthropic: {
+    name: 'providerRuntime.apiKey.providers.anthropic.name',
+    title: 'providerRuntime.apiKey.providers.anthropic.title',
+    description: 'providerRuntime.apiKey.providers.anthropic.description',
+    placeholder: 'providerRuntime.apiKey.providers.anthropic.placeholder',
+  },
+  codex: {
+    name: 'providerRuntime.apiKey.providers.codex.name',
+    title: 'providerRuntime.apiKey.providers.codex.title',
+    description: 'providerRuntime.apiKey.providers.codex.description',
+    placeholder: 'providerRuntime.apiKey.providers.codex.placeholder',
+  },
+  gemini: {
+    name: 'providerRuntime.apiKey.providers.gemini.name',
+    title: 'providerRuntime.apiKey.providers.gemini.title',
+    description: 'providerRuntime.apiKey.providers.gemini.description',
+    placeholder: 'providerRuntime.apiKey.providers.gemini.placeholder',
+  },
+} as const satisfies Record<
+  ApiKeyProviderId,
+  {
+    name: string;
+    title: string;
+    description: string;
+    placeholder: string;
+  }
+>;
+
 const ANTHROPIC_COMPATIBLE_AUTH_TOKEN_ENV_VAR = 'ANTHROPIC_AUTH_TOKEN';
 const ANTHROPIC_COMPATIBLE_AUTH_TOKEN_NAME = 'Anthropic-compatible Auth Token';
 const FIRST_PARTY_ANTHROPIC_HOSTS = new Set(['api.anthropic.com', 'api-staging.anthropic.com']);
@@ -147,18 +176,21 @@ function isCodexRuntimeInstalling(
   );
 }
 
-function getCodexRuntimeInstallLabel(status: CodexRuntimeStatus | null | undefined): string {
+function getCodexRuntimeInstallLabel(
+  status: CodexRuntimeStatus | null | undefined,
+  t: ReturnType<typeof useAppTranslation>['t']
+): string {
   switch (status?.state) {
     case 'checking':
-      return 'Checking';
+      return t('providerRuntime.codex.install.checking');
     case 'downloading':
-      return 'Downloading';
+      return t('providerRuntime.codex.install.downloading');
     case 'installing':
-      return 'Installing';
+      return t('providerRuntime.codex.install.installing');
     case 'failed':
-      return 'Retry install';
+      return t('providerRuntime.codex.install.retryInstall');
     default:
-      return 'Install Codex CLI';
+      return t('providerRuntime.codex.install.installCli');
   }
 }
 
@@ -167,76 +199,89 @@ function findPreferredApiKeyEntry(apiKeys: ApiKeyEntry[], envVarName: string): A
   return matches.find((entry) => entry.scope === 'user') ?? null;
 }
 
-function validateAnthropicCompatibleBaseUrl(value: string): string | null {
+function validateAnthropicCompatibleBaseUrl(
+  value: string,
+  t: ReturnType<typeof useAppTranslation>['t']
+): string | null {
   const trimmed = value.trim();
   if (!trimmed) {
-    return 'Base URL is required';
+    return t('providerRuntime.compatibleEndpoint.validation.baseUrlRequired');
   }
 
   try {
     const url = new URL(trimmed);
     if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-      return 'Base URL must use http:// or https://';
+      return t('providerRuntime.compatibleEndpoint.validation.httpRequired');
     }
     if (url.username || url.password) {
-      return 'Base URL must not include credentials';
+      return t('providerRuntime.compatibleEndpoint.validation.noCredentials');
     }
     if (FIRST_PARTY_ANTHROPIC_HOSTS.has(url.hostname)) {
-      return 'Use Auto, Subscription, or API key for first-party Anthropic';
+      return t('providerRuntime.compatibleEndpoint.validation.firstPartyAnthropic');
     }
   } catch {
-    return 'Invalid URL';
+    return t('providerRuntime.compatibleEndpoint.validation.invalidUrl');
   }
 
   return null;
 }
 
-function getConnectionDescription(provider: CliProviderStatus): string {
+function getConnectionDescription(
+  provider: CliProviderStatus,
+  t: ReturnType<typeof useAppTranslation>['t']
+): string {
   switch (provider.providerId) {
     case 'anthropic':
-      return 'Choose how app-launched Anthropic sessions authenticate.';
+      return t('providerRuntime.connection.descriptions.anthropic');
     case 'codex':
-      return 'Choose whether Codex should prefer your ChatGPT subscription or an API key when the native runtime launches.';
+      return t('providerRuntime.connection.descriptions.codex');
     case 'gemini':
-      return 'Configure optional API access. CLI SDK and ADC are still discovered automatically.';
+      return t('providerRuntime.connection.descriptions.gemini');
     case 'opencode':
-      return 'OpenCode authentication and provider inventory are managed by the OpenCode runtime.';
+      return t('providerRuntime.connection.descriptions.opencode');
   }
 }
 
-function getRuntimeDescription(provider: CliProviderStatus): string {
+function getRuntimeDescription(
+  provider: CliProviderStatus,
+  t: ReturnType<typeof useAppTranslation>['t']
+): string {
   switch (provider.providerId) {
     case 'anthropic':
-      return 'Anthropic currently has no separate runtime backend selector.';
+      return t('providerRuntime.runtime.descriptions.anthropic');
     case 'codex':
-      return 'Codex now runs only through the native runtime path.';
+      return t('providerRuntime.runtime.descriptions.codex');
     case 'gemini':
-      return 'Choose which Gemini runtime backend multimodel should use.';
+      return t('providerRuntime.runtime.descriptions.gemini');
     case 'opencode':
-      return 'OpenCode uses its own managed runtime host. Desktop currently exposes status only.';
+      return t('providerRuntime.runtime.descriptions.opencode');
   }
 }
 
-function getAuthModeDescription(providerId: CliProviderId, authMode: CliProviderAuthMode): string {
+function getAuthModeDescription(
+  providerId: CliProviderId,
+  authMode: CliProviderAuthMode,
+  t: ReturnType<typeof useAppTranslation>['t']
+): string {
   if (providerId === 'anthropic') {
     switch (authMode) {
       case 'auto':
-        return 'Use the runtime default behavior. Saved API keys in this app are only used after you switch to API key mode.';
+        return t('providerRuntime.authModeDescriptions.anthropic.auto');
       case 'oauth':
-        return 'Force app-launched Anthropic sessions to use the local Anthropic subscription session.';
+        return t('providerRuntime.authModeDescriptions.anthropic.oauth');
       case 'api_key':
-        return 'Force app-launched Anthropic sessions to use an API key credential.';
+        return t('providerRuntime.authModeDescriptions.anthropic.apiKey');
     }
   }
 
   if (providerId === 'codex') {
     switch (authMode) {
       case 'auto':
-        return 'Prefer your ChatGPT account when it is available. Fall back to API key mode only when needed.';
+        return t('providerRuntime.authModeDescriptions.codex.auto');
       case 'chatgpt':
-        return 'Force native Codex launches to use your connected ChatGPT account and subscription.';
+        return t('providerRuntime.authModeDescriptions.codex.chatgpt');
       case 'api_key':
-        return 'Force native Codex launches to use OPENAI_API_KEY / CODEX_API_KEY billing.';
+        return t('providerRuntime.authModeDescriptions.codex.apiKey');
       default:
         return '';
     }
@@ -245,7 +290,10 @@ function getAuthModeDescription(providerId: CliProviderId, authMode: CliProvider
   return '';
 }
 
-function getConnectionAlert(provider: CliProviderStatus): string | null {
+function getConnectionAlert(
+  provider: CliProviderStatus,
+  t: ReturnType<typeof useAppTranslation>['t']
+): string | null {
   const authMode = provider.connection?.configuredAuthMode;
   const hasAnthropicSubscriptionSession =
     provider.authMethod === 'oauth_token' || provider.authMethod === 'claude.ai';
@@ -253,7 +301,7 @@ function getConnectionAlert(provider: CliProviderStatus): string | null {
   if (provider.providerId === 'anthropic' && provider.connection?.compatibleEndpoint?.enabled) {
     return provider.connection.compatibleEndpoint.tokenConfigured
       ? null
-      : 'Auth token is not configured. Many local Anthropic-compatible endpoints require a non-empty token.';
+      : t('providerRuntime.alerts.authTokenMissing');
   }
 
   if (
@@ -261,7 +309,7 @@ function getConnectionAlert(provider: CliProviderStatus): string | null {
     authMode === 'api_key' &&
     !provider.connection?.apiKeyConfigured
   ) {
-    return 'API key mode is selected, but no Anthropic API credential is available yet.';
+    return t('providerRuntime.alerts.anthropicApiKeyMissing');
   }
 
   if (
@@ -269,7 +317,7 @@ function getConnectionAlert(provider: CliProviderStatus): string | null {
     authMode === 'oauth' &&
     !hasAnthropicSubscriptionSession
   ) {
-    return 'Anthropic subscription mode is selected. Sign in with Anthropic to use this provider.';
+    return t('providerRuntime.alerts.anthropicSubscriptionMissing');
   }
 
   if (
@@ -277,17 +325,17 @@ function getConnectionAlert(provider: CliProviderStatus): string | null {
     authMode === 'auto' &&
     provider.connection?.apiKeySource === 'stored'
   ) {
-    return 'A saved API key is available, but app-launched Anthropic sessions use it only after you switch to API key mode.';
+    return t('providerRuntime.alerts.anthropicStoredKeyAvailable');
   }
 
   if (provider.providerId === 'codex') {
     const codex = provider.connection?.codex;
     if (codex?.login.status === 'starting') {
-      return 'Starting ChatGPT login...';
+      return t('providerRuntime.alerts.chatgptLoginStarting');
     }
 
     if (codex?.login.status === 'pending') {
-      return 'Waiting for ChatGPT account login to finish...';
+      return t('providerRuntime.alerts.chatgptLoginPending');
     }
 
     if (codex?.login.status === 'failed' && codex.login.error) {
@@ -296,19 +344,19 @@ function getConnectionAlert(provider: CliProviderStatus): string | null {
 
     if (provider.connection?.configuredAuthMode === 'api_key') {
       if (!provider.connection?.apiKeyConfigured) {
-        return 'API key mode is selected, but no OPENAI_API_KEY or CODEX_API_KEY credential is available yet.';
+        return t('providerRuntime.alerts.codexApiKeyMissing');
       }
       return null;
     }
 
     if (provider.connection?.configuredAuthMode === 'chatgpt' && !codex?.managedAccount) {
       const missingChatgptMessage = codex?.localActiveChatgptAccountPresent
-        ? 'Codex has a locally selected ChatGPT account, but the current session needs reconnect.'
+        ? t('providerRuntime.alerts.codexNeedsReconnect')
         : codex?.localAccountArtifactsPresent
-          ? 'Codex CLI currently has no active ChatGPT account. Local Codex account data exists, but no active managed session is selected.'
-          : 'Codex CLI currently has no active ChatGPT account. Connect ChatGPT to use your subscription.';
+          ? t('providerRuntime.alerts.codexLocalArtifactsNoSession')
+          : t('providerRuntime.alerts.codexNoChatgptAccount');
       return provider.connection.apiKeyConfigured
-        ? `${missingChatgptMessage} Switch to API key mode to use the detected API key.`
+        ? t('providerRuntime.alerts.withApiKeyFallback', { message: missingChatgptMessage })
         : missingChatgptMessage;
     }
 
@@ -321,7 +369,7 @@ function getConnectionAlert(provider: CliProviderStatus): string | null {
     }
 
     if (!provider.connection?.apiKeyConfigured && !codex?.managedAccount) {
-      return 'No ChatGPT account or API key is available yet.';
+      return t('providerRuntime.alerts.codexNoCredential');
     }
 
     return null;
@@ -331,27 +379,38 @@ function getConnectionAlert(provider: CliProviderStatus): string | null {
     provider.providerId === 'gemini' &&
     provider.availableBackends?.some((option) => option.id === 'api' && !option.available)
   ) {
-    return 'Gemini API is currently unavailable. Configure `GEMINI_API_KEY` here or use valid Google ADC credentials.';
+    return t('providerRuntime.alerts.geminiApiUnavailable');
   }
 
   return null;
 }
 
-function getProviderUsageLabel(provider: CliProviderStatus): string {
+function getProviderUsageLabel(
+  provider: CliProviderStatus,
+  t: ReturnType<typeof useAppTranslation>['t']
+): string {
   if (provider.providerId === 'anthropic' && provider.connection?.compatibleEndpoint?.enabled) {
-    return 'Using compatible endpoint';
+    return t('providerRuntime.usage.compatibleEndpoint');
   }
 
   if (
     provider.providerId === 'anthropic' &&
     provider.connection?.configuredAuthMode === 'api_key'
   ) {
-    return provider.connection.apiKeyConfigured ? 'Using API key' : 'API key required';
+    return provider.connection.apiKeyConfigured
+      ? t('providerRuntime.usage.apiKey')
+      : t('providerRuntime.usage.apiKeyRequired');
   }
 
   return provider.authenticated
-    ? `Using ${formatProviderAuthMethodLabelForProvider(provider.providerId, provider.authMethod)}`
-    : provider.statusMessage || 'Not connected';
+    ? t('providerRuntime.usage.usingMethod', {
+        method: formatProviderAuthMethodLabelForProvider(
+          provider.providerId,
+          provider.authMethod,
+          t
+        ),
+      })
+    : provider.statusMessage || t('providerRuntime.usage.notConnected');
 }
 
 function getCompactOpenCodeProviderDetailMessage(detailMessage?: string | null): string | null {
@@ -374,7 +433,8 @@ function getCompactOpenCodeProviderDetailMessage(detailMessage?: string | null):
 
 function getCodexAccountPanelHint(
   provider: CliProviderStatus | null,
-  configuredAuthMode: CliProviderAuthMode | undefined
+  configuredAuthMode: CliProviderAuthMode | undefined,
+  t: ReturnType<typeof useAppTranslation>['t']
 ): string | null {
   if (provider?.providerId !== 'codex') {
     return null;
@@ -390,23 +450,27 @@ function getCodexAccountPanelHint(
 
   if (hasActiveChatgptSession) {
     if (!codex.rateLimits) {
-      return 'Usage limits appear here after Codex reports them for the connected ChatGPT account.';
+      return t('providerRuntime.codex.account.hints.usageLimitsAfterReport');
     }
 
     return null;
   }
 
   const usageSentence = codex.localActiveChatgptAccountPresent
-    ? 'Codex has a locally selected ChatGPT account, but the current session needs reconnect before usage limits can load here.'
+    ? t('providerRuntime.codex.account.hints.reconnectBeforeUsage')
     : codex.localAccountArtifactsPresent
-      ? 'Codex CLI currently reports no active ChatGPT account. Local Codex account data exists, but no active managed session is selected. Usage limits appear here only after Codex CLI sees one.'
-      : 'Codex CLI currently reports no active ChatGPT account. Usage limits appear here only after Codex CLI sees one.';
+      ? t('providerRuntime.codex.account.hints.localArtifactsNoSession')
+      : t('providerRuntime.codex.account.hints.noActiveAccount');
   if (configuredAuthMode === 'chatgpt' && provider.connection?.apiKeyConfigured) {
-    return `${usageSentence} The detected API key is only used after you switch Codex to API key mode.`;
+    return t('providerRuntime.codex.account.hints.detectedApiKeyNeedsApiMode', {
+      message: usageSentence,
+    });
   }
 
   if (configuredAuthMode === 'auto' && provider.connection?.apiKeyConfigured) {
-    return `${usageSentence} Auto will keep using the detected API key until ChatGPT is connected.`;
+    return t('providerRuntime.codex.account.hints.autoUsesApiKeyUntilChatgpt', {
+      message: usageSentence,
+    });
   }
 
   return usageSentence;
@@ -424,9 +488,63 @@ function getProviderStatusColor(statusText: string | null, authenticated: boolea
   return authenticated ? '#4ade80' : 'var(--color-text-muted)';
 }
 
-function formatCodexResetDateTime(timestampSeconds: number | null | undefined): string {
+function formatCodexResetDateTime(
+  timestampSeconds: number | null | undefined,
+  t: ReturnType<typeof useAppTranslation>['t']
+): string {
   const normalized = normalizeCodexResetTimestamp(timestampSeconds);
-  return normalized ? new Date(normalized).toLocaleString() : 'Unknown';
+  return normalized ? new Date(normalized).toLocaleString() : t('providerRuntime.status.unknown');
+}
+
+function formatLocalizedCodexUsageWindowLabel(
+  title: 'Primary used' | 'Secondary used' | 'Weekly used',
+  windowDurationMins: number | null | undefined,
+  t: ReturnType<typeof useAppTranslation>['t']
+): string {
+  const titleByKey = {
+    'Primary used': t('providerRuntime.codex.rateLimits.primaryUsed'),
+    'Secondary used': t('providerRuntime.codex.rateLimits.secondaryUsed'),
+    'Weekly used': t('providerRuntime.codex.rateLimits.weeklyUsed'),
+  };
+  return formatCodexUsageWindowLabel(title, windowDurationMins).replace(title, titleByKey[title]);
+}
+
+function formatLocalizedCodexResetWindowLabel(
+  title: 'Primary reset' | 'Secondary reset' | 'Weekly reset',
+  windowDurationMins: number | null | undefined,
+  t: ReturnType<typeof useAppTranslation>['t']
+): string {
+  const titleByKey = {
+    'Primary reset': t('providerRuntime.codex.rateLimits.primaryReset'),
+    'Secondary reset': t('providerRuntime.codex.rateLimits.secondaryReset'),
+    'Weekly reset': t('providerRuntime.codex.rateLimits.weeklyReset'),
+  };
+  return formatCodexResetWindowLabel(title, windowDurationMins).replace(title, titleByKey[title]);
+}
+
+function formatLocalizedCodexUsageExplanation(
+  usedPercent: number | null | undefined,
+  windowDurationMins: number | null | undefined,
+  t: ReturnType<typeof useAppTranslation>['t']
+): string {
+  const windowLabel = formatCodexWindowDurationLong(windowDurationMins);
+  const remaining = formatCodexRemainingPercent(usedPercent);
+
+  if (windowLabel && remaining) {
+    return t('providerRuntime.codex.rateLimits.usageExplanationWithRemaining', {
+      used: formatCodexUsagePercent(usedPercent),
+      remaining,
+      window: windowLabel,
+    });
+  }
+
+  if (windowLabel) {
+    return t('providerRuntime.codex.rateLimits.usageExplanationWindowOnly', {
+      window: windowLabel,
+    });
+  }
+
+  return t('providerRuntime.codex.rateLimits.usageExplanationGeneric');
 }
 
 const CodexRateLimitWindowCard = ({
@@ -446,6 +564,7 @@ const CodexRateLimitWindowCard = ({
   resetValue: string;
   accent: 'primary' | 'secondary';
 }>): React.JSX.Element => {
+  const { t } = useAppTranslation('settings');
   const accentStyles =
     accent === 'primary'
       ? {
@@ -496,7 +615,7 @@ const CodexRateLimitWindowCard = ({
             {usedValue}
           </div>
           <div className="text-[11px]" style={{ color: 'var(--color-text-secondary)' }}>
-            {remainingValue} left
+            {t('providerRuntime.codex.rateLimits.remainingLeft', { value: remainingValue })}
           </div>
         </div>
 
@@ -517,44 +636,44 @@ const CodexRateLimitWindowCard = ({
 };
 
 function getConnectionMethodCardOptions(
-  provider: CliProviderStatus
+  provider: CliProviderStatus,
+  t: ReturnType<typeof useAppTranslation>['t']
 ): ConnectionMethodCardOption[] | null {
   switch (provider.providerId) {
     case 'anthropic':
       return [
         {
           authMode: 'auto',
-          title: 'Auto',
-          description: 'Use Anthropic runtime defaults and the best local credential available.',
+          title: t('providerRuntime.connectionCards.auto.title'),
+          description: t('providerRuntime.connectionCards.anthropic.autoDescription'),
         },
         {
           authMode: 'oauth',
-          title: 'Anthropic subscription',
-          description: 'Use your local Anthropic sign-in session and subscription access.',
+          title: t('providerRuntime.connectionCards.anthropic.subscriptionTitle'),
+          description: t('providerRuntime.connectionCards.anthropic.subscriptionDescription'),
         },
         {
           authMode: 'api_key',
-          title: 'API key',
-          description: 'Use ANTHROPIC_API_KEY and Anthropic API billing.',
+          title: t('providerRuntime.connectionCards.apiKey.title'),
+          description: t('providerRuntime.connectionCards.anthropic.apiKeyDescription'),
         },
       ];
     case 'codex':
       return [
         {
           authMode: 'auto',
-          title: 'Auto',
-          description:
-            'Prefer your ChatGPT account and subscription. Use API key mode only if needed.',
+          title: t('providerRuntime.connectionCards.auto.title'),
+          description: t('providerRuntime.connectionCards.codex.autoDescription'),
         },
         {
           authMode: 'chatgpt',
-          title: 'ChatGPT account',
-          description: 'Use your connected ChatGPT account and Codex subscription.',
+          title: t('providerRuntime.connectionCards.codex.chatgptTitle'),
+          description: t('providerRuntime.connectionCards.codex.chatgptDescription'),
         },
         {
           authMode: 'api_key',
-          title: 'API key',
-          description: 'Use OPENAI_API_KEY and CODEX_API_KEY billing for native Codex launches.',
+          title: t('providerRuntime.connectionCards.apiKey.title'),
+          description: t('providerRuntime.connectionCards.codex.apiKeyDescription'),
         },
       ];
     default:
@@ -562,13 +681,16 @@ function getConnectionMethodCardOptions(
   }
 }
 
-function getConnectionMethodCardsHint(provider: CliProviderStatus): string | null {
+function getConnectionMethodCardsHint(
+  provider: CliProviderStatus,
+  t: ReturnType<typeof useAppTranslation>['t']
+): string | null {
   if (provider.providerId === 'codex') {
-    return 'Codex always runs through the native runtime. Auto prefers your ChatGPT account before falling back to API-key credentials.';
+    return t('providerRuntime.connectionCards.codex.hint');
   }
 
   if (provider.providerId === 'anthropic') {
-    return 'Auto keeps Anthropic on its default local credential resolution.';
+    return t('providerRuntime.connectionCards.anthropic.hint');
   }
 
   return null;
@@ -589,6 +711,7 @@ const ConnectionMethodCards = ({
   pendingConnectionAction: PendingConnectionAction;
   onSelect: (authMode: CliProviderAuthMode) => void;
 }>): React.JSX.Element => {
+  const { t } = useAppTranslation('settings');
   const gridClassName =
     options.length === 3 ? 'grid gap-2 md:grid-cols-3' : 'grid gap-2 sm:grid-cols-2';
 
@@ -622,7 +745,7 @@ const ConnectionMethodCards = ({
                   }}
                 >
                   <Loader2 className="size-3 animate-spin" />
-                  Switching...
+                  {t('providerRuntime.connection.switching')}
                 </span>
               ) : selected ? (
                 <span
@@ -632,7 +755,7 @@ const ConnectionMethodCards = ({
                     backgroundColor: 'rgba(74, 222, 128, 0.14)',
                   }}
                 >
-                  Selected
+                  {t('providerRuntime.connection.selected')}
                 </span>
               ) : null}
             </div>
@@ -663,6 +786,7 @@ export const ProviderRuntimeSettingsDialog = ({
   onRefreshProvider,
   onRequestLogin,
 }: Props): React.JSX.Element => {
+  const { t } = useAppTranslation('settings');
   const [selectedProviderId, setSelectedProviderId] = useState<CliProviderId>(initialProviderId);
   const [activeApiKeyFormProviderId, setActiveApiKeyFormProviderId] =
     useState<ApiKeyProviderId | null>(null);
@@ -800,7 +924,9 @@ export const ProviderRuntimeSettingsDialog = ({
       if (selectedCompatibleToken) {
         nextConnection.compatibleEndpoint.tokenConfigured = true;
         nextConnection.compatibleEndpoint.tokenSource = 'stored';
-        nextConnection.compatibleEndpoint.tokenSourceLabel = 'Stored in app';
+        nextConnection.compatibleEndpoint.tokenSourceLabel = t(
+          'providerRuntime.apiKey.storedInApp'
+        );
       }
     }
 
@@ -814,11 +940,13 @@ export const ProviderRuntimeSettingsDialog = ({
       if (nextConnection.apiKeySource === 'stored') {
         nextConnection.apiKeyConfigured = Boolean(selectedApiKey);
         nextConnection.apiKeySource = selectedApiKey ? 'stored' : null;
-        nextConnection.apiKeySourceLabel = selectedApiKey ? 'Stored in app' : null;
+        nextConnection.apiKeySourceLabel = selectedApiKey
+          ? t('providerRuntime.apiKey.storedInApp')
+          : null;
       } else if (!nextConnection.apiKeyConfigured && selectedApiKey) {
         nextConnection.apiKeyConfigured = true;
         nextConnection.apiKeySource = 'stored';
-        nextConnection.apiKeySourceLabel = 'Stored in app';
+        nextConnection.apiKeySourceLabel = t('providerRuntime.apiKey.storedInApp');
       }
     }
 
@@ -836,6 +964,7 @@ export const ProviderRuntimeSettingsDialog = ({
     selectedApiKey,
     statusApiKeyConfig,
     statusSelectedProvider,
+    t,
   ]);
 
   useEffect(() => {
@@ -869,12 +998,12 @@ export const ProviderRuntimeSettingsDialog = ({
   const configuredAuthMode: CliProviderAuthMode | undefined =
     selectedProvider?.connection?.configuredAuthMode ?? configurableAuthModes[0] ?? undefined;
   const connectionMethodCardOptions = selectedProvider
-    ? getConnectionMethodCardOptions(selectedProvider)
+    ? getConnectionMethodCardOptions(selectedProvider, t)
     : null;
   const showConnectionMethodCards =
     connectionMethodCardOptions !== null && typeof configuredAuthMode !== 'undefined';
   const managedRuntimeSummary = selectedProvider
-    ? getProviderCurrentRuntimeSummary(selectedProvider)
+    ? getProviderCurrentRuntimeSummary(selectedProvider, t)
     : null;
   const connectionManagedRuntime = selectedProvider
     ? isConnectionManagedRuntimeProvider(selectedProvider)
@@ -888,10 +1017,22 @@ export const ProviderRuntimeSettingsDialog = ({
       ? getVisibleProviderRuntimeBackendOptions(selectedProvider).length > 1
       : false);
 
-  const apiKeyConfig =
+  const apiKeyProviderId =
     selectedProvider && isApiKeyProviderId(selectedProvider.providerId)
-      ? API_KEY_PROVIDER_CONFIG[selectedProvider.providerId]
+      ? selectedProvider.providerId
       : null;
+  const apiKeyConfig = apiKeyProviderId ? API_KEY_PROVIDER_CONFIG[apiKeyProviderId] : null;
+  const apiKeyTranslationKeys = apiKeyProviderId
+    ? API_KEY_PROVIDER_TRANSLATION_KEYS[apiKeyProviderId]
+    : null;
+  const apiKeyDisplayConfig = apiKeyTranslationKeys
+    ? {
+        title: t(apiKeyTranslationKeys.title),
+        description: t(apiKeyTranslationKeys.description),
+        name: t(apiKeyTranslationKeys.name),
+        placeholder: t(apiKeyTranslationKeys.placeholder),
+      }
+    : null;
   const showApiKeyForm =
     selectedProvider &&
     isApiKeyProviderId(selectedProvider.providerId) &&
@@ -900,7 +1041,7 @@ export const ProviderRuntimeSettingsDialog = ({
     apiKeyConfig &&
     (selectedProvider?.providerId !== 'codex' || !selectedProvider.connection?.supportsOAuth)
   );
-  const connectionAlert = selectedProvider ? getConnectionAlert(selectedProvider) : null;
+  const connectionAlert = selectedProvider ? getConnectionAlert(selectedProvider, t) : null;
   const connectionLoading =
     selectedProviderLoading ||
     connectionSaving ||
@@ -929,14 +1070,15 @@ export const ProviderRuntimeSettingsDialog = ({
   const anthropicFastModeDisabledReason =
     anthropicFastModeCapability?.reason ??
     (anthropicFastModeSupported
-      ? 'Fast mode is currently unavailable for this Anthropic runtime.'
-      : 'This Anthropic runtime does not expose Fast mode.');
+      ? t('providerRuntime.fastMode.unavailableForRuntime')
+      : t('providerRuntime.fastMode.notExposed'));
   const connectionMethodCardsHint = selectedProvider
-    ? getConnectionMethodCardsHint(selectedProvider)
+    ? getConnectionMethodCardsHint(selectedProvider, t)
     : null;
   const codexAccountPanelHint = getCodexAccountPanelHint(
     selectedProvider ?? null,
-    configuredAuthMode
+    configuredAuthMode,
+    t
   );
   const codexFastCapability = useMemo(() => {
     if (selectedProvider?.providerId !== 'codex') {
@@ -986,7 +1128,7 @@ export const ProviderRuntimeSettingsDialog = ({
   const anthropicCompatibleTokenStatus =
     selectedCompatibleToken?.maskedValue ??
     anthropicCompatibleEndpoint?.tokenSourceLabel ??
-    (anthropicCompatibleTokenConfigured ? 'Configured' : null);
+    (anthropicCompatibleTokenConfigured ? t('providerRuntime.status.configured') : null);
   const anthropicCompatibleMissingToken =
     anthropicCompatibleEndpointEnabled && !anthropicCompatibleTokenConfigured;
 
@@ -1005,9 +1147,9 @@ export const ProviderRuntimeSettingsDialog = ({
   let connectionStatusLabel: string | null = null;
   if (selectedProvider) {
     if (!hideConnectionMethodMeta && selectedProvider.authenticated) {
-      connectionStatusLabel = getProviderUsageLabel(selectedProvider);
+      connectionStatusLabel = getProviderUsageLabel(selectedProvider, t);
     } else if (!hideConnectionMethodMeta) {
-      connectionStatusLabel = 'Not connected';
+      connectionStatusLabel = t('providerRuntime.usage.notConnected');
     }
   }
   const showSelectedProviderSummary = Boolean(selectedProvider) && !connectionManagedRuntime;
@@ -1029,36 +1171,36 @@ export const ProviderRuntimeSettingsDialog = ({
       if (selectedProvider.providerId === 'anthropic') {
         switch (pendingConnectionAction) {
           case 'api_key':
-            return 'Switching to API key...';
+            return t('providerRuntime.progress.switchingApiKey');
           case 'oauth':
-            return 'Switching to Anthropic subscription...';
+            return t('providerRuntime.progress.switchingAnthropicSubscription');
           case 'auto':
-            return 'Switching to Auto...';
+            return t('providerRuntime.progress.switchingAuto');
           case 'compatible':
-            return 'Saving compatible endpoint...';
+            return t('providerRuntime.progress.savingCompatibleEndpoint');
           default:
-            return 'Applying connection changes...';
+            return t('providerRuntime.progress.applyingConnectionChanges');
         }
       }
 
       if (selectedProvider.providerId === 'codex') {
         switch (pendingConnectionAction) {
           case 'chatgpt':
-            return 'Switching to ChatGPT account mode...';
+            return t('providerRuntime.progress.switchingChatgpt');
           case 'api_key':
-            return 'Switching to API key mode...';
+            return t('providerRuntime.progress.switchingApiKeyMode');
           case 'auto':
-            return 'Switching to Auto...';
+            return t('providerRuntime.progress.switchingAuto');
           default:
-            return 'Applying connection changes...';
+            return t('providerRuntime.progress.applyingConnectionChanges');
         }
       }
 
-      return 'Applying connection changes...';
+      return t('providerRuntime.progress.applyingConnectionChanges');
     }
 
-    return 'Refreshing provider status...';
-  }, [connectionLoading, connectionSaving, pendingConnectionAction, selectedProvider]);
+    return t('providerRuntime.progress.refreshingProviderStatus');
+  }, [connectionLoading, connectionSaving, pendingConnectionAction, selectedProvider, t]);
 
   const handleStartApiKeyEdit = (): void => {
     if (!selectedProvider || !isApiKeyProviderId(selectedProvider.providerId) || !apiKeyConfig) {
@@ -1084,7 +1226,7 @@ export const ProviderRuntimeSettingsDialog = ({
     }
 
     if (!apiKeyValue.trim()) {
-      setApiKeyError('API key is required');
+      setApiKeyError(t('providerRuntime.errors.apiKeyRequired'));
       return;
     }
 
@@ -1099,7 +1241,9 @@ export const ProviderRuntimeSettingsDialog = ({
         scope: apiKeyScope,
       });
     } catch (error) {
-      setApiKeyError(error instanceof Error ? error.message : 'Failed to save API key');
+      setApiKeyError(
+        error instanceof Error ? error.message : t('providerRuntime.errors.saveApiKey')
+      );
       return;
     }
 
@@ -1109,7 +1253,7 @@ export const ProviderRuntimeSettingsDialog = ({
     try {
       await onRefreshProvider?.(selectedProvider.providerId);
     } catch {
-      setConnectionError('API key saved, but failed to refresh provider status.');
+      setConnectionError(t('providerRuntime.errors.apiKeySavedRefreshFailed'));
     }
   };
 
@@ -1123,7 +1267,9 @@ export const ProviderRuntimeSettingsDialog = ({
     try {
       await deleteApiKey(selectedApiKey.id);
     } catch (error) {
-      setApiKeyError(error instanceof Error ? error.message : 'Failed to delete API key');
+      setApiKeyError(
+        error instanceof Error ? error.message : t('providerRuntime.errors.deleteApiKey')
+      );
       return;
     }
 
@@ -1133,7 +1279,7 @@ export const ProviderRuntimeSettingsDialog = ({
     try {
       await onRefreshProvider?.(selectedProvider.providerId);
     } catch {
-      setConnectionError('API key deleted, but failed to refresh provider status.');
+      setConnectionError(t('providerRuntime.errors.apiKeyDeletedRefreshFailed'));
     }
   };
 
@@ -1169,13 +1315,15 @@ export const ProviderRuntimeSettingsDialog = ({
 
       updateSucceeded = true;
     } catch (error) {
-      setConnectionError(error instanceof Error ? error.message : 'Failed to update connection');
+      setConnectionError(
+        error instanceof Error ? error.message : t('providerRuntime.errors.updateConnection')
+      );
     } finally {
       if (updateSucceeded) {
         try {
           await onRefreshProvider?.(selectedProvider.providerId);
         } catch {
-          setConnectionError('Connection updated, but failed to refresh provider status.');
+          setConnectionError(t('providerRuntime.errors.connectionUpdatedRefreshFailed'));
         }
       }
 
@@ -1190,7 +1338,7 @@ export const ProviderRuntimeSettingsDialog = ({
     }
 
     const baseUrl = compatibleBaseUrl.trim();
-    const validationError = validateAnthropicCompatibleBaseUrl(baseUrl);
+    const validationError = validateAnthropicCompatibleBaseUrl(baseUrl, t);
     if (validationError) {
       setCompatibleEndpointError(validationError);
       setCompatibleEndpointStatus(null);
@@ -1227,19 +1375,19 @@ export const ProviderRuntimeSettingsDialog = ({
       setCompatibleTokenValue('');
       setCompatibleEndpointStatus(
         compatibleTokenValue.trim() || anthropicCompatibleTokenConfigured
-          ? 'Endpoint saved'
-          : 'Endpoint saved. Auth token is not configured.'
+          ? t('providerRuntime.compatibleEndpoint.status.endpointSaved')
+          : t('providerRuntime.compatibleEndpoint.status.endpointSavedTokenMissing')
       );
     } catch (error) {
       setCompatibleEndpointError(
-        error instanceof Error ? error.message : 'Failed to save endpoint'
+        error instanceof Error ? error.message : t('providerRuntime.errors.saveEndpoint')
       );
     } finally {
       if (updateSucceeded) {
         try {
           await onRefreshProvider?.('anthropic');
         } catch {
-          setConnectionError('Endpoint saved, but failed to refresh provider status.');
+          setConnectionError(t('providerRuntime.errors.endpointSavedRefreshFailed'));
         }
       }
 
@@ -1271,17 +1419,19 @@ export const ProviderRuntimeSettingsDialog = ({
       });
       updateSucceeded = true;
       setCompatibleTokenValue('');
-      setCompatibleEndpointStatus('Endpoint disabled. Saved token was kept.');
+      setCompatibleEndpointStatus(
+        t('providerRuntime.compatibleEndpoint.status.endpointDisabledTokenKept')
+      );
     } catch (error) {
       setCompatibleEndpointError(
-        error instanceof Error ? error.message : 'Failed to disable endpoint'
+        error instanceof Error ? error.message : t('providerRuntime.errors.disableEndpoint')
       );
     } finally {
       if (updateSucceeded) {
         try {
           await onRefreshProvider?.('anthropic');
         } catch {
-          setConnectionError('Endpoint disabled, but failed to refresh provider status.');
+          setConnectionError(t('providerRuntime.errors.endpointDisabledRefreshFailed'));
         }
       }
 
@@ -1297,7 +1447,7 @@ export const ProviderRuntimeSettingsDialog = ({
       await onRefreshProvider?.('codex');
     } catch (error) {
       setConnectionError(
-        error instanceof Error ? error.message : 'Failed to refresh Codex account'
+        error instanceof Error ? error.message : t('providerRuntime.errors.refreshCodexAccount')
       );
     }
   };
@@ -1341,7 +1491,9 @@ export const ProviderRuntimeSettingsDialog = ({
     try {
       await onSelectBackend(providerId, backendId);
     } catch (error) {
-      setRuntimeError(error instanceof Error ? error.message : 'Failed to update runtime backend');
+      setRuntimeError(
+        error instanceof Error ? error.message : t('providerRuntime.errors.updateRuntimeBackend')
+      );
     } finally {
       setRuntimeSaving(false);
     }
@@ -1363,7 +1515,7 @@ export const ProviderRuntimeSettingsDialog = ({
       await onRefreshProvider?.('anthropic');
     } catch (error) {
       setConnectionError(
-        error instanceof Error ? error.message : 'Failed to update Anthropic Fast mode'
+        error instanceof Error ? error.message : t('providerRuntime.errors.updateAnthropicFastMode')
       );
     } finally {
       setConnectionSaving(false);
@@ -1374,17 +1526,14 @@ export const ProviderRuntimeSettingsDialog = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[min(96vw,980px)] max-w-[min(96vw,980px)]">
         <DialogHeader>
-          <DialogTitle>Provider Settings</DialogTitle>
-          <DialogDescription>
-            Manage how each provider connects and, when supported, which backend the multimodel
-            runtime should use.
-          </DialogDescription>
+          <DialogTitle>{t('providerRuntime.title')}</DialogTitle>
+          <DialogDescription>{t('providerRuntime.description')}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="space-y-2">
             <div className="text-[11px] font-medium" style={{ color: 'var(--color-text-muted)' }}>
-              Provider
+              {t('providerRuntime.provider')}
             </div>
             <Tabs
               value={selectedProvider?.providerId ?? selectedProviderId}
@@ -1431,12 +1580,12 @@ export const ProviderRuntimeSettingsDialog = ({
                   className="text-xs"
                   style={{
                     color: getProviderStatusColor(
-                      getProviderUsageLabel(selectedProvider),
+                      getProviderUsageLabel(selectedProvider, t),
                       selectedProvider.authenticated
                     ),
                   }}
                 >
-                  {getProviderUsageLabel(selectedProvider)}
+                  {getProviderUsageLabel(selectedProvider, t)}
                 </span>
                 {managedRuntimeSummary && !hideConnectionMethodMeta ? (
                   <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
@@ -1444,7 +1593,7 @@ export const ProviderRuntimeSettingsDialog = ({
                   </span>
                 ) : runtimeSummary ? (
                   <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                    Runtime: {runtimeSummary}
+                    {t('providerRuntime.runtimeSummary', { runtime: runtimeSummary })}
                   </span>
                 ) : null}
               </div>
@@ -1492,10 +1641,10 @@ export const ProviderRuntimeSettingsDialog = ({
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
-                      Connection
+                      {t('providerRuntime.connection.title')}
                     </div>
                     <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                      {getConnectionDescription(selectedProvider)}
+                      {getConnectionDescription(selectedProvider, t)}
                     </div>
                     {connectionProgressMessage ? (
                       <div
@@ -1518,15 +1667,15 @@ export const ProviderRuntimeSettingsDialog = ({
                       {selectedProvider.authenticated &&
                       (selectedProvider.authMethod === 'oauth_token' ||
                         selectedProvider.authMethod === 'claude.ai')
-                        ? 'Reconnect Anthropic'
-                        : getProviderConnectLabel(selectedProvider)}
+                        ? t('providerRuntime.actions.reconnectAnthropic')
+                        : getProviderConnectLabel(selectedProvider, t)}
                     </Button>
                   ) : null}
                 </div>
 
                 {showConnectionMethodCards ? (
                   <div className="space-y-2">
-                    <Label className="text-xs">Connection method</Label>
+                    <Label className="text-xs">{t('providerRuntime.connection.method')}</Label>
                     <ConnectionMethodCards
                       options={connectionMethodCardOptions}
                       selectedAuthMode={configuredAuthMode}
@@ -1545,8 +1694,8 @@ export const ProviderRuntimeSettingsDialog = ({
                   <div className="space-y-1.5">
                     <Label className="text-xs">
                       {selectedProvider.providerId === 'codex'
-                        ? 'Connection method'
-                        : 'Authentication method'}
+                        ? t('providerRuntime.connection.method')
+                        : t('providerRuntime.connection.authenticationMethod')}
                     </Label>
                     <Select
                       value={configuredAuthMode}
@@ -1561,14 +1710,15 @@ export const ProviderRuntimeSettingsDialog = ({
                           <SelectItem key={authMode} value={authMode}>
                             {formatProviderAuthModeLabelForProvider(
                               selectedProvider.providerId,
-                              authMode
+                              authMode,
+                              t
                             )}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                     <div className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-                      {getAuthModeDescription(selectedProvider.providerId, configuredAuthMode)}
+                      {getAuthModeDescription(selectedProvider.providerId, configuredAuthMode, t)}
                     </div>
                   </div>
                 ) : null}
@@ -1581,10 +1731,10 @@ export const ProviderRuntimeSettingsDialog = ({
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
-                          Local / compatible endpoint
+                          {t('providerRuntime.compatibleEndpoint.title')}
                         </div>
                         <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                          Use an Anthropic-compatible local runtime endpoint.
+                          {t('providerRuntime.compatibleEndpoint.description')}
                         </div>
                       </div>
                       <span
@@ -1598,14 +1748,16 @@ export const ProviderRuntimeSettingsDialog = ({
                             : 'rgba(255, 255, 255, 0.05)',
                         }}
                       >
-                        {anthropicCompatibleEndpointEnabled ? 'Enabled' : 'Off'}
+                        {anthropicCompatibleEndpointEnabled
+                          ? t('providerRuntime.status.enabled')
+                          : t('providerRuntime.status.off')}
                       </span>
                     </div>
 
                     <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                       <div className="space-y-1.5">
                         <Label htmlFor="anthropic-compatible-base-url" className="text-xs">
-                          Base URL
+                          {t('providerRuntime.compatibleEndpoint.baseUrl')}
                         </Label>
                         <Input
                           id="anthropic-compatible-base-url"
@@ -1615,7 +1767,7 @@ export const ProviderRuntimeSettingsDialog = ({
                             setCompatibleEndpointError(null);
                             setCompatibleEndpointStatus(null);
                           }}
-                          placeholder="http://localhost:1234"
+                          placeholder={t('runtimeProvider.compatibleEndpoint.baseUrlPlaceholder')}
                           className="h-9 text-sm"
                           disabled={connectionBusy}
                         />
@@ -1623,7 +1775,7 @@ export const ProviderRuntimeSettingsDialog = ({
 
                       <div className="space-y-1.5">
                         <Label htmlFor="anthropic-compatible-auth-token" className="text-xs">
-                          Auth token
+                          {t('providerRuntime.compatibleEndpoint.authToken')}
                         </Label>
                         <Input
                           id="anthropic-compatible-auth-token"
@@ -1636,7 +1788,7 @@ export const ProviderRuntimeSettingsDialog = ({
                           }}
                           placeholder={
                             anthropicCompatibleTokenConfigured
-                              ? 'Leave blank to keep saved token'
+                              ? t('providerRuntime.compatibleEndpoint.keepSavedToken')
                               : 'lmstudio'
                           }
                           className="h-9 text-sm"
@@ -1657,7 +1809,11 @@ export const ProviderRuntimeSettingsDialog = ({
                             : 'rgba(255, 255, 255, 0.05)',
                         }}
                       >
-                        Token {anthropicCompatibleTokenConfigured ? 'configured' : 'not set'}
+                        {t('providerRuntime.compatibleEndpoint.tokenStatus', {
+                          status: anthropicCompatibleTokenConfigured
+                            ? t('providerRuntime.status.configured')
+                            : t('providerRuntime.status.notSet'),
+                        })}
                       </span>
                       {anthropicCompatibleTokenStatus ? (
                         <span style={{ color: 'var(--color-text-secondary)' }}>
@@ -1705,7 +1861,7 @@ export const ProviderRuntimeSettingsDialog = ({
                         }}
                       >
                         <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-                        <span>Auth token is not configured.</span>
+                        <span>{t('providerRuntime.compatibleEndpoint.authTokenMissing')}</span>
                       </div>
                     ) : null}
 
@@ -1718,7 +1874,7 @@ export const ProviderRuntimeSettingsDialog = ({
                           disabled={connectionBusy}
                           onClick={() => void handleDisableAnthropicCompatibleEndpoint()}
                         >
-                          Disable
+                          {t('providerRuntime.actions.disable')}
                         </Button>
                       ) : null}
                       <Button
@@ -1732,7 +1888,7 @@ export const ProviderRuntimeSettingsDialog = ({
                         ) : (
                           <Save className="mr-1 size-3.5" />
                         )}
-                        Save endpoint
+                        {t('providerRuntime.actions.saveEndpoint')}
                       </Button>
                     </div>
                   </div>
@@ -1747,11 +1903,13 @@ export const ProviderRuntimeSettingsDialog = ({
                         backgroundColor: 'rgba(255, 255, 255, 0.05)',
                       }}
                     >
-                      Mode:{' '}
-                      {formatProviderAuthModeLabelForProvider(
-                        selectedProvider.providerId,
-                        configuredAuthMode
-                      )}
+                      {t('providerRuntime.connection.mode', {
+                        mode: formatProviderAuthModeLabelForProvider(
+                          selectedProvider.providerId,
+                          configuredAuthMode,
+                          t
+                        ),
+                      })}
                     </span>
                   ) : null}
                   {connectionStatusLabel ? (
@@ -1782,17 +1940,16 @@ export const ProviderRuntimeSettingsDialog = ({
                     style={{ borderColor: 'var(--color-border-subtle)' }}
                   >
                     <div className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
-                      Fast mode default
+                      {t('providerRuntime.fastMode.title')}
                     </div>
                     <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                      Apply Claude Code Fast mode by default for new Anthropic team launches when
-                      the resolved model and runtime allow it.
+                      {t('providerRuntime.fastMode.description')}
                     </div>
                     {anthropicFastModeSupported ? (
                       <div className="inline-flex rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-0.5">
                         {[
-                          { enabled: false, label: 'Default Off' },
-                          { enabled: true, label: 'Prefer Fast' },
+                          { enabled: false, label: t('providerRuntime.fastMode.defaultOff') },
+                          { enabled: true, label: t('providerRuntime.fastMode.preferFast') },
                         ].map((option) => (
                           <button
                             key={option.label}
@@ -1815,8 +1972,8 @@ export const ProviderRuntimeSettingsDialog = ({
                     <div className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
                       {anthropicFastModeSupported && anthropicFastModeAvailable
                         ? anthropicFastModeEnabled
-                          ? 'New Anthropic launches will request Fast mode by default when the resolved model supports it.'
-                          : 'New Anthropic launches stay on normal speed unless a team explicitly enables Fast mode.'
+                          ? t('providerRuntime.fastMode.enabledHint')
+                          : t('providerRuntime.fastMode.disabledHint')
                         : anthropicFastModeDisabledReason}
                     </div>
                   </div>
@@ -1830,11 +1987,10 @@ export const ProviderRuntimeSettingsDialog = ({
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
-                          ChatGPT account
+                          {t('providerRuntime.codex.account.title')}
                         </div>
                         <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                          Manage the local Codex app-server account session that powers
-                          subscription-backed native launches.
+                          {t('providerRuntime.codex.account.description')}
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2">
@@ -1844,7 +2000,7 @@ export const ProviderRuntimeSettingsDialog = ({
                           disabled={codexActionBusy}
                           onClick={() => void handleCodexAccountRefresh()}
                         >
-                          Refresh
+                          {t('providerRuntime.actions.refresh')}
                         </Button>
                         {showCodexRuntimeInstallAction ? (
                           <Button
@@ -1854,7 +2010,7 @@ export const ProviderRuntimeSettingsDialog = ({
                             title={
                               codexRuntimeStatus?.error ??
                               codexRuntimeStatus?.progress?.detail ??
-                              'Install Codex CLI into app data'
+                              t('providerRuntime.codex.install.title')
                             }
                             onClick={() => void onInstallCodexRuntime?.()}
                           >
@@ -1863,7 +2019,7 @@ export const ProviderRuntimeSettingsDialog = ({
                             ) : (
                               <Download className="mr-1 size-3.5" />
                             )}
-                            {getCodexRuntimeInstallLabel(codexRuntimeStatus)}
+                            {getCodexRuntimeInstallLabel(codexRuntimeStatus, t)}
                           </Button>
                         ) : null}
                         {codexLoginPending ? (
@@ -1882,7 +2038,7 @@ export const ProviderRuntimeSettingsDialog = ({
                                 onClick={() => void api.openExternal(codexLoginAuthUrl)}
                               >
                                 <Link2 className="mr-1 size-3.5" />
-                                Open login
+                                {t('providerRuntime.actions.openLogin')}
                               </Button>
                             ) : null}
                             <Button
@@ -1891,7 +2047,7 @@ export const ProviderRuntimeSettingsDialog = ({
                               disabled={codexActionBusy}
                               onClick={() => void handleCodexCancelLogin()}
                             >
-                              Cancel login
+                              {t('providerRuntime.actions.cancelLogin')}
                             </Button>
                           </>
                         ) : codexHasActiveChatgptSession ? (
@@ -1901,7 +2057,7 @@ export const ProviderRuntimeSettingsDialog = ({
                             disabled={codexActionBusy}
                             onClick={() => void handleCodexLogout()}
                           >
-                            Disconnect account
+                            {t('providerRuntime.actions.disconnectAccount')}
                           </Button>
                         ) : (
                           <>
@@ -1918,7 +2074,7 @@ export const ProviderRuntimeSettingsDialog = ({
                               onClick={() => void handleCodexStartLogin('device_code')}
                             >
                               <Link2 className="mr-1 size-3.5" />
-                              Use code
+                              {t('providerRuntime.actions.useCode')}
                             </Button>
                             <Button
                               size="sm"
@@ -1927,7 +2083,9 @@ export const ProviderRuntimeSettingsDialog = ({
                               onClick={() => void handleCodexStartLogin('browser')}
                             >
                               <Link2 className="mr-1 size-3.5" />
-                              {codexNeedsReconnect ? 'Generate link' : 'Connect ChatGPT'}
+                              {codexNeedsReconnect
+                                ? t('providerRuntime.actions.generateLink')
+                                : t('providerRuntime.actions.connectChatGpt')}
                             </Button>
                           </>
                         )}
@@ -1951,12 +2109,12 @@ export const ProviderRuntimeSettingsDialog = ({
                         }}
                       >
                         {codexHasActiveChatgptSession
-                          ? 'Connected'
+                          ? t('providerRuntime.codex.account.connected')
                           : codexNeedsReconnect
-                            ? 'Reconnect required'
+                            ? t('providerRuntime.codex.account.reconnectRequired')
                             : codexLoginPending
-                              ? 'Login in progress'
-                              : 'Not connected'}
+                              ? t('providerRuntime.codex.account.loginInProgress')
+                              : t('providerRuntime.usage.notConnected')}
                       </span>
                       {codexConnection ? (
                         <span
@@ -1976,12 +2134,16 @@ export const ProviderRuntimeSettingsDialog = ({
                                   : 'rgba(248, 113, 113, 0.08)',
                           }}
                         >
-                          App-server: {codexConnection.appServerState}
+                          {t('providerRuntime.codex.account.appServer', {
+                            state: codexConnection.appServerState,
+                          })}
                         </span>
                       ) : null}
                       {codexConnection?.managedAccount?.planType ? (
                         <span style={{ color: 'var(--color-text-secondary)' }}>
-                          Plan: {codexConnection.managedAccount.planType}
+                          {t('providerRuntime.codex.account.plan', {
+                            plan: codexConnection.managedAccount.planType,
+                          })}
                         </span>
                       ) : null}
                       {codexConnection?.managedAccount?.email ? (
@@ -2031,27 +2193,30 @@ export const ProviderRuntimeSettingsDialog = ({
                             color: 'var(--color-text-secondary)',
                           }}
                         >
-                          These percentages show used quota, not remaining quota.{' '}
-                          {formatCodexUsageExplanation(
+                          {t('providerRuntime.codex.rateLimits.usedQuotaNote')}{' '}
+                          {formatLocalizedCodexUsageExplanation(
                             codexConnection.rateLimits.primary?.usedPercent,
-                            codexConnection.rateLimits.primary?.windowDurationMins
+                            codexConnection.rateLimits.primary?.windowDurationMins,
+                            t
                           )}
                           {codexConnection.rateLimits.secondary
-                            ? ` Weekly limits are shown separately in the ${
-                                formatCodexWindowDurationLong(
-                                  codexConnection.rateLimits.secondary.windowDurationMins
-                                ) ?? 'secondary'
-                              } window.`
+                            ? t('providerRuntime.codex.rateLimits.secondaryWindowNote', {
+                                window:
+                                  formatCodexWindowDurationLong(
+                                    codexConnection.rateLimits.secondary.windowDurationMins
+                                  ) ?? t('providerRuntime.codex.rateLimits.secondaryFallback'),
+                              })
                             : ''}
                         </div>
 
                         <div className="space-y-3">
                           <div className="grid gap-3 md:grid-cols-2">
                             <CodexRateLimitWindowCard
-                              title="Primary window"
-                              usedLabel={formatCodexUsageWindowLabel(
+                              title={t('providerRuntime.codex.rateLimits.primaryWindow')}
+                              usedLabel={formatLocalizedCodexUsageWindowLabel(
                                 'Primary used',
-                                codexConnection.rateLimits.primary?.windowDurationMins
+                                codexConnection.rateLimits.primary?.windowDurationMins,
+                                t
                               )}
                               usedValue={formatCodexUsagePercent(
                                 codexConnection.rateLimits.primary?.usedPercent
@@ -2059,14 +2224,16 @@ export const ProviderRuntimeSettingsDialog = ({
                               remainingValue={
                                 formatCodexRemainingPercent(
                                   codexConnection.rateLimits.primary?.usedPercent
-                                ) ?? 'Remaining unknown'
+                                ) ?? t('providerRuntime.codex.rateLimits.remainingUnknown')
                               }
-                              resetLabel={formatCodexResetWindowLabel(
+                              resetLabel={formatLocalizedCodexResetWindowLabel(
                                 'Primary reset',
-                                codexConnection.rateLimits.primary?.windowDurationMins
+                                codexConnection.rateLimits.primary?.windowDurationMins,
+                                t
                               )}
                               resetValue={formatCodexResetDateTime(
-                                codexConnection.rateLimits.primary?.resetsAt
+                                codexConnection.rateLimits.primary?.resetsAt,
+                                t
                               )}
                               accent="primary"
                             />
@@ -2075,14 +2242,15 @@ export const ProviderRuntimeSettingsDialog = ({
                               <CodexRateLimitWindowCard
                                 title={
                                   codexConnection.rateLimits.secondary.windowDurationMins === 10_080
-                                    ? 'Weekly window'
-                                    : 'Secondary window'
+                                    ? t('providerRuntime.codex.rateLimits.weeklyWindow')
+                                    : t('providerRuntime.codex.rateLimits.secondaryWindow')
                                 }
-                                usedLabel={formatCodexUsageWindowLabel(
+                                usedLabel={formatLocalizedCodexUsageWindowLabel(
                                   codexConnection.rateLimits.secondary.windowDurationMins === 10_080
                                     ? 'Weekly used'
                                     : 'Secondary used',
-                                  codexConnection.rateLimits.secondary.windowDurationMins
+                                  codexConnection.rateLimits.secondary.windowDurationMins,
+                                  t
                                 )}
                                 usedValue={formatCodexUsagePercent(
                                   codexConnection.rateLimits.secondary.usedPercent
@@ -2090,16 +2258,18 @@ export const ProviderRuntimeSettingsDialog = ({
                                 remainingValue={
                                   formatCodexRemainingPercent(
                                     codexConnection.rateLimits.secondary.usedPercent
-                                  ) ?? 'Remaining unknown'
+                                  ) ?? t('providerRuntime.codex.rateLimits.remainingUnknown')
                                 }
-                                resetLabel={formatCodexResetWindowLabel(
+                                resetLabel={formatLocalizedCodexResetWindowLabel(
                                   codexConnection.rateLimits.secondary.windowDurationMins === 10_080
                                     ? 'Weekly reset'
                                     : 'Secondary reset',
-                                  codexConnection.rateLimits.secondary.windowDurationMins
+                                  codexConnection.rateLimits.secondary.windowDurationMins,
+                                  t
                                 )}
                                 resetValue={formatCodexResetDateTime(
-                                  codexConnection.rateLimits.secondary.resetsAt
+                                  codexConnection.rateLimits.secondary.resetsAt,
+                                  t
                                 )}
                                 accent="secondary"
                               />
@@ -2115,25 +2285,25 @@ export const ProviderRuntimeSettingsDialog = ({
                                   className="text-sm font-medium"
                                   style={{ color: 'var(--color-text)' }}
                                 >
-                                  Weekly window
+                                  {t('providerRuntime.codex.rateLimits.weeklyWindow')}
                                 </div>
                                 <div
                                   className="mt-3 text-[11px]"
                                   style={{ color: 'var(--color-text-muted)' }}
                                 >
-                                  Weekly used (1w)
+                                  {t('providerRuntime.codex.rateLimits.weeklyUsedOneWeek')}
                                 </div>
                                 <div
                                   className="mt-1 text-sm font-medium"
                                   style={{ color: 'var(--color-text)' }}
                                 >
-                                  Not reported
+                                  {t('providerRuntime.codex.rateLimits.notReported')}
                                 </div>
                                 <div
                                   className="mt-1 text-[11px]"
                                   style={{ color: 'var(--color-text-secondary)' }}
                                 >
-                                  Codex did not return a secondary window for this account snapshot.
+                                  {t('providerRuntime.codex.rateLimits.noSecondaryWindow')}
                                 </div>
                               </div>
                             )}
@@ -2152,7 +2322,7 @@ export const ProviderRuntimeSettingsDialog = ({
                                   className="text-[11px]"
                                   style={{ color: 'var(--color-text-muted)' }}
                                 >
-                                  Credits
+                                  {t('providerRuntime.codex.rateLimits.credits')}
                                 </div>
                                 <div
                                   className="mt-1 text-sm font-medium"
@@ -2165,8 +2335,7 @@ export const ProviderRuntimeSettingsDialog = ({
                                 className="max-w-md text-[11px]"
                                 style={{ color: 'var(--color-text-secondary)' }}
                               >
-                                Credits are shown separately from window-based subscription usage
-                                and may be unavailable for plan-backed ChatGPT sessions.
+                                {t('providerRuntime.codex.rateLimits.creditsDescription')}
                               </div>
                             </div>
                           </div>
@@ -2202,17 +2371,19 @@ export const ProviderRuntimeSettingsDialog = ({
                               className="text-sm font-medium"
                               style={{ color: 'var(--color-text)' }}
                             >
-                              {apiKeyConfig.title}
+                              {apiKeyDisplayConfig?.title ?? apiKeyConfig.title}
                             </div>
                             <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                              {apiKeyConfig.description}
+                              {apiKeyDisplayConfig?.description ?? apiKeyConfig.description}
                             </div>
                           </div>
                         </div>
                       </div>
                       {!showApiKeyForm ? (
                         <Button size="sm" variant="outline" onClick={handleStartApiKeyEdit}>
-                          {selectedApiKey ? 'Replace key' : 'Set API key'}
+                          {selectedApiKey
+                            ? t('providerRuntime.actions.replaceKey')
+                            : t('providerRuntime.actions.setApiKey')}
                         </Button>
                       ) : null}
                     </div>
@@ -2232,8 +2403,8 @@ export const ProviderRuntimeSettingsDialog = ({
                         }}
                       >
                         {selectedProvider.connection?.apiKeyConfigured || selectedApiKey
-                          ? 'Configured'
-                          : 'Not configured'}
+                          ? t('providerRuntime.status.configured')
+                          : t('providerRuntime.status.notConfigured')}
                       </span>
                       {selectedApiKey ? (
                         <span style={{ color: 'var(--color-text-secondary)' }}>
@@ -2246,7 +2417,9 @@ export const ProviderRuntimeSettingsDialog = ({
                       ) : null}
                       {apiKeyStorageStatus && selectedApiKey ? (
                         <span style={{ color: 'var(--color-text-muted)' }}>
-                          Stored in {apiKeyStorageStatus.backend}
+                          {t('providerRuntime.apiKey.storedIn', {
+                            backend: apiKeyStorageStatus.backend,
+                          })}
                         </span>
                       ) : null}
                     </div>
@@ -2261,7 +2434,7 @@ export const ProviderRuntimeSettingsDialog = ({
                             htmlFor={`${selectedProvider.providerId}-api-key`}
                             className="text-xs"
                           >
-                            {apiKeyConfig.name}
+                            {apiKeyDisplayConfig?.name ?? apiKeyConfig.name}
                           </Label>
                           <Input
                             ref={apiKeyInputRef}
@@ -2269,14 +2442,16 @@ export const ProviderRuntimeSettingsDialog = ({
                             type="password"
                             value={apiKeyValue}
                             onChange={(e) => setApiKeyValue(e.target.value)}
-                            placeholder={apiKeyConfig.placeholder}
+                            placeholder={
+                              apiKeyDisplayConfig?.placeholder ?? apiKeyConfig.placeholder
+                            }
                             className="h-9 text-sm"
                             autoFocus
                           />
                         </div>
 
                         <div className="space-y-1.5">
-                          <Label className="text-xs">Scope</Label>
+                          <Label className="text-xs">{t('providerRuntime.apiKey.scope')}</Label>
                           <Select
                             value={apiKeyScope}
                             onValueChange={(value) => setApiKeyScope(value as 'user' | 'project')}
@@ -2285,8 +2460,12 @@ export const ProviderRuntimeSettingsDialog = ({
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="user">User</SelectItem>
-                              <SelectItem value="project">Project</SelectItem>
+                              <SelectItem value="user">
+                                {t('providerRuntime.apiKey.userScope')}
+                              </SelectItem>
+                              <SelectItem value="project">
+                                {t('providerRuntime.apiKey.projectScope')}
+                              </SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -2314,7 +2493,7 @@ export const ProviderRuntimeSettingsDialog = ({
                               disabled={apiKeySaving}
                             >
                               <Trash2 className="mr-1 size-3.5" />
-                              Delete
+                              {t('providerRuntime.actions.delete')}
                             </Button>
                           ) : (
                             <span />
@@ -2326,7 +2505,7 @@ export const ProviderRuntimeSettingsDialog = ({
                               size="sm"
                               onClick={handleCancelApiKeyEdit}
                             >
-                              Cancel
+                              {t('providerRuntime.actions.cancel')}
                             </Button>
                             <Button
                               type="button"
@@ -2335,10 +2514,10 @@ export const ProviderRuntimeSettingsDialog = ({
                               disabled={apiKeySaving || !apiKeyValue.trim()}
                             >
                               {apiKeySaving
-                                ? 'Saving...'
+                                ? t('providerRuntime.actions.saving')
                                 : selectedApiKey
-                                  ? 'Update key'
-                                  : 'Save key'}
+                                  ? t('providerRuntime.actions.updateKey')
+                                  : t('providerRuntime.actions.saveKey')}
                             </Button>
                           </div>
                         </div>
@@ -2377,7 +2556,7 @@ export const ProviderRuntimeSettingsDialog = ({
 
                 {apiKeysLoading && !selectedApiKey ? (
                   <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                    Loading stored credentials...
+                    {t('providerRuntime.apiKey.loadingStoredCredentials')}
                   </div>
                 ) : null}
               </div>
@@ -2394,10 +2573,10 @@ export const ProviderRuntimeSettingsDialog = ({
             >
               <div>
                 <div className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
-                  Runtime
+                  {t('providerRuntime.runtime.title')}
                 </div>
                 <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                  {getRuntimeDescription(selectedProvider)}
+                  {getRuntimeDescription(selectedProvider, t)}
                 </div>
               </div>
 
@@ -2415,7 +2594,7 @@ export const ProviderRuntimeSettingsDialog = ({
                   style={{ color: 'var(--color-text-secondary)' }}
                 >
                   <Loader2 className="size-3 animate-spin" />
-                  <span>Updating runtime...</span>
+                  <span>{t('providerRuntime.runtime.updating')}</span>
                 </div>
               ) : null}
 

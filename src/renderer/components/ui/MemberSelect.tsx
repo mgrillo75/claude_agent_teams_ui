@@ -1,5 +1,6 @@
 import * as React from 'react';
 
+import { useAppTranslation } from '@features/localization/renderer';
 import { getTeamColorSet, getThemedBadge } from '@renderer/constants/teamColors';
 import { useTheme } from '@renderer/hooks/useTheme';
 import { cn } from '@renderer/lib/utils';
@@ -41,6 +42,7 @@ export const MemberSelect = ({
   disabled = false,
   className,
 }: MemberSelectProps): React.JSX.Element => {
+  const { t } = useAppTranslation('common');
   const [open, setOpen] = React.useState(false);
   const [search, setSearch] = React.useState('');
   const listboxId = React.useId();
@@ -102,7 +104,9 @@ export const MemberSelect = ({
             {selectedMember ? (
               renderMemberInline(selectedMember)
             ) : value === null && allowUnassigned ? (
-              <span className="text-xs text-[var(--color-text-muted)]">Unassigned</span>
+              <span className="text-xs text-[var(--color-text-muted)]">
+                {t('members.unassigned')}
+              </span>
             ) : (
               <span className="text-[var(--color-text-muted)]">{placeholder}</span>
             )}
@@ -125,7 +129,7 @@ export const MemberSelect = ({
             <CommandPrimitive.Input
               value={search}
               onValueChange={setSearch}
-              placeholder="Search members..."
+              placeholder={t('members.searchPlaceholder')}
               className="flex h-8 w-full border-0 bg-transparent px-2 py-1 text-xs text-[var(--color-text)] outline-none placeholder:text-[var(--color-text-muted)]"
             />
           </div>
@@ -135,7 +139,7 @@ export const MemberSelect = ({
             onWheel={(e) => e.stopPropagation()}
           >
             <CommandPrimitive.Empty className="py-4 pr-2 text-center text-xs text-[var(--color-text-muted)]">
-              No members found.
+              {t('members.emptyMessage')}
             </CommandPrimitive.Empty>
             {allowUnassigned && !search.trim() ? (
               <CommandPrimitive.Item
@@ -147,7 +151,7 @@ export const MemberSelect = ({
                 }}
                 className="relative flex w-full cursor-default select-none items-center rounded-sm px-2 py-1.5 text-xs outline-none data-[selected=true]:bg-[var(--color-surface-raised)] data-[selected=true]:text-[var(--color-text)]"
               >
-                <span className="text-[var(--color-text-muted)]">Unassigned</span>
+                <span className="text-[var(--color-text-muted)]">{t('members.unassigned')}</span>
                 {value === null ? (
                   <Check size={12} className="ml-auto shrink-0 text-blue-400" />
                 ) : null}

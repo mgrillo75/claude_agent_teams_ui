@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { useAppTranslation } from '@features/localization/renderer';
 import { useTheme } from '@renderer/hooks/useTheme';
 import {
   deriveReviewActivityTimerAnchor,
@@ -614,6 +615,7 @@ const MemberListLoadingSkeleton = ({
 }: Readonly<{
   expectedTeammateCount?: number;
 }>): React.JSX.Element => {
+  const { t } = useAppTranslation('team');
   const skeletonCount = getMemberLoadingSkeletonCount(expectedTeammateCount);
   const { isLight } = useTheme();
 
@@ -621,7 +623,7 @@ const MemberListLoadingSkeleton = ({
     <div
       className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface-sidebar)] p-3"
       role="status"
-      aria-label="Loading team members"
+      aria-label={t('members.list.loading')}
     >
       <div className="grid grid-cols-1 gap-1">
         {Array.from({ length: skeletonCount }, (_, index) => {
@@ -681,17 +683,14 @@ const MemberRosterUnavailableState = ({
 }: Readonly<{
   expectedTeammateCount?: number;
 }>): React.JSX.Element => {
+  const { t } = useAppTranslation('team');
   const count = Number.isFinite(expectedTeammateCount)
     ? Math.max(0, Math.floor(expectedTeammateCount ?? 0))
     : 0;
-  const teammateLabel = count === 1 ? '1 teammate is' : `${count || 'Some'} teammates are`;
-
   return (
     <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface-sidebar)] p-4 text-sm text-[var(--color-text-muted)]">
-      <div className="font-medium text-[var(--color-text)]">Member roster unavailable</div>
-      <div className="mt-1 text-xs">
-        {teammateLabel} known from team metadata, but roster details are missing.
-      </div>
+      <div className="font-medium text-[var(--color-text)]">{t('members.list.unavailable')}</div>
+      <div className="mt-1 text-xs">{t('members.list.unavailableDescription', { count })}</div>
     </div>
   );
 };
@@ -720,6 +719,7 @@ export const MemberList = memo(function MemberList({
   onSkipMemberForLaunch,
   onRestoreMember,
 }: MemberListProps): React.JSX.Element {
+  const { t } = useAppTranslation('team');
   const containerRef = useRef<HTMLDivElement>(null);
   const [isWide, setIsWide] = useState(false);
 
@@ -909,7 +909,7 @@ export const MemberList = memo(function MemberList({
 
     return (
       <div className="rounded-md border border-[var(--color-border)] p-4 text-sm text-[var(--color-text-muted)]">
-        Solo team - lead only
+        {t('members.list.soloLeadOnly')}
       </div>
     );
   }
@@ -1020,7 +1020,7 @@ export const MemberList = memo(function MemberList({
       {removedMembers.length > 0 && (
         <>
           <div className="mt-2 text-[10px] text-[var(--color-text-muted)]">
-            Removed ({removedMembers.length})
+            {t('members.list.removedCount', { count: removedMembers.length })}
           </div>
           <div className={gridClass}>
             {removedMembers.map((member) => (

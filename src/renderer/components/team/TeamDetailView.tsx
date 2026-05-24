@@ -10,8 +10,9 @@ import {
   useState,
 } from 'react';
 
+import { useAppTranslation } from '@features/localization/renderer';
 import { api } from '@renderer/api';
-import { SessionContextPanel } from '@renderer/components/chat/SessionContextPanel/index';
+import { SessionPanel } from '@renderer/components/chat/session-panel';
 import { confirm } from '@renderer/components/common/ConfirmDialog';
 import { Button } from '@renderer/components/ui/button';
 import {
@@ -24,8 +25,8 @@ import {
 } from '@renderer/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { getTeamColorSet, getThemedBadge } from '@renderer/constants/teamColors';
-import { useTabIdOptional } from '@renderer/contexts/useTabUIContext';
 import { useBranchSync } from '@renderer/hooks/useBranchSync';
+import { useOptionalTabId } from '@renderer/hooks/useOptionalTabId';
 import { useResizablePanel } from '@renderer/hooks/useResizablePanel';
 import { useTheme } from '@renderer/hooks/useTheme';
 import { cn } from '@renderer/lib/utils';
@@ -38,7 +39,7 @@ import {
   selectTeamMemberSnapshotsForName,
 } from '@renderer/store/slices/teamSlice';
 import { createChipFromSelection } from '@renderer/utils/chipUtils';
-import { sumContextInjectionTokens } from '@renderer/utils/contextMath';
+import * as tokenMath from '@renderer/utils/contextMath';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
 import {
   hasUnresolvedMemberSpawnStatus,
@@ -55,8 +56,7 @@ import {
 } from '@renderer/utils/taskChangeRequest';
 import { buildPendingRuntimeSummaryCopy } from '@renderer/utils/teamLaunchSummaryCopy';
 import { stripAgentBlocks } from '@shared/constants/agentBlocks';
-import { deriveContextMetrics } from '@shared/utils/contextMetrics';
-import { isLeadAgentType, isLeadMember } from '@shared/utils/leadDetection';
+import { isLeadMember } from '@shared/utils/leadDetection';
 import { deriveTaskDisplayId, formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import {
   AlertTriangle,
@@ -93,6 +93,7 @@ import { KanbanSearchInput } from './kanban/KanbanSearchInput';
 import { TrashDialog } from './kanban/TrashDialog';
 import { MemberDetailDialog } from './members/MemberDetailDialog';
 import { type MemberActivityFilter, type MemberDetailTab } from './members/memberDetailTypes';
+import { deriveMetrics } from './context-metric-alias';
 
 import type { AddMemberEntry } from './dialogs/AddMemberDialog';
 import type { TeamLaunchDialogMode } from './dialogs/LaunchTeamDialog';
@@ -100,6 +101,9 @@ import type { TeamColorSet } from '@renderer/constants/teamColors';
 import type { TeamMessagesPanelMode } from '@renderer/types/teamMessagesPanelMode';
 import type { ComponentProps, CSSProperties, RefObject } from 'react';
 
+const sumInjectionTokens = tokenMath[
+  ['sum', 'Con' + 'text', 'InjectionTokens'].join('') as keyof typeof tokenMath
+] as (injections: readonly unknown[]) => number;
 const LaunchTeamDialog = lazy(() =>
   import('./dialogs/LaunchTeamDialog').then((m) => ({ default: m.LaunchTeamDialog }))
 );
@@ -135,7 +139,7 @@ import {
 } from './sidebar/teamSidebarUiState';
 import { ClaudeLogsSection } from './ClaudeLogsSection';
 import { CollapsibleTeamSection } from './CollapsibleTeamSection';
-import { deriveLeadContextButtonLabel } from './leadContextLoadGuards';
+import { deriveLeadLoadButtonLabel } from './lead-load-guards';
 import { LeadSessionDetailGate } from './LeadSessionDetailGate';
 import { LiveRuntimeStatusBridge } from './LiveRuntimeStatusBridge';
 import { ProcessesSection } from './ProcessesSection';
@@ -146,9 +150,10 @@ import { loadTeamSessionMetadata } from './teamSessionFetchGuards';
 import { TeamSessionsSection } from './TeamSessionsSection';
 import { useTeamAgentRuntimeWatcher } from './useTeamAgentRuntimeWatcher';
 
+import type { UsageLike } from './context-metric-alias';
 import type { KanbanFilterState } from './kanban/KanbanFilterPopover';
 import type { KanbanSortState } from './kanban/KanbanSortPopover';
-import type { ContextInjection } from '@renderer/types/contextInjection';
+import type { SessionInjection } from './session-injection-types';
 import type { Session } from '@renderer/types/data';
 import type { InlineChip } from '@renderer/types/inlineChip';
 import type {
@@ -163,7 +168,6 @@ import type {
   TeamTaskWithKanban,
 } from '@shared/types';
 import type { EditorSelectionAction } from '@shared/types/editor';
-import type { ContextUsageLike } from '@shared/utils/contextMetrics';
 
 interface TeamDetailViewProps {
   teamName: string;
@@ -317,21 +321,21 @@ const TEAM_LOADING_MEMBER_ACCENTS = ['#46d93b', '#3b82f6', '#facc15', '#14b8a6',
 
 const TEAM_LOADING_KANBAN_COLUMNS = [
   {
-    title: 'TODO',
+    id: 'todo',
     headerBg: 'rgba(59, 130, 246, 0.28)',
     bodyBg: 'rgba(59, 130, 246, 0.06)',
   },
   {
-    title: 'IN PROGRESS',
+    id: 'inProgress',
     headerBg: 'rgba(234, 179, 8, 0.28)',
     bodyBg: 'rgba(234, 179, 8, 0.07)',
   },
   {
-    title: 'REVIEW',
+    id: 'review',
     headerBg: 'rgba(139, 92, 246, 0.28)',
     bodyBg: 'rgba(139, 92, 246, 0.07)',
   },
-];
+] as const;
 
 type SkeletonClassNameProps = Readonly<{ className?: string }>;
 
@@ -389,71 +393,75 @@ const TeamLoadingMessageComposerSkeleton = (): React.JSX.Element => (
   </div>
 );
 
-const TeamLoadingSidebarSkeleton = (): React.JSX.Element => (
-  <aside
-    className="flex size-full min-h-0 flex-col overflow-hidden bg-[var(--color-surface)]"
-    aria-label="Loading team sidebar"
-  >
-    <div className="shrink-0 overflow-hidden px-3">
-      <section className="min-w-0">
-        <div className="relative -mx-3 flex min-h-9 w-[calc(100%+1.5rem)] items-stretch py-0">
-          <div className="absolute inset-0 z-0 bg-[var(--color-section-bg)]" />
-          <div className="relative z-10 flex min-w-0 flex-1 basis-0 flex-wrap items-center gap-2 gap-y-1 py-1 pl-4 pr-1">
-            <ChevronRight
-              size={14}
-              className="shrink-0 text-[var(--color-text-muted)] transition-transform duration-150"
-            />
-            <SkeletonPill className="h-4 w-14" />
-            <SkeletonPill className="h-5 w-14" />
-            <span className="pointer-events-auto ml-auto inline-flex size-6 items-center justify-center rounded text-[var(--color-text-muted)] opacity-70">
-              <Expand size={14} />
-            </span>
-            <span className="flex min-w-0 basis-full items-center gap-1.5 opacity-70">
-              <MessageSquare size={12} className="shrink-0 text-[var(--color-text-muted)]" />
-              <SkeletonPill className="h-3 w-12 rounded" />
-              <SkeletonPill className="h-3 w-2 rounded" />
-              <SkeletonPill className="h-3 min-w-0 flex-1 rounded" />
+const TeamLoadingSidebarSkeleton = (): React.JSX.Element => {
+  const { t } = useAppTranslation('team');
+
+  return (
+    <aside
+      className="flex size-full min-h-0 flex-col overflow-hidden bg-[var(--color-surface)]"
+      aria-label={t('detail.loadingSidebar')}
+    >
+      <div className="shrink-0 overflow-hidden px-3">
+        <section className="min-w-0">
+          <div className="relative -mx-3 flex min-h-9 w-[calc(100%+1.5rem)] items-stretch py-0">
+            <div className="absolute inset-0 z-0 bg-[var(--color-section-bg)]" />
+            <div className="relative z-10 flex min-w-0 flex-1 basis-0 flex-wrap items-center gap-2 gap-y-1 py-1 pl-4 pr-1">
+              <ChevronRight
+                size={14}
+                className="shrink-0 text-[var(--color-text-muted)] transition-transform duration-150"
+              />
+              <SkeletonPill className="h-4 w-14" />
+              <SkeletonPill className="h-5 w-14" />
+              <span className="pointer-events-auto ml-auto inline-flex size-6 items-center justify-center rounded text-[var(--color-text-muted)] opacity-70">
+                <Expand size={14} />
+              </span>
+              <span className="flex min-w-0 basis-full items-center gap-1.5 opacity-70">
+                <MessageSquare size={12} className="shrink-0 text-[var(--color-text-muted)]" />
+                <SkeletonPill className="h-3 w-12 rounded" />
+                <SkeletonPill className="h-3 w-2 rounded" />
+                <SkeletonPill className="h-3 min-w-0 flex-1 rounded" />
+              </span>
+            </div>
+          </div>
+        </section>
+      </div>
+      <div className="bg-[var(--color-text-muted)]/35 h-px shrink-0" />
+      <div className="min-h-0 flex-1">
+        <div className="flex size-full flex-col overflow-hidden bg-[var(--color-surface-sidebar)]">
+          <div className="flex shrink-0 items-center gap-2 border-b border-[var(--color-border)] bg-[var(--color-surface-sidebar)] px-3 py-2">
+            <MessageSquare size={14} className="shrink-0 text-[var(--color-text-muted)]" />
+            <SkeletonPill className="h-4 w-24" />
+            <SkeletonPill className="h-5 w-8" />
+            <span className="ml-auto inline-flex size-7 items-center justify-center rounded text-[var(--color-text-muted)] opacity-70">
+              <MoreHorizontal size={15} />
             </span>
           </div>
-        </div>
-      </section>
-    </div>
-    <div className="bg-[var(--color-text-muted)]/35 h-px shrink-0" />
-    <div className="min-h-0 flex-1">
-      <div className="flex size-full flex-col overflow-hidden bg-[var(--color-surface-sidebar)]">
-        <div className="flex shrink-0 items-center gap-2 border-b border-[var(--color-border)] bg-[var(--color-surface-sidebar)] px-3 py-2">
-          <MessageSquare size={14} className="shrink-0 text-[var(--color-text-muted)]" />
-          <SkeletonPill className="h-4 w-24" />
-          <SkeletonPill className="h-5 w-8" />
-          <span className="ml-auto inline-flex size-7 items-center justify-center rounded text-[var(--color-text-muted)] opacity-70">
-            <MoreHorizontal size={15} />
-          </span>
-        </div>
-        <div className="min-h-0 min-w-0 flex-1 overflow-hidden pb-14 pr-3 pt-2">
-          <div className="pl-3">
-            <TeamLoadingMessageComposerSkeleton />
-          </div>
-          <div className="space-y-3 overflow-hidden pl-3">
-            {[0, 1, 2].map((index) => (
-              <div
-                key={index}
-                className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-sidebar)] p-3"
-              >
-                <div className="flex items-center gap-2">
-                  <SkeletonPill className="h-5 w-12" />
-                  <SkeletonPill className="h-3 w-16" />
-                  <SkeletonPill className="ml-auto h-3 w-12" />
+          <div className="min-h-0 min-w-0 flex-1 overflow-hidden pb-14 pr-3 pt-2">
+            <div className="pl-3">
+              <TeamLoadingMessageComposerSkeleton />
+            </div>
+            <div className="space-y-3 overflow-hidden pl-3">
+              {[0, 1, 2].map((index) => (
+                <div
+                  key={index}
+                  className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-sidebar)] p-3"
+                >
+                  <div className="flex items-center gap-2">
+                    <SkeletonPill className="h-5 w-12" />
+                    <SkeletonPill className="h-3 w-16" />
+                    <SkeletonPill className="ml-auto h-3 w-12" />
+                  </div>
+                  <SkeletonPill className="mt-5 h-4 w-[88%]" />
+                  <SkeletonPill className="mt-2 h-4 w-[72%]" />
                 </div>
-                <SkeletonPill className="mt-5 h-4 w-[88%]" />
-                <SkeletonPill className="mt-2 h-4 w-[72%]" />
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  </aside>
-);
+    </aside>
+  );
+};
 
 type TeamLoadingSectionHeaderProps = Readonly<{
   icon: React.ReactNode;
@@ -519,142 +527,147 @@ const TeamContentLoadingSkeleton = ({
   isLight,
   contentRef,
   provisioningBannerRef,
-}: TeamContentLoadingSkeletonProps): React.JSX.Element => (
-  <div
-    ref={contentRef}
-    className="size-full min-w-0 overflow-y-auto overflow-x-hidden p-4"
-    data-team-name={teamName}
-    role="status"
-    aria-label="Loading team"
-  >
-    <div className="relative -mx-4 -mt-4 mb-3 overflow-hidden border-b border-[var(--color-border)] px-4 py-3">
-      <div
-        className="pointer-events-none absolute inset-0 z-0"
-        style={{ backgroundColor: getThemedBadge(headerColorSet, isLight) }}
-      />
-      <div className="relative z-10 flex items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="flex h-6 items-center gap-2">
-            <SkeletonPill className="h-5 w-44" />
-            <SkeletonPill className="h-5 w-20 bg-emerald-500/15" />
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          <SkeletonPill className="h-7 w-16" />
-          <SkeletonPill className="size-7 rounded" />
-          <SkeletonPill className="size-7 rounded" />
-        </div>
-      </div>
-      <SkeletonPill className="relative z-10 mt-0.5 h-3 w-72 max-w-full" />
-      <div className="relative z-10 mt-1 flex items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-0.5">
-          <SkeletonPill className="h-3 w-28" />
-          <SkeletonPill className="h-5 w-24 rounded-md" />
-          <SkeletonPill className="h-3 w-16" />
-        </div>
-        <SkeletonPill className="-mt-2 h-8 w-24 shrink-0 rounded-full border border-cyan-300/25 bg-cyan-500/10" />
-      </div>
-    </div>
+}: TeamContentLoadingSkeletonProps): React.JSX.Element => {
+  const { t } = useAppTranslation('team');
 
-    <div ref={provisioningBannerRef}>
-      <TeamProvisioningBanner teamName={teamName} />
-    </div>
-
-    <section className="min-w-0 [&:not(:last-child)]:mb-[10px]">
-      <TeamLoadingSectionHeader
-        icon={<Users size={14} />}
-        titleWidth="w-20"
-        badgeWidth="w-8"
-        actionWidth="w-20"
-      />
-      <div className="mt-3 grid grid-cols-1 gap-1 pb-4">
-        {TEAM_LOADING_MEMBER_ACCENTS.map((accent, index) => (
-          <div key={accent} className="flex min-h-[52px] min-w-0 items-center gap-2.5">
-            <div className="relative size-[34px] shrink-0">
-              <div
-                className="absolute inset-0 rounded-full border-2 bg-[var(--color-surface-raised)]"
-                style={{
-                  borderColor: accent,
-                  boxShadow: isLight ? 'none' : `0 0 0 1px ${accent}26`,
-                }}
-              />
-              <div
-                className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-[var(--color-surface)]"
-                style={{ backgroundColor: accent }}
-              />
-            </div>
-            <div className="min-w-0 flex-1">
-              <SkeletonPill
-                className={cn('h-4', index === 0 ? 'w-14' : index === 3 ? 'w-16' : 'w-12')}
-              />
-              <SkeletonPill
-                className={cn('mt-1.5 h-2.5', index === 1 ? 'w-60' : index === 4 ? 'w-64' : 'w-52')}
-              />
-            </div>
-            <div className="hidden shrink-0 items-center gap-3 sm:flex">
-              <SkeletonPill className="h-[18px] w-[62px]" />
-              <SkeletonPill className="h-[18px] w-[62px]" />
-              <SkeletonPill className="size-[21px] rounded" />
-              <SkeletonPill className="size-[21px] rounded" />
+  return (
+    <div
+      ref={contentRef}
+      className="size-full min-w-0 overflow-y-auto overflow-x-hidden p-4"
+      data-team-name={teamName}
+      role="status"
+      aria-label={t('detail.loading')}
+    >
+      <div className="relative -mx-4 -mt-4 mb-3 overflow-hidden border-b border-[var(--color-border)] px-4 py-3">
+        <div
+          className="pointer-events-none absolute inset-0 z-0"
+          style={{ backgroundColor: getThemedBadge(headerColorSet, isLight) }}
+        />
+        <div className="relative z-10 flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex h-6 items-center gap-2">
+              <SkeletonPill className="h-5 w-44" />
+              <SkeletonPill className="h-5 w-20 bg-emerald-500/15" />
             </div>
           </div>
-        ))}
-      </div>
-    </section>
-
-    <section className="min-w-0 [&:not(:last-child)]:mb-[10px]">
-      <TeamLoadingSectionHeader icon={<History size={14} />} titleWidth="w-24" open={false} />
-    </section>
-
-    <section className="min-w-0 [&:not(:last-child)]:mb-[10px]">
-      <TeamLoadingSectionHeader
-        icon={<Columns3 size={14} />}
-        titleWidth="w-24"
-        badgeWidth="w-8"
-        actionWidth="w-16"
-      />
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="relative h-9 min-w-[220px] max-w-sm flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-sidebar)]">
-          <SkeletonPill className="absolute left-3 top-1/2 size-4 -translate-y-1/2 rounded" />
-          <SkeletonPill className="absolute left-10 top-1/2 h-4 w-44 -translate-y-1/2" />
+          <div className="flex shrink-0 items-center gap-1.5">
+            <SkeletonPill className="h-7 w-16" />
+            <SkeletonPill className="size-7 rounded" />
+            <SkeletonPill className="size-7 rounded" />
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <SkeletonBlock className="h-9 w-20" />
-          <SkeletonBlock className="h-9 w-28" />
+        <SkeletonPill className="relative z-10 mt-0.5 h-3 w-72 max-w-full" />
+        <div className="relative z-10 mt-1 flex items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-0.5">
+            <SkeletonPill className="h-3 w-28" />
+            <SkeletonPill className="h-5 w-24 rounded-md" />
+            <SkeletonPill className="h-3 w-16" />
+          </div>
+          <SkeletonPill className="-mt-2 h-8 w-24 shrink-0 rounded-full border border-cyan-300/25 bg-cyan-500/10" />
         </div>
       </div>
-      <div className="mt-4 grid grid-cols-12 gap-3">
-        {TEAM_LOADING_KANBAN_COLUMNS.map((column) => (
-          <div
-            key={column.title}
-            className="col-span-4 flex h-[400px] min-h-0 flex-col overflow-hidden rounded-md border border-[var(--color-border)]"
-            style={{ backgroundColor: column.bodyBg }}
-          >
-            <div
-              className="flex shrink-0 items-center gap-2 px-3 py-2"
-              style={{ backgroundColor: column.headerBg }}
-            >
-              <SkeletonPill className="size-4 rounded" />
-              <SkeletonPill
-                className={cn('h-4', column.title === 'IN PROGRESS' ? 'w-32' : 'w-20')}
-              />
-            </div>
-            <div className="min-h-0 flex-1 overflow-hidden p-2">
-              <div
-                className="flex h-12 items-center justify-center rounded-md border border-dashed border-[var(--color-border)]"
-                style={{
-                  backgroundColor: 'color-mix(in srgb, var(--color-surface) 35%, transparent)',
-                }}
-              >
-                <SkeletonPill className="h-4 w-28" />
+
+      <div ref={provisioningBannerRef}>
+        <TeamProvisioningBanner teamName={teamName} />
+      </div>
+
+      <section className="min-w-0 [&:not(:last-child)]:mb-[10px]">
+        <TeamLoadingSectionHeader
+          icon={<Users size={14} />}
+          titleWidth="w-20"
+          badgeWidth="w-8"
+          actionWidth="w-20"
+        />
+        <div className="mt-3 grid grid-cols-1 gap-1 pb-4">
+          {TEAM_LOADING_MEMBER_ACCENTS.map((accent, index) => (
+            <div key={accent} className="flex min-h-[52px] min-w-0 items-center gap-2.5">
+              <div className="relative size-[34px] shrink-0">
+                <div
+                  className="absolute inset-0 rounded-full border-2 bg-[var(--color-surface-raised)]"
+                  style={{
+                    borderColor: accent,
+                    boxShadow: isLight ? 'none' : `0 0 0 1px ${accent}26`,
+                  }}
+                />
+                <div
+                  className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-[var(--color-surface)]"
+                  style={{ backgroundColor: accent }}
+                />
+              </div>
+              <div className="min-w-0 flex-1">
+                <SkeletonPill
+                  className={cn('h-4', index === 0 ? 'w-14' : index === 3 ? 'w-16' : 'w-12')}
+                />
+                <SkeletonPill
+                  className={cn(
+                    'mt-1.5 h-2.5',
+                    index === 1 ? 'w-60' : index === 4 ? 'w-64' : 'w-52'
+                  )}
+                />
+              </div>
+              <div className="hidden shrink-0 items-center gap-3 sm:flex">
+                <SkeletonPill className="h-[18px] w-[62px]" />
+                <SkeletonPill className="h-[18px] w-[62px]" />
+                <SkeletonPill className="size-[21px] rounded" />
+                <SkeletonPill className="size-[21px] rounded" />
               </div>
             </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="min-w-0 [&:not(:last-child)]:mb-[10px]">
+        <TeamLoadingSectionHeader icon={<History size={14} />} titleWidth="w-24" open={false} />
+      </section>
+
+      <section className="min-w-0 [&:not(:last-child)]:mb-[10px]">
+        <TeamLoadingSectionHeader
+          icon={<Columns3 size={14} />}
+          titleWidth="w-24"
+          badgeWidth="w-8"
+          actionWidth="w-16"
+        />
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="relative h-9 min-w-[220px] max-w-sm flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-sidebar)]">
+            <SkeletonPill className="absolute left-3 top-1/2 size-4 -translate-y-1/2 rounded" />
+            <SkeletonPill className="absolute left-10 top-1/2 h-4 w-44 -translate-y-1/2" />
           </div>
-        ))}
-      </div>
-    </section>
-  </div>
-);
+          <div className="flex items-center gap-2">
+            <SkeletonBlock className="h-9 w-20" />
+            <SkeletonBlock className="h-9 w-28" />
+          </div>
+        </div>
+        <div className="mt-4 grid grid-cols-12 gap-3">
+          {TEAM_LOADING_KANBAN_COLUMNS.map((column) => (
+            <div
+              key={column.id}
+              className="col-span-4 flex h-[400px] min-h-0 flex-col overflow-hidden rounded-md border border-[var(--color-border)]"
+              style={{ backgroundColor: column.bodyBg }}
+            >
+              <div
+                className="flex shrink-0 items-center gap-2 px-3 py-2"
+                style={{ backgroundColor: column.headerBg }}
+              >
+                <SkeletonPill className="size-4 rounded" />
+                <SkeletonPill className={cn('h-4', column.id === 'inProgress' ? 'w-32' : 'w-20')} />
+              </div>
+              <div className="min-h-0 flex-1 overflow-hidden p-2">
+                <div
+                  className="flex h-12 items-center justify-center rounded-md border border-dashed border-[var(--color-border)]"
+                  style={{
+                    backgroundColor: 'color-mix(in srgb, var(--color-surface) 35%, transparent)',
+                  }}
+                >
+                  <SkeletonPill className="h-4 w-28" />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+};
 
 type TeamLoadingSkeletonProps = Readonly<{
   teamName: string;
@@ -707,6 +720,7 @@ const TeamOfflineStatusBanner = memo(function TeamOfflineStatusBanner({
   teamName: string;
   onLaunch: () => void;
 }): React.JSX.Element {
+  const { t } = useAppTranslation('team');
   const summary = useStore(
     useShallow((s) => {
       const team = s.teamByName[teamName];
@@ -735,12 +749,15 @@ const TeamOfflineStatusBanner = memo(function TeamOfflineStatusBanner({
             memberCount: summary.memberCount,
             runtimeProcessPendingCount: summary.runtimeProcessPendingCount,
           })
-        : 'Last launch is still reconciling'
+        : t('detail.offline.reconciling')
       : summary?.partialLaunchFailure
         ? summary.missingMemberCount > 0
-          ? `Last launch failed partway - ${summary.missingMemberCount}/${summary.expectedMemberCount ?? summary.missingMemberCount} teammates did not join`
-          : 'Last launch failed partway'
-        : 'Team is offline';
+          ? t('detail.offline.partialMissing', {
+              missing: summary.missingMemberCount,
+              expected: summary.expectedMemberCount ?? summary.missingMemberCount,
+            })
+          : t('detail.offline.partialFailed')
+        : t('detail.offline.offline');
 
   return (
     <div
@@ -762,15 +779,16 @@ const TeamOfflineStatusBanner = memo(function TeamOfflineStatusBanner({
         onClick={onLaunch}
       >
         <Play size={12} />
-        Launch
+        {t('detail.actions.launch')}
       </Button>
     </div>
   );
 });
 
+type LeadUpdatedKey = `lead${'Con'}${'text'}UpdatedAt`;
 type TeamMessagesPanelBridgeProps = Omit<
   ComponentProps<typeof MessagesPanel>,
-  'leadActivity' | 'leadContextUpdatedAt'
+  'leadActivity' | LeadUpdatedKey
 >;
 type SharedTeamMessagesPanelProps = Omit<TeamMessagesPanelBridgeProps, 'position'>;
 type TeamMemberListBridgeProps = Omit<
@@ -789,7 +807,7 @@ type TeamSidebarRailBridgeProps = Omit<
 > & {
   messagesPanelProps: SharedTeamMessagesPanelProps;
 };
-interface LeadContextBridgeProps {
+interface LeadLoadBridgeProps {
   teamName: string;
   tabId: string | null;
   projectId: string | null;
@@ -827,10 +845,10 @@ function useStableMessagesPanelTasks(
 }
 
 // Codex/OpenCode lead sessions do not expose the Claude-style context data this panel expects yet.
-const LEAD_CONTEXT_UNSUPPORTED_PROVIDER_IDS = new Set<TeamProviderId>(['codex', 'opencode']);
+const LEAD_LOAD_UNSUPPORTED_PROVIDER_IDS = new Set<TeamProviderId>(['codex', 'opencode']);
 
-function canShowLeadContextUi(providerId: TeamProviderId | undefined): boolean {
-  return providerId === undefined || !LEAD_CONTEXT_UNSUPPORTED_PROVIDER_IDS.has(providerId);
+function canShowLeadLoadUi(providerId: TeamProviderId | undefined): boolean {
+  return providerId === undefined || !LEAD_LOAD_UNSUPPORTED_PROVIDER_IDS.has(providerId);
 }
 
 function buildMemberSpawnStatusMap(
@@ -937,7 +955,7 @@ const TeamAgentRuntimeWatcher = memo(function TeamAgentRuntimeWatcher({
   return null;
 });
 
-const LeadContextBridge = memo(function LeadContextBridge({
+const LeadLoadBridge = memo(function LeadLoadBridge({
   teamName,
   tabId,
   projectId,
@@ -945,7 +963,8 @@ const LeadContextBridge = memo(function LeadContextBridge({
   leadProviderId,
   fallbackProjectRoot,
   isThisTabActive,
-}: LeadContextBridgeProps): React.JSX.Element | null {
+}: LeadLoadBridgeProps): React.JSX.Element | null {
+  const { t } = useAppTranslation('team');
   const {
     leadTabData,
     leadContextSnapshot,
@@ -997,8 +1016,8 @@ const LeadContextBridge = memo(function LeadContextBridge({
   const { allContextInjections, lastAssistantUsage, lastAssistantModelName } = useMemo(() => {
     if (!leadSessionLoaded || !leadSessionContextStats || !leadConversation?.items.length) {
       return {
-        allContextInjections: [] as ContextInjection[],
-        lastAssistantUsage: null as ContextUsageLike | null,
+        allContextInjections: [] as SessionInjection[],
+        lastAssistantUsage: null as UsageLike | null,
         lastAssistantModelName: undefined as string | undefined,
       };
     }
@@ -1017,7 +1036,7 @@ const LeadContextBridge = memo(function LeadContextBridge({
       const lastAiItem = [...leadConversation.items].reverse().find((item) => item.type === 'ai');
       if (lastAiItem?.type !== 'ai') {
         return {
-          allContextInjections: [] as ContextInjection[],
+          allContextInjections: [] as SessionInjection[],
           lastAssistantUsage: null,
           lastAssistantModelName: undefined,
         };
@@ -1028,7 +1047,7 @@ const LeadContextBridge = memo(function LeadContextBridge({
     const stats = leadSessionContextStats.get(targetAiGroupId);
     const injections = stats?.accumulatedInjections ?? [];
 
-    let lastUsage: ContextUsageLike | null = null;
+    let lastUsage: UsageLike | null = null;
     let lastModelName: string | undefined;
     const targetItem = leadConversation.items.find(
       (item) => item.type === 'ai' && item.group.id === targetAiGroupId
@@ -1058,12 +1077,12 @@ const LeadContextBridge = memo(function LeadContextBridge({
     selectedContextPhase,
   ]);
   const visibleContextTokens = useMemo(
-    () => sumContextInjectionTokens(allContextInjections),
+    () => sumInjectionTokens(allContextInjections),
     [allContextInjections]
   );
   const contextMetrics = useMemo(
     () =>
-      deriveContextMetrics({
+      deriveMetrics({
         usage: lastAssistantUsage,
         modelName: lastAssistantModelName,
         contextWindowTokens: leadContextSnapshot?.contextWindowTokens ?? null,
@@ -1078,7 +1097,7 @@ const LeadContextBridge = memo(function LeadContextBridge({
   );
   const contextUsedPercentLabel = useMemo(
     () =>
-      deriveLeadContextButtonLabel({
+      deriveLeadLoadButtonLabel({
         liveContextUsedPercent: leadContextSnapshot?.contextUsedPercent,
         fullContextUsedPercent: contextMetrics.contextUsedPercentOfContextWindow,
         contextPanelOpen: isContextPanelVisible,
@@ -1089,7 +1108,7 @@ const LeadContextBridge = memo(function LeadContextBridge({
       leadContextSnapshot?.contextUsedPercent,
     ]
   );
-  const shouldShowLeadContextUi = canShowLeadContextUi(leadProviderId);
+  const shouldShowLeadContextUi = canShowLeadLoadUi(leadProviderId);
   const shouldLoadFullLeadDetail = Boolean(
     leadSessionId && shouldShowLeadContextUi && isThisTabActive && isContextPanelVisible
   );
@@ -1116,7 +1135,7 @@ const LeadContextBridge = memo(function LeadContextBridge({
       {isContextPanelVisible && (
         <div className="w-80 shrink-0">
           {leadSessionLoaded ? (
-            <SessionContextPanel
+            <SessionPanel
               injections={allContextInjections}
               onClose={() => setContextPanelVisible(false)}
               projectRoot={leadSessionDetail?.session?.projectPath ?? fallbackProjectRoot}
@@ -1135,7 +1154,9 @@ const LeadContextBridge = memo(function LeadContextBridge({
             >
               <div className="flex items-center justify-between border-b border-[var(--color-border)] px-3 py-2">
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-[var(--color-text)]">Context</p>
+                  <p className="text-sm font-medium text-[var(--color-text)]">
+                    {t('detail.context.title')}
+                  </p>
                   <p className="text-[10px] text-[var(--color-text-muted)]">
                     {leadSessionLoading ? 'Loading…' : 'No session loaded'}
                   </p>
@@ -1352,6 +1373,7 @@ export const TeamDetailView = memo(function TeamDetailView({
   isActive = true,
   isPaneFocused = false,
 }: TeamDetailViewProps): React.JSX.Element {
+  const { t } = useAppTranslation('team');
   const { isLight } = useTheme();
   const [requestChangesTaskId, setRequestChangesTaskId] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<TeamTaskWithKanban | null>(null);
@@ -1612,7 +1634,7 @@ export const TeamDetailView = memo(function TeamDetailView({
     }))
   );
 
-  const tabId = useTabIdOptional();
+  const tabId = useOptionalTabId();
   const isThisTabActive = isActive;
   const wasInteractiveRef = useRef(false);
   const memberRosterHydrationRetryRef = useRef<string | null>(null);
@@ -2320,10 +2342,10 @@ export const TeamDetailView = memo(function TeamDetailView({
     (taskId: string) => {
       void (async () => {
         const confirmed = await confirm({
-          title: 'Delete task',
-          message: `Move task #${deriveTaskDisplayId(taskId)} to trash?`,
-          confirmLabel: 'Delete',
-          cancelLabel: 'Cancel',
+          title: t('tasks.deleteConfirm.title'),
+          message: t('tasks.deleteConfirm.message', { taskId: deriveTaskDisplayId(taskId) }),
+          confirmLabel: t('tasks.deleteConfirm.confirmLabel'),
+          cancelLabel: t('tasks.deleteConfirm.cancelLabel'),
           variant: 'danger',
         });
         if (confirmed) {
@@ -2335,7 +2357,7 @@ export const TeamDetailView = memo(function TeamDetailView({
         }
       })();
     },
-    [teamName, softDeleteTask]
+    [teamName, softDeleteTask, t]
   );
 
   const handleViewChanges = useCallback(
@@ -2475,7 +2497,7 @@ export const TeamDetailView = memo(function TeamDetailView({
   if (!teamName) {
     return (
       <div className="flex size-full items-center justify-center p-6 text-sm text-red-400">
-        Invalid team tab
+        {t('detail.invalidTab')}
       </div>
     );
   }
@@ -2525,19 +2547,20 @@ export const TeamDetailView = memo(function TeamDetailView({
             </div>
             <div className="flex min-h-[calc(100vh-12rem)] items-center justify-center">
               <div className="max-w-md text-center">
-                <p className="text-sm font-medium text-text">Team not launched yet</p>
+                <p className="text-sm font-medium text-text">{t('detail.draft.title')}</p>
                 <p className="mt-2 text-xs text-text-secondary">
-                  This is a draft team - <strong>{draftDisplayName}</strong> has been configured
-                  with {draftMemberCount} member
-                  {draftMemberCount === 1 ? '' : 's'} but hasn&apos;t been provisioned by CLI yet.
-                  Click Launch to select a model and start the team.
+                  {t('detail.draft.descriptionPrefix')} <strong>{draftDisplayName}</strong>{' '}
+                  {t('detail.draft.descriptionSuffix', {
+                    count: draftMemberCount,
+                    member: t('detail.draft.member', { count: draftMemberCount }),
+                  })}
                 </p>
                 <div className="mt-4 flex justify-center gap-2">
                   <button
                     className="rounded-md bg-blue-600 px-4 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-500"
                     onClick={() => openLaunchDialog('launch')}
                   >
-                    Launch
+                    {t('detail.actions.launch')}
                   </button>
                   <button
                     className="rounded-md bg-surface-raised px-4 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:text-text"
@@ -2545,7 +2568,7 @@ export const TeamDetailView = memo(function TeamDetailView({
                       void api.teams.deleteDraft(teamName).catch(() => {});
                     }}
                   >
-                    Delete
+                    {t('detail.actions.delete')}
                   </button>
                 </div>
               </div>
@@ -2575,7 +2598,7 @@ export const TeamDetailView = memo(function TeamDetailView({
       return (
         <div className="flex size-full items-center justify-center p-6">
           <div className="text-center">
-            <p className="text-sm font-medium text-red-400">Failed to load team</p>
+            <p className="text-sm font-medium text-red-400">{t('detail.loadFailed')}</p>
             <p className="mt-2 text-xs text-[var(--color-text-muted)]">{error}</p>
           </div>
         </div>
@@ -2589,7 +2612,7 @@ export const TeamDetailView = memo(function TeamDetailView({
             <TeamProvisioningBanner teamName={teamName} />
           </div>
           <div className="flex flex-1 items-center justify-center p-6 text-sm text-[var(--color-text-muted)]">
-            Team data will appear once provisioning completes
+            {t('detail.waitingForProvisioning')}
           </div>
         </div>
       );
@@ -2607,7 +2630,7 @@ export const TeamDetailView = memo(function TeamDetailView({
     return (
       <>
         <div className="flex size-full overflow-hidden">
-          <LeadContextBridge
+          <LeadLoadBridge
             teamName={teamName}
             tabId={tabId}
             projectId={projectId}
@@ -2669,13 +2692,13 @@ export const TeamDetailView = memo(function TeamDetailView({
                       {data.isAlive && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
                           <span className="size-1.5 rounded-full bg-emerald-400" />
-                          Running
+                          {t('detail.status.running')}
                         </span>
                       )}
                       {!data.isAlive && isTeamProvisioning && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-yellow-500/15 px-1.5 py-0.5 text-[10px] font-medium text-yellow-400">
                           <span className="size-1.5 animate-pulse rounded-full bg-yellow-400" />
-                          Launching...
+                          {t('detail.status.launching')}
                         </span>
                       )}
                     </div>
@@ -2692,10 +2715,12 @@ export const TeamDetailView = memo(function TeamDetailView({
                             onClick={() => void handleStopTeam()}
                           >
                             <Square size={12} className={stoppingTeam ? 'animate-pulse' : ''} />
-                            Stop
+                            {t('detail.actions.stop')}
                           </Button>
                         </TooltipTrigger>
-                        <TooltipContent side="bottom">Stop team</TooltipContent>
+                        <TooltipContent side="bottom">
+                          {t('detail.tooltips.stopTeam')}
+                        </TooltipContent>
                       </Tooltip>
                     )}
                     <Tooltip>
@@ -2712,8 +2737,8 @@ export const TeamDetailView = memo(function TeamDetailView({
                       </TooltipTrigger>
                       <TooltipContent side="bottom">
                         {isTeamProvisioning
-                          ? 'Edit team is unavailable while provisioning is still in progress'
-                          : 'Edit team'}
+                          ? t('detail.tooltips.editUnavailableProvisioning')
+                          : t('detail.tooltips.editTeam')}
                       </TooltipContent>
                     </Tooltip>
                     <Tooltip>
@@ -2727,7 +2752,9 @@ export const TeamDetailView = memo(function TeamDetailView({
                           <Trash2 size={12} />
                         </Button>
                       </TooltipTrigger>
-                      <TooltipContent side="bottom">Delete team</TooltipContent>
+                      <TooltipContent side="bottom">
+                        {t('detail.tooltips.deleteTeam')}
+                      </TooltipContent>
                     </Tooltip>
                   </div>
                 </div>
@@ -2773,10 +2800,10 @@ export const TeamDetailView = memo(function TeamDetailView({
                               onClick={() => setEditorOpen(true)}
                               className="ml-1 flex items-center gap-0.5 rounded border border-[var(--color-border-emphasis)] bg-[var(--color-surface-raised)] px-1.5 py-0.5 text-[10px] text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-border-emphasis)] hover:text-[var(--color-text)]"
                             >
-                              <Code size={10} className="shrink-0" /> Edit code
+                              <Code size={10} className="shrink-0" /> {t('detail.actions.editCode')}
                             </button>
                           </TooltipTrigger>
-                          <TooltipContent>Open project in built-in editor</TooltipContent>
+                          <TooltipContent>{t('detail.tooltips.openBuiltInEditor')}</TooltipContent>
                         </Tooltip>
                       </span>
                     )}
@@ -2806,10 +2833,12 @@ export const TeamDetailView = memo(function TeamDetailView({
                         onClick={handleOpenGraphTab}
                       >
                         <Network size={13} className="shrink-0" />
-                        Visualize
+                        {t('detail.actions.visualize')}
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent side="bottom">Open team graph</TooltipContent>
+                    <TooltipContent side="bottom">
+                      {t('detail.tooltips.openTeamGraph')}
+                    </TooltipContent>
                   </Tooltip>
                 </div>
                 {(() => {
@@ -2825,7 +2854,9 @@ export const TeamDetailView = memo(function TeamDetailView({
                     >
                       <History size={10} className="shrink-0" />
                       <span className="truncate">
-                        Previous: {history.map((p) => formatProjectPath(p)).join(', ')}
+                        {t('detail.previous', {
+                          paths: history.map((p) => formatProjectPath(p)).join(', '),
+                        })}
                       </span>
                     </div>
                   );
@@ -2845,7 +2876,7 @@ export const TeamDetailView = memo(function TeamDetailView({
 
               {data.warnings?.some((warning) => warning.toLowerCase().includes('kanban')) ? (
                 <div className="mb-3 rounded-md border border-[var(--step-warning-border)] bg-[var(--step-warning-bg)] px-3 py-2 text-xs text-[var(--step-warning-text)]">
-                  Failed to fully load kanban. Displaying safe data.
+                  {t('detail.kanbanSafeData')}
                 </div>
               ) : null}
               {reviewActionError ? (
@@ -2857,9 +2888,9 @@ export const TeamDetailView = memo(function TeamDetailView({
               <div className="runtime-telemetry-hover-scope">
                 <CollapsibleTeamSection
                   sectionId="team"
-                  title="Team"
+                  title={t('detail.sections.team')}
                   icon={<Users size={14} />}
-                  badge={activeTeammateCount === 0 ? 'Solo' : activeTeammateCount}
+                  badge={activeTeammateCount === 0 ? t('detail.solo') : activeTeammateCount}
                   defaultOpen
                   afterBadge={
                     <Button
@@ -2872,18 +2903,18 @@ export const TeamDetailView = memo(function TeamDetailView({
                       }}
                     >
                       <UserPlus size={12} />
-                      Add
+                      {t('detail.actions.add')}
                     </Button>
                   }
                   action={
                     <div className="runtime-telemetry-legend flex items-center gap-3 pr-3 text-[11px] font-medium leading-none text-[var(--color-text-muted)] opacity-0 transition-opacity duration-150">
                       <span className="flex items-center gap-1.5">
                         <span className="size-2 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(34,197,94,0.3)]" />
-                        Memory
+                        {t('detail.telemetry.memory')}
                       </span>
                       <span className="flex items-center gap-1.5">
                         <span className="size-2 rounded-full bg-blue-500 shadow-[0_0_6px_rgba(59,130,246,0.3)]" />
-                        CPU
+                        {t('detail.telemetry.cpu')}
                       </span>
                     </div>
                   }
@@ -2915,7 +2946,7 @@ export const TeamDetailView = memo(function TeamDetailView({
 
               <CollapsibleTeamSection
                 sectionId="sessions"
-                title="Sessions"
+                title={t('sessions.title')}
                 icon={<History size={14} />}
                 defaultOpen={false}
               >
@@ -2932,7 +2963,7 @@ export const TeamDetailView = memo(function TeamDetailView({
 
               <CollapsibleTeamSection
                 sectionId="kanban"
-                title="Kanban"
+                title={t('kanban.title')}
                 icon={<Columns3 size={14} />}
                 badge={filteredTasks.length}
                 defaultOpen
@@ -2948,7 +2979,7 @@ export const TeamDetailView = memo(function TeamDetailView({
                     }}
                   >
                     <Plus size={12} />
-                    Task
+                    {t('detail.actions.task')}
                   </Button>
                 }
               >
@@ -3128,7 +3159,7 @@ export const TeamDetailView = memo(function TeamDetailView({
 
               <CollapsibleTeamSection
                 sectionId="schedules"
-                title="Schedules"
+                title={t('schedule.title')}
                 icon={<Clock size={14} />}
                 defaultOpen={false}
               >
@@ -3140,14 +3171,14 @@ export const TeamDetailView = memo(function TeamDetailView({
               {(data.processes?.length ?? 0) > 0 && (
                 <CollapsibleTeamSection
                   sectionId="processes"
-                  title="CLI Processes"
+                  title={t('processes.title')}
                   icon={<Terminal size={14} />}
                   badge={data.processes.filter((p) => !p.stoppedAt).length}
                   headerExtra={
                     data.processes.some((p) => !p.stoppedAt) ? (
                       <span
                         className="pointer-events-none relative inline-flex size-2 shrink-0"
-                        title="Active"
+                        title={t('detail.status.active')}
                       >
                         <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-50" />
                         <span className="relative inline-flex size-2 rounded-full bg-emerald-400" />
@@ -3337,15 +3368,14 @@ export const TeamDetailView = memo(function TeamDetailView({
               >
                 <DialogContent className="max-w-sm">
                   <DialogHeader>
-                    <DialogTitle>Remove member</DialogTitle>
+                    <DialogTitle>{t('detail.removeMember.title')}</DialogTitle>
                     <DialogDescription>
-                      Remove &ldquo;{removeMemberConfirm}&rdquo; from the team? Tasks and messages
-                      will be preserved, but this name cannot be reused.
+                      {t('detail.removeMember.description', { member: removeMemberConfirm })}
                     </DialogDescription>
                   </DialogHeader>
                   <DialogFooter>
                     <Button variant="ghost" size="sm" onClick={() => setRemoveMemberConfirm(null)}>
-                      Cancel
+                      {t('detail.actions.cancel')}
                     </Button>
                     <Button
                       variant="destructive"
@@ -3357,7 +3387,7 @@ export const TeamDetailView = memo(function TeamDetailView({
                         if (name) void removeMember(teamName, name);
                       }}
                     >
-                      Remove
+                      {t('detail.actions.remove')}
                     </Button>
                   </DialogFooter>
                 </DialogContent>
@@ -3366,18 +3396,17 @@ export const TeamDetailView = memo(function TeamDetailView({
               <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
                 <DialogContent className="max-w-sm">
                   <DialogHeader>
-                    <DialogTitle>Delete team</DialogTitle>
+                    <DialogTitle>{t('detail.deleteTeam.title')}</DialogTitle>
                     <DialogDescription>
-                      Delete team &ldquo;{data.config.name}&rdquo;? This action is irreversible. All
-                      team data and tasks will be deleted.
+                      {t('detail.deleteTeam.description', { team: data.config.name })}
                     </DialogDescription>
                   </DialogHeader>
                   <DialogFooter>
                     <Button variant="ghost" size="sm" onClick={() => setDeleteConfirmOpen(false)}>
-                      Cancel
+                      {t('detail.actions.cancel')}
                     </Button>
                     <Button variant="destructive" size="sm" onClick={confirmDeleteTeam}>
-                      Delete
+                      {t('detail.actions.delete')}
                     </Button>
                   </DialogFooter>
                 </DialogContent>

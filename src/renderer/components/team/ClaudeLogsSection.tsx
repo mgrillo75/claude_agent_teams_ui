@@ -1,5 +1,6 @@
 import { memo, useMemo, useState } from 'react';
 
+import { useAppTranslation } from '@features/localization/renderer';
 import { Button } from '@renderer/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { cn } from '@renderer/lib/utils';
@@ -88,6 +89,7 @@ export const ClaudeLogsSection = memo(function ClaudeLogsSection({
   sidebarViewerMaxHeight,
   onOpenChange,
 }: ClaudeLogsSectionProps): React.JSX.Element {
+  const { t } = useAppTranslation('team');
   const ctrl = useClaudeLogsController(teamName);
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -135,12 +137,12 @@ export const ClaudeLogsSection = memo(function ClaudeLogsSection({
             e.stopPropagation();
             setDialogOpen(true);
           }}
-          aria-label="Open fullscreen logs"
+          aria-label={t('claudeLogs.openFullscreen')}
         >
           <Expand size={14} />
         </Button>
       </TooltipTrigger>
-      <TooltipContent side="top">Fullscreen</TooltipContent>
+      <TooltipContent side="top">{t('claudeLogs.fullscreen')}</TooltipContent>
     </Tooltip>
   ) : undefined;
 
@@ -148,7 +150,7 @@ export const ClaudeLogsSection = memo(function ClaudeLogsSection({
     <>
       <CollapsibleTeamSection
         sectionId="claude-logs"
-        title="Logs"
+        title={t('claudeLogs.logsTitle')}
         icon={null}
         badge={ctrl.badge}
         afterBadge={afterBadge}
@@ -165,7 +167,7 @@ export const ClaudeLogsSection = memo(function ClaudeLogsSection({
         {dialogOpen ? (
           <div className="flex items-center gap-2 p-2 text-xs text-[var(--color-text-muted)]">
             <Expand size={12} />
-            Viewing in fullscreen mode
+            {t('claudeLogs.viewingFullscreen')}
           </div>
         ) : (
           <ClaudeLogsPanel

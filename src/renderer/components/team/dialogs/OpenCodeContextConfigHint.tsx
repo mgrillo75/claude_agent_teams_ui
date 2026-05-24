@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 
+import { useAppTranslation } from '@features/localization/renderer';
 import { Button } from '@renderer/components/ui/button';
 import { ChevronDown, ChevronRight, ExternalLink, Info } from 'lucide-react';
 
@@ -28,6 +29,7 @@ const OPENCODE_CONTEXT_CONFIG_EXAMPLE = `{
 }`;
 
 export const OpenCodeContextConfigHint = (): React.JSX.Element => {
+  const { t } = useAppTranslation('team');
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -46,27 +48,21 @@ export const OpenCodeContextConfigHint = (): React.JSX.Element => {
           <ChevronRight className="mt-0.5 size-3.5 shrink-0" />
         )}
         <Info className="mt-0.5 size-3.5 shrink-0 text-cyan-300" />
-        <span className="min-w-0">
-          OpenCode local models can use an OpenCode context budget instead of prompt-only limits.
-        </span>
+        <span className="min-w-0">{t('openCodeContextConfigHint.summary')}</span>
       </Button>
 
       {expanded ? (
         <div className="space-y-2 border-t border-cyan-500/15 px-3 pb-3 pt-2">
-          <p className="text-cyan-100/90">
-            Add matching limits to the OpenCode config for the provider and model used by this
-            teammate. This helps OpenCode compact and prune before local models overflow their
-            context window.
-          </p>
+          <p className="text-cyan-100/90">{t('openCodeContextConfigHint.description')}</p>
           <pre className="max-h-72 overflow-auto rounded-md border border-cyan-500/20 bg-black/25 p-2 font-mono text-[10px] leading-relaxed text-cyan-50">
             <code>{OPENCODE_CONTEXT_CONFIG_EXAMPLE}</code>
           </pre>
           <p className="text-cyan-100/80">
-            Replace <code className="font-mono">local</code> and{' '}
-            <code className="font-mono">your-model</code> with the provider and model IDs from your
-            OpenCode setup. Prompt instructions like{' '}
-            <code className="font-mono">stay below 10000 tokens</code> are weaker because the
-            request is assembled before the model reads them.
+            {t('openCodeContextConfigHint.replacePrefix')} <code className="font-mono">local</code>{' '}
+            {t('openCodeContextConfigHint.and')} <code className="font-mono">your-model</code>{' '}
+            {t('openCodeContextConfigHint.replaceSuffix')}{' '}
+            <code className="font-mono">stay below 10000 tokens</code>{' '}
+            {t('openCodeContextConfigHint.promptInstructionsSuffix')}
           </p>
           <div className="flex flex-wrap gap-3 text-cyan-100/90">
             <a
@@ -75,7 +71,7 @@ export const OpenCodeContextConfigHint = (): React.JSX.Element => {
               rel="noreferrer"
               className="inline-flex items-center gap-1 underline underline-offset-2 hover:text-cyan-50"
             >
-              Provider limits
+              {t('openCodeContextConfigHint.providerLimits')}
               <ExternalLink className="size-3" />
             </a>
             <a
@@ -84,7 +80,7 @@ export const OpenCodeContextConfigHint = (): React.JSX.Element => {
               rel="noreferrer"
               className="inline-flex items-center gap-1 underline underline-offset-2 hover:text-cyan-50"
             >
-              Compaction config
+              {t('openCodeContextConfigHint.compactionConfig')}
               <ExternalLink className="size-3" />
             </a>
           </div>

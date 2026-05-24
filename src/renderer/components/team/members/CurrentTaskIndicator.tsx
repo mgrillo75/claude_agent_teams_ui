@@ -1,5 +1,6 @@
 import { memo, useEffect, useState } from 'react';
 
+import { useAppTranslation } from '@features/localization/renderer';
 import { SyncedLoader2 } from '@renderer/components/ui/SyncedLoader2';
 import {
   formatMemberActivityElapsed,
@@ -95,6 +96,7 @@ export const CurrentTaskIndicator = memo(
     isTimerRunning = true,
     onOpenTask,
   }: CurrentTaskIndicatorProps): React.JSX.Element => {
+    const { t } = useAppTranslation('team');
     const timerLabel = useActivityTimerLabel(activityTimer, isTimerRunning);
     const subjectText =
       typeof maxSubjectLength === 'number' &&
@@ -114,7 +116,7 @@ export const CurrentTaskIndicator = memo(
         <button
           type="button"
           className="min-w-0 flex-1 truncate rounded px-1.5 py-0.5 text-left text-[10px] font-medium text-[var(--color-text)] transition-opacity hover:opacity-90 focus:outline-none focus:ring-1 focus:ring-[var(--color-border)]"
-          title="Open task"
+          title={t('tasks.openTask')}
           onClick={(e) => {
             e.stopPropagation();
             onOpenTask?.();

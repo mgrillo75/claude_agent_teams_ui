@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
+import { useAppTranslation } from '@features/localization/renderer';
 import { Button } from '@renderer/components/ui/button';
 import { Checkbox } from '@renderer/components/ui/checkbox';
 import { Label } from '@renderer/components/ui/label';
@@ -196,6 +197,7 @@ export const MembersEditorSection = ({
   worktreeIsolationDisabledReason,
   onTeammateWorktreeDefaultChange,
 }: MembersEditorSectionProps): React.JSX.Element => {
+  const { t } = useAppTranslation('team');
   const [jsonEditorOpen, setJsonEditorOpen] = useState(false);
   const [jsonText, setJsonText] = useState('');
   const [jsonError, setJsonError] = useState<string | null>(null);
@@ -439,7 +441,7 @@ export const MembersEditorSection = ({
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
-        <Label>Members</Label>
+        <Label>{t('members.editor.title')}</Label>
         {!hideContent && (
           <div className="flex gap-2">
             <Button
@@ -451,11 +453,11 @@ export const MembersEditorSection = ({
               title={disableAddMember ? addMemberLockReason : undefined}
             >
               <Plus className="size-3.5" />
-              Add member
+              {t('members.editor.addMember')}
             </Button>
             {showJsonEditor && !jsonEditorOpen ? (
               <Button variant="ghost" size="sm" onClick={toggleJsonEditor}>
-                Edit as JSON
+                {t('members.editor.editAsJson')}
               </Button>
             ) : null}
           </div>
@@ -499,7 +501,7 @@ export const MembersEditorSection = ({
                     className="flex min-w-0 cursor-pointer items-center gap-1.5 text-xs font-normal text-[var(--color-text-secondary)]"
                   >
                     <GitBranch className="size-3.5 shrink-0" />
-                    <span className="truncate">Run teammates in separate worktrees</span>
+                    <span className="truncate">{t('members.editor.runInSeparateWorktrees')}</span>
                   </Label>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
@@ -513,7 +515,9 @@ export const MembersEditorSection = ({
                     className="flex cursor-pointer items-center gap-1.5 text-xs font-normal text-[var(--color-text-secondary)]"
                   >
                     <Plug className="size-3.5 shrink-0" />
-                    <span className="whitespace-nowrap">Agent Teams MCP only</span>
+                    <span className="whitespace-nowrap">
+                      {t('members.editor.agentTeamsMcpOnly')}
+                    </span>
                   </Label>
                 </div>
               </div>
@@ -568,7 +572,7 @@ export const MembersEditorSection = ({
               {softDeleteMembers && removedMembers.length > 0 ? (
                 <div className="pt-2">
                   <div className="mb-2 text-[10px] text-[var(--color-text-muted)]">
-                    Removed ({removedMembers.length})
+                    {t('members.editor.removedCount', { count: removedMembers.length })}
                   </div>
                   <div className="space-y-2">
                     {removedMembers.map((member, index) => (
@@ -605,7 +609,7 @@ export const MembersEditorSection = ({
                         taskSuggestions={taskSuggestions}
                         teamSuggestions={teamSuggestions}
                         lockProviderModel
-                        modelLockReason="Removed members are kept for soft delete history. Restore them to edit settings."
+                        modelLockReason={t('members.editor.removedModelLockReason')}
                         isRemoved
                         warningText={null}
                         disableGeminiOption={disableGeminiOption}
@@ -619,7 +623,7 @@ export const MembersEditorSection = ({
           </div>
           {hasDuplicates ? (
             <p className="text-[11px]" style={{ color: 'var(--field-error-text)' }}>
-              Member names must be unique
+              {t('members.editor.memberNamesUnique')}
             </p>
           ) : fieldError ? (
             <p className="text-[11px]" style={{ color: 'var(--field-error-text)' }}>

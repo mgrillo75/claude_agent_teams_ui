@@ -1,5 +1,6 @@
 import { memo } from 'react';
 
+import { useAppTranslation } from '@features/localization/renderer';
 import { Badge } from '@renderer/components/ui/badge';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@renderer/components/ui/hover-card';
 import {
@@ -69,6 +70,7 @@ export const MemberHoverCard = memo(function MemberHoverCard({
   onOpenTask,
   children,
 }: MemberHoverCardProps): React.JSX.Element {
+  const { t } = useAppTranslation('team');
   const { isLight } = useTheme();
   const selectedTeamName = useStore((s) => s.selectedTeamName);
   const effectiveTeamName = teamName ?? selectedTeamName;
@@ -326,7 +328,7 @@ export const MemberHoverCard = memo(function MemberHoverCard({
               }}
             >
               <ExternalLink size={12} />
-              Open profile
+              {t('members.actions.openProfile')}
             </button>
           </div>
         </div>

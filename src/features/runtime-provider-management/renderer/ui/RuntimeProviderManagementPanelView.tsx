@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { useAppTranslation } from '@features/localization/renderer';
 import { Badge } from '@renderer/components/ui/badge';
 import { Button } from '@renderer/components/ui/button';
 import { Checkbox } from '@renderer/components/ui/checkbox';
@@ -95,6 +96,7 @@ interface RuntimeProviderErrorAlertProps {
 }
 
 type OpenCodeSettingsSection = 'models' | 'providers';
+type SettingsT = ReturnType<typeof useAppTranslation>['t'];
 
 const NO_PROJECT_CONTEXT_VALUE = '__runtime-provider-no-project-context__';
 
@@ -149,31 +151,36 @@ function getProjectContextName(projectPath: string | null | undefined): string |
   return name || normalized;
 }
 
-function getDefaultScopeDescription(scope: RuntimeProviderDefaultScopeDto): string {
+function getDefaultScopeDescription(scope: RuntimeProviderDefaultScopeDto, t: SettingsT): string {
   return scope === 'all_projects'
-    ? 'Default for every project that does not have its own OpenCode override.'
-    : 'Override only the selected project. Running teams are not changed.';
+    ? t('runtimeProvider.defaults.scopeDescriptionAllProjects')
+    : t('runtimeProvider.defaults.scopeDescriptionProject');
 }
 
-function getDefaultScopeButtonLabel(scope: RuntimeProviderDefaultScopeDto): string {
-  return scope === 'all_projects' ? 'Set all-projects default' : 'Set project default';
+function getDefaultScopeButtonLabel(scope: RuntimeProviderDefaultScopeDto, t: SettingsT): string {
+  return scope === 'all_projects'
+    ? t('runtimeProvider.defaults.setAllProjectsDefault')
+    : t('runtimeProvider.defaults.setProjectDefault');
 }
 
-function getContextControlLabel(scope: RuntimeProviderDefaultScopeDto): string {
-  return scope === 'all_projects' ? 'Validation context' : 'Project override context';
+function getContextControlLabel(scope: RuntimeProviderDefaultScopeDto, t: SettingsT): string {
+  return scope === 'all_projects'
+    ? t('runtimeProvider.defaults.validationContext')
+    : t('runtimeProvider.defaults.projectOverrideContext');
 }
 
 function getContextControlHint(
   scope: RuntimeProviderDefaultScopeDto,
-  projectPath: string | null | undefined
+  projectPath: string | null | undefined,
+  t: SettingsT
 ): string {
   const projectName = getProjectContextName(projectPath) ?? projectPath?.trim();
   if (!projectName) {
-    return 'Select a project before testing local models or saving defaults.';
+    return t('runtimeProvider.defaults.selectProjectHint');
   }
   return scope === 'all_projects'
-    ? `Tests use ${projectName}. Default applies unless a project has an override.`
-    : `Saving overrides only ${projectName}.`;
+    ? t('runtimeProvider.defaults.allProjectsHint', { project: projectName })
+    : t('runtimeProvider.defaults.projectHint', { project: projectName });
 }
 
 function getDefaultModelSourceLabel(
@@ -345,6 +352,7 @@ function ProviderSetupFormPanel({
   readonly disabled: boolean;
   readonly actions: RuntimeProviderManagementActions;
 }): JSX.Element {
+  const { t } = useAppTranslation('settings');
   const form = state.setupForm?.providerId === provider.providerId ? state.setupForm : null;
   const loading = state.setupFormLoading && state.activeFormProviderId === provider.providerId;
   const error = state.setupFormError;
@@ -364,7 +372,7 @@ function ProviderSetupFormPanel({
       {loading ? (
         <div className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
           <Loader2 className="size-3.5 animate-spin" />
-          Loading provider setup...
+          {t('runtimeProvider.setup.loading')}
         </div>
       ) : null}
 
@@ -477,7 +485,7 @@ function ProviderSetupFormPanel({
           disabled={busy}
           onClick={actions.cancelConnect}
         >
-          Cancel
+          {t('runtimeProvider.actions.cancel')}
         </Button>
         <Button
           type="button"
@@ -500,6 +508,7 @@ function RuntimeSummary({
 }: Pick<RuntimeProviderManagementPanelViewProps, 'state' | 'disabled'> & {
   onRefresh: () => void;
 }): JSX.Element {
+  const { t } = useAppTranslation('settings');
   const runtime = state.view?.runtime;
   const loadingWithoutRuntime = state.loading && !runtime;
   const defaultSourceLabel = getDefaultModelSourceLabel(state.view?.defaultModelSource);
@@ -515,7 +524,7 @@ function RuntimeSummary({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
-            OpenCode runtime
+            {t('runtimeProvider.summary.title')}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
             <Badge
@@ -533,11 +542,13 @@ function RuntimeSummary({
             ) : null}
             {state.view?.defaultModel ? (
               <span className="break-all" style={{ color: 'var(--color-text-secondary)' }}>
-                OpenCode default: {state.view.defaultModel}
+                {t('runtimeProvider.summary.defaultModel', { model: state.view.defaultModel })}
               </span>
             ) : null}
             {defaultSourceLabel ? (
-              <span style={{ color: 'var(--color-text-muted)' }}>Source: {defaultSourceLabel}</span>
+              <span style={{ color: 'var(--color-text-muted)' }}>
+                {t('runtimeProvider.summary.source', { source: defaultSourceLabel })}
+              </span>
             ) : null}
           </div>
           {state.loading ? (
@@ -546,9 +557,7 @@ function RuntimeSummary({
               style={{ color: 'var(--color-text-secondary)' }}
             >
               <Loader2 className="size-3.5 animate-spin" />
-              <span>
-                Loading managed OpenCode runtime, connected providers, and model defaults...
-              </span>
+              <span>{t('runtimeProvider.summary.loading')}</span>
             </div>
           ) : null}
           {state.view?.diagnostics.length ? (
@@ -582,6 +591,7 @@ function RuntimeSummary({
 }
 
 function RuntimeProviderLoadingPlaceholder(): JSX.Element {
+  const { t } = useAppTranslation('settings');
   return (
     <div
       data-testid="runtime-provider-loading-skeleton"
@@ -602,7 +612,7 @@ function RuntimeProviderLoadingPlaceholder(): JSX.Element {
           />
           <div className="min-w-0 flex-1">
             <div className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
-              Loading OpenCode providers
+              {t('runtimeProvider.providers.loading')}
             </div>
             <div
               className="skeleton-shimmer mt-1 h-3 w-72 max-w-full rounded-sm"
@@ -778,6 +788,7 @@ const RuntimeProviderErrorAlert = ({
   diagnostics = null,
   testId,
 }: RuntimeProviderErrorAlertProps): JSX.Element => {
+  const { t } = useAppTranslation('settings');
   const [copied, setCopied] = useState(false);
   const [headline = message, ...detailLines] = message.trim().split(/\r?\n/);
   const fallbackDetails = detailLines.join('\n').trim();
@@ -824,22 +835,34 @@ const RuntimeProviderErrorAlert = ({
               'h-6 shrink-0 px-2 text-[11px]',
               !copied && 'member-launch-diagnostics-pulse'
             )}
-            title={copied ? 'Diagnostics copied' : 'Copy diagnostics'}
-            aria-label={copied ? 'Diagnostics copied' : 'Copy diagnostics'}
+            title={
+              copied
+                ? t('runtimeProvider.diagnostics.copied')
+                : t('runtimeProvider.diagnostics.copy')
+            }
+            aria-label={
+              copied
+                ? t('runtimeProvider.diagnostics.copied')
+                : t('runtimeProvider.diagnostics.copy')
+            }
             onClick={(event) => {
               event.stopPropagation();
               void copyDiagnostics();
             }}
           >
             {copied ? <Check className="mr-1 size-3" /> : <ClipboardList className="mr-1 size-3" />}
-            {copied ? 'Copied' : 'Copy diagnostics'}
+            {copied
+              ? t('runtimeProvider.diagnostics.copiedShort')
+              : t('runtimeProvider.diagnostics.copy')}
           </Button>
         </div>
         {diagnostics ? (
           <div className="mt-2 space-y-2">
             {diagnostics.likelyCause ? (
               <div className="whitespace-pre-wrap break-words leading-5 text-red-100">
-                <span className="font-medium text-red-100">Likely cause: </span>
+                <span className="font-medium text-red-100">
+                  {t('runtimeProvider.diagnostics.likelyCause')}{' '}
+                </span>
                 {diagnostics.likelyCause}
               </div>
             ) : null}
@@ -855,7 +878,9 @@ const RuntimeProviderErrorAlert = ({
             ) : null}
             {hints.length > 0 ? (
               <div>
-                <div className="mb-1 font-medium text-red-100">Hints</div>
+                <div className="mb-1 font-medium text-red-100">
+                  {t('runtimeProvider.diagnostics.hints')}
+                </div>
                 <ul className="space-y-1 pl-4">
                   {hints.map((hint, index) => (
                     <li
@@ -1033,6 +1058,7 @@ function ProviderRow({
   hasProjectContext,
   actions,
 }: ProviderRowProps): JSX.Element {
+  const { t } = useAppTranslation('settings');
   const connect = getProviderAction(provider, 'connect');
   const test = getProviderAction(provider, 'test');
   const canOpenConnect = provider.state !== 'connected' && connect?.enabled === true;
@@ -1085,7 +1111,9 @@ function ProviderRow({
             <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
               {provider.displayName}
             </span>
-            {provider.recommended ? <Badge variant="secondary">Recommended</Badge> : null}
+            {provider.recommended ? (
+              <Badge variant="secondary">{t('runtimeProvider.providers.recommended')}</Badge>
+            ) : null}
             <span
               className={`rounded-md border px-2 py-0.5 text-[11px] ${stateClassName(provider)}`}
               style={stateStyle(provider)}
@@ -1099,7 +1127,7 @@ function ProviderRow({
             </span>
             {provider.defaultModelId ? (
               <span className="break-all" style={{ color: 'var(--color-text-secondary)' }}>
-                OpenCode default: {provider.defaultModelId}
+                {t('runtimeProvider.summary.defaultModel', { model: provider.defaultModelId })}
               </span>
             ) : null}
             {provider.ownership.map((owner) => (
@@ -1171,6 +1199,7 @@ function DirectoryProviderRow({
   readonly hasProjectContext: boolean;
   readonly actions: RuntimeProviderManagementActions;
 }): JSX.Element {
+  const { t } = useAppTranslation('settings');
   const connect = getDirectoryAction(provider, 'connect');
   const configure = getDirectoryAction(provider, 'configure');
   const forget = getDirectoryAction(provider, 'forget');
@@ -1227,7 +1256,9 @@ function DirectoryProviderRow({
             <span className="text-sm font-medium text-[var(--color-text)]">
               {provider.displayName}
             </span>
-            {provider.recommended ? <Badge variant="secondary">Recommended</Badge> : null}
+            {provider.recommended ? (
+              <Badge variant="secondary">{t('runtimeProvider.providers.recommended')}</Badge>
+            ) : null}
             <span
               className={`rounded-md border px-2 py-0.5 text-[11px] ${directorySetupKindClassName(provider)}`}
             >
@@ -1338,6 +1369,7 @@ function ModelBadges({
   readonly model: RuntimeProviderModelDto;
   readonly usedForNewTeams: boolean;
 }): JSX.Element | null {
+  const { t } = useAppTranslation('settings');
   const modelRecommendation = getOpenCodeTeamModelRecommendation(model.modelId);
   const localRoute = model.routeKind === 'configured_local';
   const connectedRoute = model.routeKind === 'connected_provider';
@@ -1403,39 +1435,53 @@ function ModelBadges({
       {usedForNewTeams ? (
         <Badge className="bg-sky-400/15 px-1.5 py-0 text-[10px] text-sky-100">
           <Star className="mr-1 size-3" />
-          Used in team picker
+          {t('runtimeProvider.badges.usedInTeamPicker')}
         </Badge>
       ) : null}
       {freeModel ? (
-        <Badge className="bg-emerald-400/15 px-1.5 py-0 text-[10px] text-emerald-200">free</Badge>
+        <Badge className="bg-emerald-400/15 px-1.5 py-0 text-[10px] text-emerald-200">
+          {t('runtimeProvider.badges.free')}
+        </Badge>
       ) : null}
       {localRoute ? (
         <>
-          <Badge className="bg-cyan-400/15 px-1.5 py-0 text-[10px] text-cyan-200">local</Badge>
-          <Badge className="bg-sky-400/15 px-1.5 py-0 text-[10px] text-sky-200">configured</Badge>
+          <Badge className="bg-cyan-400/15 px-1.5 py-0 text-[10px] text-cyan-200">
+            {t('runtimeProvider.badges.local')}
+          </Badge>
+          <Badge className="bg-sky-400/15 px-1.5 py-0 text-[10px] text-sky-200">
+            {t('runtimeProvider.badges.configured')}
+          </Badge>
         </>
       ) : null}
       {connectedRoute ? (
         <Badge className="bg-emerald-400/15 px-1.5 py-0 text-[10px] text-emerald-100">
-          connected
+          {t('runtimeProvider.badges.connected')}
         </Badge>
       ) : null}
       {verified ? (
         <Badge className="bg-emerald-400/15 px-1.5 py-0 text-[10px] text-emerald-100">
-          verified
+          {t('runtimeProvider.badges.verified')}
         </Badge>
       ) : null}
       {needsTest && !verified ? (
-        <Badge className="bg-amber-400/15 px-1.5 py-0 text-[10px] text-amber-200">needs test</Badge>
+        <Badge className="bg-amber-400/15 px-1.5 py-0 text-[10px] text-amber-200">
+          {t('runtimeProvider.badges.needsTest')}
+        </Badge>
       ) : null}
       {failed ? (
-        <Badge className="bg-red-400/15 px-1.5 py-0 text-[10px] text-red-200">failed</Badge>
+        <Badge className="bg-red-400/15 px-1.5 py-0 text-[10px] text-red-200">
+          {t('runtimeProvider.badges.failed')}
+        </Badge>
       ) : null}
       {unknown ? (
-        <Badge className="bg-slate-400/15 px-1.5 py-0 text-[10px] text-slate-200">unknown</Badge>
+        <Badge className="bg-slate-400/15 px-1.5 py-0 text-[10px] text-slate-200">
+          {t('runtimeProvider.badges.unknown')}
+        </Badge>
       ) : null}
       {model.default ? (
-        <Badge className="bg-amber-400/15 px-1.5 py-0 text-[10px] text-amber-200">default</Badge>
+        <Badge className="bg-amber-400/15 px-1.5 py-0 text-[10px] text-amber-200">
+          {t('runtimeProvider.badges.default')}
+        </Badge>
       ) : null}
     </div>
   );
@@ -1546,6 +1592,7 @@ function ModelRow({
   readonly result: RuntimeProviderModelTestResultDto | undefined;
   readonly actions: RuntimeProviderManagementActions;
 }): JSX.Element {
+  const { t } = useAppTranslation('settings');
   const chooseModel = (): void => {
     if (!disabled) {
       actions.useModelForNewTeams(model.modelId);
@@ -1607,7 +1654,7 @@ function ModelRow({
             className="h-8 min-w-20 justify-center"
             disabled={disabled || !hasProjectContext || testing}
             title={
-              hasProjectContext ? undefined : 'Select a project context before testing models.'
+              hasProjectContext ? undefined : t('runtimeProvider.models.selectProjectBeforeTesting')
             }
             onClick={(event) => {
               event.stopPropagation();
@@ -1620,7 +1667,7 @@ function ModelRow({
             ) : (
               <CheckCircle2 className="mr-1 size-3.5" />
             )}
-            Test
+            {t('runtimeProvider.actions.test')}
           </Button>
         </div>
       </div>
@@ -1646,6 +1693,7 @@ function OpenCodeModelScopeControls({
   readonly error: string | null;
   readonly onProjectContextChange?: (projectPath: string | null) => void;
 }): JSX.Element {
+  const { t } = useAppTranslation('settings');
   const selectedValue = projectPath?.trim() || NO_PROJECT_CONTEXT_VALUE;
   const projectOptions = useMemo(() => {
     const seen = new Set<string>();
@@ -1671,10 +1719,10 @@ function OpenCodeModelScopeControls({
     return options;
   }, [projectPath, projects]);
   const contextPlaceholder = loading
-    ? 'Loading contexts...'
+    ? t('runtimeProvider.defaults.loadingContexts')
     : defaultScope === 'all_projects'
-      ? 'Select validation context'
-      : 'Select project context';
+      ? t('runtimeProvider.defaults.selectValidationContext')
+      : t('runtimeProvider.defaults.selectProjectContext');
 
   return (
     <div
@@ -1686,9 +1734,11 @@ function OpenCodeModelScopeControls({
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-sm font-medium text-[var(--color-text)]">OpenCode defaults</div>
+          <div className="text-sm font-medium text-[var(--color-text)]">
+            {t('runtimeProvider.defaults.title')}
+          </div>
           <div className="mt-1 text-xs text-[var(--color-text-muted)]">
-            {getDefaultScopeDescription(defaultScope)}
+            {getDefaultScopeDescription(defaultScope, t)}
           </div>
         </div>
         <div className="inline-flex shrink-0 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-0.5">
@@ -1703,7 +1753,9 @@ function OpenCodeModelScopeControls({
               }`}
               onClick={() => onDefaultScopeChange(scope)}
             >
-              {scope === 'all_projects' ? 'All projects' : 'This project'}
+              {scope === 'all_projects'
+                ? t('runtimeProvider.defaults.allProjects')
+                : t('runtimeProvider.defaults.thisProject')}
             </button>
           ))}
         </div>
@@ -1712,7 +1764,7 @@ function OpenCodeModelScopeControls({
       <div className="mt-3">
         <div className="min-w-0">
           <Label className="text-xs text-[var(--color-text-secondary)]">
-            {getContextControlLabel(defaultScope)}
+            {getContextControlLabel(defaultScope, t)}
           </Label>
           <div className="mt-1">
             <Select
@@ -1740,7 +1792,7 @@ function OpenCodeModelScopeControls({
           className="mt-1 text-[11px] leading-4 text-[var(--color-text-muted)]"
           title={projectPath?.trim() || undefined}
         >
-          {getContextControlHint(defaultScope, projectPath)}
+          {getContextControlHint(defaultScope, projectPath, t)}
         </div>
       </div>
 
@@ -1766,6 +1818,7 @@ function ConfiguredOpenCodeModelsPanel({
   readonly defaultScope: RuntimeProviderDefaultScopeDto;
   readonly hasProjectContext: boolean;
 }): JSX.Element | null {
+  const { t } = useAppTranslation('settings');
   const models = useMemo(() => state.view?.configuredModels ?? [], [state.view?.configuredModels]);
   const [query, setQuery] = useState('');
   const normalizedQuery = query.trim().toLowerCase();
@@ -1791,11 +1844,10 @@ function ConfiguredOpenCodeModelsPanel({
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="text-sm font-medium text-[var(--color-text)]">
-            Launchable OpenCode models
+            {t('runtimeProvider.models.launchableTitle')}
           </div>
           <div className="text-xs text-[var(--color-text-muted)]">
-            Routes you can test or use in the team picker: local config, free built-in models, and
-            current default.
+            {t('runtimeProvider.models.launchableDescription')}
           </div>
         </div>
         <div className="relative min-w-[220px] flex-1 sm:max-w-sm">
@@ -1803,7 +1855,7 @@ function ConfiguredOpenCodeModelsPanel({
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search model routes"
+            placeholder={t('runtimeProvider.modelRoutes.searchPlaceholder')}
             className="h-9 pl-10 pr-3 text-sm leading-5"
             style={{ paddingLeft: 40 }}
           />
@@ -1813,7 +1865,7 @@ function ConfiguredOpenCodeModelsPanel({
       <div className="mt-3 space-y-2">
         {visibleModels.length === 0 ? (
           <div className="rounded-md border border-dashed border-white/10 px-3 py-3 text-sm text-[var(--color-text-muted)]">
-            No OpenCode model routes match “{query.trim()}”.
+            {t('runtimeProvider.models.noRoutesMatch', { query: query.trim() })}
           </div>
         ) : null}
         {visibleModels.map((model) => {
@@ -1824,7 +1876,7 @@ function ConfiguredOpenCodeModelsPanel({
           const unavailableTitle = getOpenCodeRouteUnavailableTitle(model);
           const contextRequiredTitle = hasProjectContext
             ? undefined
-            : 'Select a project context before testing or saving OpenCode defaults.';
+            : t('runtimeProvider.models.selectProjectBeforeTestingDefaults');
           const alreadyDefaultForScope = isDefaultForScope(model, state, defaultScope);
           const canTest =
             !disabled && hasProjectContext && !testing && canTestOpenCodeModelRoute(model);
@@ -1877,7 +1929,7 @@ function ConfiguredOpenCodeModelsPanel({
                     ) : (
                       <CheckCircle2 className="mr-1 size-3.5" />
                     )}
-                    Test
+                    {t('runtimeProvider.actions.test')}
                   </Button>
                   <Button
                     type="button"
@@ -1891,7 +1943,7 @@ function ConfiguredOpenCodeModelsPanel({
                       actions.useModelForNewTeams(model.modelId);
                     }}
                   >
-                    Use in team picker
+                    {t('runtimeProvider.models.useInTeamPicker')}
                   </Button>
                   <Button
                     type="button"
@@ -1904,7 +1956,7 @@ function ConfiguredOpenCodeModelsPanel({
                         ? undefined
                         : (contextRequiredTitle ??
                           (alreadyDefaultForScope
-                            ? 'This is already the selected OpenCode default.'
+                            ? t('runtimeProvider.models.alreadyDefault')
                             : unavailableTitle))
                     }
                     onClick={() => {
@@ -1913,7 +1965,7 @@ function ConfiguredOpenCodeModelsPanel({
                     }}
                   >
                     {savingDefault ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : null}
-                    {getDefaultScopeButtonLabel(defaultScope)}
+                    {getDefaultScopeButtonLabel(defaultScope, t)}
                   </Button>
                 </div>
               </div>
@@ -1939,6 +1991,7 @@ function ProviderModelList({
   readonly disabled: boolean;
   readonly hasProjectContext: boolean;
 }): JSX.Element {
+  const { t } = useAppTranslation('settings');
   const pickerOpen = state.modelPickerProviderId === provider.providerId;
   const [recommendedOnly, setRecommendedOnly] = useState(false);
   const [freeOnly, setFreeOnly] = useState(false);
@@ -1981,11 +2034,11 @@ function ProviderModelList({
   );
   const emptyModelListMessage = recommendedOnly
     ? freeOnly
-      ? 'No recommended free models found.'
-      : 'No recommended models found.'
+      ? t('runtimeProvider.models.emptyRecommendedFree')
+      : t('runtimeProvider.models.emptyRecommended')
     : freeOnly
-      ? 'No free models found.'
-      : 'No models found.';
+      ? t('runtimeProvider.models.emptyFree')
+      : t('runtimeProvider.models.empty');
 
   return (
     <div className="mt-4 space-y-3 border-t border-white/10 pt-3">
@@ -1999,7 +2052,7 @@ function ProviderModelList({
             onChange={(event) => actions.setModelQuery(event.target.value)}
             onClick={(event) => event.stopPropagation()}
             onKeyDown={(event) => event.stopPropagation()}
-            placeholder="Search models"
+            placeholder={t('runtimeProvider.models.searchPlaceholder')}
             className="h-10 pl-10 pr-3 text-sm leading-5"
             style={{ paddingLeft: 42 }}
           />
@@ -2021,7 +2074,7 @@ function ProviderModelList({
               htmlFor={`runtime-provider-${provider.providerId}-recommended-only`}
               className="cursor-pointer text-xs font-normal text-[var(--color-text-secondary)]"
             >
-              Recommended only
+              {t('runtimeProvider.models.recommendedOnly')}
             </Label>
           </div>
         ) : null}
@@ -2042,7 +2095,7 @@ function ProviderModelList({
               htmlFor={`runtime-provider-${provider.providerId}-free-only`}
               className="cursor-pointer text-xs font-normal text-[var(--color-text-secondary)]"
             >
-              Free only
+              {t('runtimeProvider.models.freeOnly')}
             </Label>
           </div>
         ) : null}
@@ -2095,6 +2148,7 @@ export function RuntimeProviderManagementPanelView({
   projectContextError = null,
   onProjectContextChange,
 }: RuntimeProviderManagementPanelViewProps): JSX.Element {
+  const { t } = useAppTranslation('settings');
   const [selectedSection, setSelectedSection] = useState<OpenCodeSettingsSection | null>(null);
   const [defaultScope, setDefaultScope] = useState<RuntimeProviderDefaultScopeDto>('all_projects');
   const providerQuery = state.providerQuery.trim().toLowerCase();
@@ -2123,8 +2177,8 @@ export function RuntimeProviderManagementPanelView({
     state.directoryTotalCount !== null
       ? formatOpenCodeProviderCount(state.directoryTotalCount)
       : state.directorySupported
-        ? 'OpenCode provider catalog'
-        : 'OpenCode providers';
+        ? t('runtimeProvider.providers.catalog')
+        : t('runtimeProvider.providers.countFallback');
   const launchableModelCount = state.view?.configuredModels?.length ?? 0;
   const modelsLoading = state.loading && launchableModelCount === 0;
   const activeSection =
@@ -2167,7 +2221,7 @@ export function RuntimeProviderManagementPanelView({
               value="models"
               className="rounded-b-none data-[state=active]:bg-[var(--color-surface)]"
             >
-              Models
+              {t('runtimeProvider.tabs.models')}
               {launchableModelCount > 0 ? (
                 <span className="ml-2 rounded-full bg-white/10 px-1.5 py-0 text-[10px]">
                   {launchableModelCount}
@@ -2178,7 +2232,7 @@ export function RuntimeProviderManagementPanelView({
               value="providers"
               className="rounded-b-none data-[state=active]:bg-[var(--color-surface)]"
             >
-              Providers
+              {t('runtimeProvider.tabs.providers')}
               {state.directoryTotalCount !== null ? (
                 <span className="ml-2 rounded-full bg-white/10 px-1.5 py-0 text-[10px]">
                   {state.directoryTotalCount}
@@ -2215,15 +2269,14 @@ export function RuntimeProviderManagementPanelView({
             >
               <div className="mb-3 flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
                 <Loader2 className="size-3.5 animate-spin" />
-                Loading OpenCode model routes...
+                {t('runtimeProvider.models.loadingRoutes')}
               </div>
               <RuntimeProviderModelLoadingSkeleton />
             </div>
           ) : null}
           {!modelsLoading && launchableModelCount === 0 ? (
             <div className="rounded-lg border border-dashed border-white/10 p-4 text-sm text-[var(--color-text-muted)]">
-              No launchable OpenCode model routes were reported yet. Configure a local route in
-              OpenCode or use the Providers tab to inspect catalog providers.
+              {t('runtimeProvider.models.noneReported')}
             </div>
           ) : null}
         </TabsContent>
@@ -2231,9 +2284,11 @@ export function RuntimeProviderManagementPanelView({
         <TabsContent value="providers" className="mt-3 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="min-w-0">
-              <div className="text-sm font-medium text-[var(--color-text)]">Providers</div>
+              <div className="text-sm font-medium text-[var(--color-text)]">
+                {t('runtimeProvider.tabs.providers')}
+              </div>
               <div className="text-xs text-[var(--color-text-muted)]">
-                {providerCountLabel}. Connected and recommended providers are shown first.
+                {t('runtimeProvider.providers.description', { count: providerCountLabel })}
               </div>
             </div>
             {state.directorySupported ? (
@@ -2249,7 +2304,7 @@ export function RuntimeProviderManagementPanelView({
                 ) : (
                   <RefreshCcw className="mr-1 size-3.5" />
                 )}
-                Refresh catalog
+                {t('runtimeProvider.providers.refreshCatalog')}
               </Button>
             ) : null}
           </div>
@@ -2267,7 +2322,7 @@ export function RuntimeProviderManagementPanelView({
                     actions.searchAllProviders(state.providerQuery.trim());
                   }
                 }}
-                placeholder="Search providers"
+                placeholder={t('runtimeProvider.providers.searchPlaceholder')}
                 className="h-9 pr-3 text-sm"
                 style={{ paddingLeft: 40 }}
               />
@@ -2313,7 +2368,7 @@ export function RuntimeProviderManagementPanelView({
                       {state.directoryRefreshing ? (
                         <Loader2 className="mr-1 size-3.5 animate-spin" />
                       ) : null}
-                      Load more providers
+                      {t('runtimeProvider.providers.loadMore')}
                     </Button>
                   </div>
                 ) : null}
@@ -2351,7 +2406,7 @@ export function RuntimeProviderManagementPanelView({
                 color: 'var(--color-text-secondary)',
               }}
             >
-              No providers match that search.
+              {t('runtimeProvider.providers.noMatches')}
             </div>
           ) : null}
 
@@ -2366,7 +2421,7 @@ export function RuntimeProviderManagementPanelView({
                 color: 'var(--color-text-secondary)',
               }}
             >
-              No providers match that search.
+              {t('runtimeProvider.providers.noMatches')}
             </div>
           ) : null}
 
@@ -2378,7 +2433,7 @@ export function RuntimeProviderManagementPanelView({
                 color: 'var(--color-text-secondary)',
               }}
             >
-              No OpenCode providers reported by the managed runtime.
+              {t('runtimeProvider.providers.noneReported')}
             </div>
           ) : null}
         </TabsContent>

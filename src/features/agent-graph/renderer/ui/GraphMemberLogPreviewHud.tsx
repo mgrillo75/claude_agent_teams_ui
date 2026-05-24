@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
+import { useAppTranslation } from '@features/localization/renderer';
 import {
   AlertCircle,
   Brain,
@@ -279,6 +280,7 @@ export const GraphMemberLogPreviewHud = ({
   enabled = true,
   onOpenMemberProfile,
 }: GraphMemberLogPreviewHudProps): React.JSX.Element | null => {
+  const { t } = useAppTranslation('team');
   const worldLayerRef = useRef<HTMLDivElement | null>(null);
   const shellRefs = useRef(new Map<string, HTMLDivElement | null>());
   const visibleKeyRef = useRef('');
@@ -607,7 +609,7 @@ export const GraphMemberLogPreviewHud = ({
             <div className="flex h-full min-w-0 max-w-full flex-col overflow-hidden">
               <div className="mb-1 flex h-4 min-h-4 items-center gap-1 px-1 text-[9px] font-semibold tracking-[0.18em] text-slate-400/70">
                 <Wrench className="size-2.5 text-slate-500" />
-                Logs
+                {t('agentGraph.logPreview.logs')}
               </div>
               <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
                 {items.length > 0 ? (
@@ -617,10 +619,10 @@ export const GraphMemberLogPreviewHud = ({
                     type="button"
                     className={`${INTERACTIVE_LOG_CONTROL_CLASS} flex min-h-0 flex-1 rounded-md text-left text-[11px] text-slate-400/60`}
                     aria-busy="true"
-                    aria-label="Loading logs"
+                    aria-label={t('agentGraph.logPreview.loading')}
                     onClick={() => openLogs(memberName)}
                   >
-                    <span className="sr-only">Loading logs</span>
+                    <span className="sr-only">{t('agentGraph.logPreview.loading')}</span>
                     {renderLoadingSkeleton()}
                   </button>
                 ) : (
@@ -638,7 +640,7 @@ export const GraphMemberLogPreviewHud = ({
                     className={`${INTERACTIVE_LOG_CONTROL_CLASS} h-8 min-h-8 w-full rounded-md border border-white/10 bg-[rgba(8,14,28,0.64)] px-3 py-1 text-center text-[11px] font-medium text-slate-300 transition-colors hover:border-white/20 hover:bg-[rgba(12,20,40,0.78)]`}
                     onClick={() => openLogs(memberName)}
                   >
-                    +{preview.overflowCount} more
+                    {t('agentGraph.logPreview.more', { count: preview.overflowCount })}
                   </button>
                 ) : null}
               </div>

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 
+import { useAppTranslation } from '@features/localization/renderer';
 import { CodeMirrorDiffView } from './CodeMirrorDiffView';
 import { DiffErrorBoundary } from './DiffErrorBoundary';
 import { FileSectionPlaceholder } from './FileSectionPlaceholder';
@@ -56,6 +57,7 @@ export const FileSectionDiff = ({
   globalHunkOffset = 0,
   totalReviewHunks,
 }: FileSectionDiffProps): React.ReactElement => {
+  const { t } = useAppTranslation('team');
   const localEditorViewRef = useRef<EditorView | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const hasSnippetText = hasReviewSnippetText(file);
@@ -206,8 +208,8 @@ export const FileSectionDiff = ({
           className="border-b border-border bg-red-500/10 px-4 py-2 text-xs"
           style={{ color: 'var(--diff-removed-text)' }}
         >
-          File is missing on disk. This diff may be only a preview from agent logs. Use{' '}
-          <span className="font-medium">Restore</span> to create the file on disk.
+          {t('review.fileMissingPrefix')} <span className="font-medium">{t('review.restore')}</span>{' '}
+          {t('review.fileMissingSuffix')}
         </div>
       )}
       <DiffErrorBoundary

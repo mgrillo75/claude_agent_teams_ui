@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { ACTIVITY_LANE } from '@claude-teams/agent-graph';
+import { useAppTranslation } from '@features/localization/renderer';
 import { buildMessageContext } from '@renderer/components/team/activity/activityMessageContext';
 import { MessageExpandDialog } from '@renderer/components/team/activity/MessageExpandDialog';
 import { useStableTeamMentionMeta } from '@renderer/hooks/useStableTeamMentionMeta';
@@ -77,6 +78,7 @@ export const GraphActivityHud = ({
   onOpenTaskDetail,
   onOpenMemberProfile,
 }: GraphActivityHudProps): React.JSX.Element | null => {
+  const { t } = useAppTranslation('team');
   const worldLayerRef = useRef<HTMLDivElement | null>(null);
   const shellRefs = useRef(new Map<string, HTMLDivElement | null>());
   const connectorRefs = useRef(new Map<string, SVGSVGElement | null>());
@@ -552,12 +554,12 @@ export const GraphActivityHud = ({
                   >
                     <div className="flex h-full min-w-0 max-w-full flex-col overflow-hidden">
                       <div className="mb-1 px-1 text-[10px] font-semibold tracking-[0.2em] text-slate-400/70">
-                        Activity
+                        {t('agentGraph.activityHud.activity')}
                       </div>
                       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
                         {lane.entries.length === 0 && lane.overflowCount === 0 ? (
                           <div className="flex h-[72px] min-h-[72px] items-center rounded-md border border-dashed border-white/10 bg-[rgba(8,14,28,0.28)] px-3 text-[11px] text-slate-400/60">
-                            No recent activity
+                            {t('agentGraph.activityHud.noRecentActivity')}
                           </div>
                         ) : null}
                         {lane.entries.map(renderLaneEntry)}
@@ -568,7 +570,7 @@ export const GraphActivityHud = ({
                             className={`${INTERACTIVE_ACTIVITY_CONTROL_CLASS} h-8 min-h-8 w-full rounded-md border border-white/10 bg-[rgba(8,14,28,0.64)] px-3 py-1 text-center text-[11px] font-medium text-slate-300 transition-colors hover:border-white/20 hover:bg-[rgba(12,20,40,0.78)]`}
                             onClick={() => handleOpenOwnerActivity(lane.node)}
                           >
-                            +{lane.overflowCount} more
+                            {t('agentGraph.activityHud.more', { count: lane.overflowCount })}
                           </button>
                         ) : null}
                       </div>

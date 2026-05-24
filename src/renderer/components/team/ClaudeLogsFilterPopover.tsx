@@ -4,6 +4,7 @@ import { Button } from '@renderer/components/ui/button';
 import { Checkbox } from '@renderer/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
+import { useAppTranslation } from '@features/localization/renderer';
 import { Filter } from 'lucide-react';
 
 export type ClaudeLogStream = 'stdout' | 'stderr';
@@ -45,6 +46,7 @@ export const ClaudeLogsFilterPopover = ({
   onOpenChange,
   onApply,
 }: ClaudeLogsFilterPopoverProps): React.JSX.Element => {
+  const { t } = useAppTranslation('team');
   const [draft, setDraft] = useState<ClaudeLogsFilterState>(() => ({
     streams: new Set(filter.streams),
     kinds: new Set(filter.kinds),
@@ -108,7 +110,7 @@ export const ClaudeLogsFilterPopover = ({
               variant="ghost"
               size="sm"
               className="relative h-7 px-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-              aria-label="Filter Claude logs"
+              aria-label={t('claudeLogs.filter.ariaLabel')}
             >
               <Filter size={14} />
               {activeCount > 0 && (
@@ -119,12 +121,12 @@ export const ClaudeLogsFilterPopover = ({
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>
-        <TooltipContent side="bottom">Filter logs</TooltipContent>
+        <TooltipContent side="bottom">{t('claudeLogs.filter.tooltip')}</TooltipContent>
       </Tooltip>
       <PopoverContent align="end" className="w-72 p-0">
         <div className="border-b border-[var(--color-border)] p-3">
           <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-[var(--color-text-muted)]">
-            Stream
+            {t('claudeLogs.filter.sections.stream')}
           </p>
           <div className="space-y-1">
             <label
@@ -136,7 +138,7 @@ export const ClaudeLogsFilterPopover = ({
                 checked={draft.streams.has('stdout')}
                 onCheckedChange={() => toggleStream('stdout')}
               />
-              stdout
+              {t('claudeLogs.filter.streams.stdout')}
             </label>
             <label
               htmlFor="filter-stream-stderr"
@@ -147,14 +149,14 @@ export const ClaudeLogsFilterPopover = ({
                 checked={draft.streams.has('stderr')}
                 onCheckedChange={() => toggleStream('stderr')}
               />
-              stderr
+              {t('claudeLogs.filter.streams.stderr')}
             </label>
           </div>
         </div>
 
         <div className="border-b border-[var(--color-border)] p-3">
           <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-[var(--color-text-muted)]">
-            Content
+            {t('claudeLogs.filter.sections.content')}
           </p>
           <div className="space-y-1">
             <label
@@ -166,7 +168,7 @@ export const ClaudeLogsFilterPopover = ({
                 checked={draft.kinds.has('output')}
                 onCheckedChange={() => toggleKind('output')}
               />
-              Output
+              {t('claudeLogs.filter.kinds.output')}
             </label>
             <label
               htmlFor="filter-kind-thinking"
@@ -177,7 +179,7 @@ export const ClaudeLogsFilterPopover = ({
                 checked={draft.kinds.has('thinking')}
                 onCheckedChange={() => toggleKind('thinking')}
               />
-              Thinking
+              {t('claudeLogs.filter.kinds.thinking')}
             </label>
             <label
               htmlFor="filter-kind-tool"
@@ -188,7 +190,7 @@ export const ClaudeLogsFilterPopover = ({
                 checked={draft.kinds.has('tool')}
                 onCheckedChange={() => toggleKind('tool')}
               />
-              Tool calls
+              {t('claudeLogs.filter.kinds.tool')}
             </label>
           </div>
         </div>
@@ -201,10 +203,10 @@ export const ClaudeLogsFilterPopover = ({
             disabled={draftCount === 0}
             onClick={handleReset}
           >
-            Reset
+            {t('claudeLogs.filter.actions.reset')}
           </Button>
           <Button size="sm" className="h-7 px-3 text-[11px]" onClick={handleSave}>
-            Save
+            {t('claudeLogs.filter.actions.save')}
           </Button>
         </div>
       </PopoverContent>

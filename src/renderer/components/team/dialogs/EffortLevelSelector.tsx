@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo } from 'react';
 
+import { useAppTranslation } from '@features/localization/renderer';
 import { Label } from '@renderer/components/ui/label';
 import { useEffectiveCliProviderStatus } from '@renderer/hooks/useEffectiveCliProviderStatus';
 import { cn } from '@renderer/lib/utils';
@@ -28,6 +29,7 @@ export const EffortLevelSelector: React.FC<EffortLevelSelectorProps> = ({
   model,
   limitContext,
 }) => {
+  const { t } = useAppTranslation('team');
   const { providerStatus } = useEffectiveCliProviderStatus(providerId);
   const presentation = getTeamEffortSelectorPresentation({
     providerId,
@@ -60,7 +62,7 @@ export const EffortLevelSelector: React.FC<EffortLevelSelectorProps> = ({
   return (
     <div className="mb-3">
       <Label htmlFor={id} className="label-optional mb-1.5 block">
-        Effort level (optional)
+        {t('effortLevel.label')}
       </Label>
       <div className="flex items-center gap-2">
         <Brain size={16} className="shrink-0 text-[var(--color-text-muted)]" />
@@ -92,8 +94,7 @@ export const EffortLevelSelector: React.FC<EffortLevelSelectorProps> = ({
       ) : null}
       {showsAnthropicMax ? (
         <p className="mt-1 text-[11px] text-[var(--color-text-muted)]">
-          Max is Anthropic&apos;s heavier reasoning mode and only appears when the resolved launch
-          model supports it.
+          {t('effortLevel.maxDescription')}
         </p>
       ) : null}
     </div>

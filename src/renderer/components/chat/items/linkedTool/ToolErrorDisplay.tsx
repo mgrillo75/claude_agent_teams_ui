@@ -6,6 +6,7 @@
 
 import React, { memo } from 'react';
 
+import { useAppTranslation } from '@features/localization/renderer';
 import { StatusDot } from '../BaseItem';
 
 import { renderOutput } from './renderHelpers';
@@ -19,6 +20,8 @@ interface ToolErrorDisplayProps {
 export const ToolErrorDisplay = memo(function ToolErrorDisplay({
   linkedTool,
 }: ToolErrorDisplayProps) {
+  const { t } = useAppTranslation('common');
+
   if (!linkedTool.result?.isError) return null;
 
   return (
@@ -27,7 +30,7 @@ export const ToolErrorDisplay = memo(function ToolErrorDisplay({
         className="mb-1 flex items-center gap-2 text-xs"
         style={{ color: 'var(--tool-item-muted)' }}
       >
-        Error
+        {t('states.error')}
         <StatusDot status="error" />
       </div>
       <div

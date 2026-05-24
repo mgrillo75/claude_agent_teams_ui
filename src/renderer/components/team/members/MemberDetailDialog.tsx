@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import { useAppTranslation } from '@features/localization/renderer';
 import {
   isMemberLogStreamUiEnabled,
   MemberLogStreamSection,
@@ -143,6 +144,7 @@ export const MemberDetailDialog = ({
   updatingRole,
   onViewMemberChanges,
 }: MemberDetailDialogProps): React.JSX.Element | null => {
+  const { t } = useAppTranslation('team');
   const memberTasks = useMemo(
     () => (member ? tasks.filter((t) => t.owner === member.name) : []),
     [tasks, member]
@@ -248,7 +250,9 @@ export const MemberDetailDialog = ({
     ? OPENCODE_BOOTSTRAP_STALLED_MESSAGE
     : undefined;
   const isOpenCodeMember = member?.providerId === 'opencode';
-  const restartButtonLabel = isOpenCodeMember ? 'Relaunch OpenCode' : 'Restart';
+  const restartButtonLabel = isOpenCodeMember
+    ? t('members.detail.relaunchOpenCode')
+    : t('members.detail.restart');
   const hasLiveRestartContext = isTeamAlive === true || isTeamProvisioning === true;
   const canControlledOpenCodeRelaunch =
     member == null
@@ -406,7 +410,7 @@ export const MemberDetailDialog = ({
                 {showLegacyLogsFallback ? (
                   <div className="rounded-md border border-[var(--color-border)] p-3">
                     <div className="mb-3 text-xs font-semibold uppercase text-[var(--color-text-muted)]">
-                      Legacy Logs Fallback
+                      {t('members.detail.legacyLogsFallback')}
                     </div>
                     <MemberLogsTab teamName={teamName} memberName={member.name} />
                   </div>
@@ -429,7 +433,7 @@ export const MemberDetailDialog = ({
               {launchDiagnosticsPayload && showCopyDiagnostics ? (
                 <MemberLaunchDiagnosticsButton
                   payload={launchDiagnosticsPayload}
-                  label="Copy diagnostics"
+                  label={t('members.detail.copyDiagnostics')}
                   className="h-auto shrink-0 gap-1.5 px-2 py-1 text-red-300 hover:bg-red-500/10 hover:text-red-200"
                 />
               ) : null}
@@ -442,7 +446,7 @@ export const MemberDetailDialog = ({
             </div>
           ) : runtimeEntry?.pid ? (
             <div className="mr-auto text-xs text-[var(--color-text-muted)]">
-              PID {runtimeEntry.pid}
+              {t('members.detail.pid', { pid: runtimeEntry.pid })}
               {memorySourceLabel ? ` · ${memorySourceLabel}` : ''}
             </div>
           ) : (
@@ -450,7 +454,9 @@ export const MemberDetailDialog = ({
           )}
           {member.removedAt ? (
             <span className="text-xs text-[var(--color-text-muted)]">
-              Removed {new Date(member.removedAt).toLocaleDateString()}
+              {t('members.detail.removedAt', {
+                date: new Date(member.removedAt).toLocaleDateString(),
+              })}
             </span>
           ) : (
             <>
@@ -468,7 +474,9 @@ export const MemberDetailDialog = ({
                       await onRestartMember(member.name);
                     } catch (error) {
                       setRestartError(
-                        error instanceof Error ? error.message : 'Failed to restart member'
+                        error instanceof Error
+                          ? error.message
+                          : t('members.detail.failedToRestartMember')
                       );
                     } finally {
                       setRestarting(false);
@@ -485,11 +493,11 @@ export const MemberDetailDialog = ({
               )}
               <Button variant="outline" size="sm" className="gap-1.5" onClick={onSendMessage}>
                 <MessageSquare size={14} />
-                Send Message
+                {t('members.detail.sendMessage')}
               </Button>
               <Button variant="outline" size="sm" className="gap-1.5" onClick={onAssignTask}>
                 <ListPlus size={14} />
-                Assign Task
+                {t('members.detail.assignTask')}
               </Button>
               {onRemoveMember && !isLeadMember(member) && (
                 <Button
@@ -499,7 +507,7 @@ export const MemberDetailDialog = ({
                   onClick={onRemoveMember}
                 >
                   <UserMinus size={14} />
-                  Remove
+                  {t('members.detail.remove')}
                 </Button>
               )}
             </>

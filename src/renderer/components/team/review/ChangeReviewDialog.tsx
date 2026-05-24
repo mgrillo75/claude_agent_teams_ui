@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { undo } from '@codemirror/commands';
 import { rejectChunk } from '@codemirror/merge';
+import { useAppTranslation } from '@features/localization/renderer';
 import { api, isElectronMode } from '@renderer/api';
 import { EditorSelectionMenu } from '@renderer/components/team/editor/EditorSelectionMenu';
 import { useContinuousScrollNav } from '@renderer/hooks/useContinuousScrollNav';
@@ -77,6 +78,7 @@ const TaskChangesEmptyState = ({
 }: {
   changeSet: TaskChangeSetV2 | null;
 }): React.ReactElement => {
+  const { t } = useAppTranslation('team');
   const status = changeSet ? classifyTaskChangeReviewability(changeSet) : null;
   const diagnosticMessages =
     status && status.diagnostics.length > 0
@@ -91,17 +93,17 @@ const TaskChangesEmptyState = ({
   const hasDiagnosticContext = uniqueMessages.length > 0;
   const Icon = isAttention ? AlertTriangle : hasDiagnosticContext ? Info : FileSearch;
   const title = isDiagnosticOnly
-    ? 'No safe diff available'
+    ? t('review.empty.noSafeDiff')
     : isAttention
-      ? 'No reviewable file changes'
-      : 'No file changes recorded';
+      ? t('review.continuousScroll.empty')
+      : t('review.empty.noFileChangesRecorded');
   const description = isNoSafeDiff
     ? isDiagnosticOnly
-      ? 'The task ledger did not expose a safe file diff for this task.'
-      : 'The task ledger did not expose a safe file diff for this task. The diagnostics below explain why.'
+      ? t('review.empty.noSafeDiffDescription')
+      : t('review.empty.noSafeDiffDiagnosticsDescription')
     : hasDiagnosticContext
-      ? 'The task ledger has no file events for this task yet.'
-      : 'The task ledger has no file events for this task.';
+      ? t('review.empty.noFileEventsYet')
+      : t('review.empty.noFileEvents');
 
   return (
     <div className="flex w-full items-center justify-center px-6">
@@ -142,6 +144,7 @@ export const ChangeReviewDialog = ({
   projectPath,
   onEditorAction,
 }: ChangeReviewDialogProps): React.ReactElement | null => {
+  const { t } = useAppTranslation('team');
   const {
     activeChangeSet,
     changeSetLoading,
@@ -1345,7 +1348,11 @@ export const ChangeReviewDialog = ({
                     className="flex w-full items-center gap-1.5 px-3 py-2 text-xs text-text-secondary hover:text-text"
                   >
                     <Clock className="size-3.5" />
-                    <span>Edit Timeline ({activeFile.timeline.events.length})</span>
+                    <span>
+                      {t('review.timeline.titleWithCount', {
+                        count: activeFile.timeline.events.length,
+                      })}
+                    </span>
                     <ChevronDown
                       className={cn(
                         'ml-auto size-3 transition-transform',

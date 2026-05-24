@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { useAppTranslation } from '@features/localization/renderer';
 import { ProviderBrandLogo } from '@renderer/components/common/ProviderBrandLogo';
 import { AnthropicExtraUsageWarning } from '@renderer/components/team/dialogs/AnthropicExtraUsageWarning';
 import { EffortLevelSelector } from '@renderer/components/team/dialogs/EffortLevelSelector';
@@ -168,6 +169,7 @@ export const MemberDraftRow = ({
   agentTeamsMcpLocked = false,
   lockedModelAction,
 }: MemberDraftRowProps): React.JSX.Element => {
+  const { t } = useAppTranslation('team');
   const { isLight } = useTheme();
   const memberColorSet = getTeamColorSet(
     resolvedColor ??
@@ -244,8 +246,8 @@ export const MemberDraftRow = ({
       : mcpMode === 'strictAllowlist'
         ? `MCP ${mcpServerNames.length || 'strict'}`
         : mcpMode === 'inheritScopes'
-          ? 'MCP scopes'
-          : 'MCP inherit';
+          ? t('memberDraft.mcp.buttonScopes')
+          : t('memberDraft.mcp.buttonInherit');
   const updateMcpPolicy = useCallback(
     (policy: TeamMemberMcpPolicy | undefined) => {
       if (agentTeamsMcpLocked) {
@@ -307,6 +309,17 @@ export const MemberDraftRow = ({
     [mcpScopes, updateMcpPolicy]
   );
 
+  const getMcpScopeLabel = (scope: 'user' | 'project' | 'local'): string => {
+    switch (scope) {
+      case 'user':
+        return t('memberDraft.mcp.scopes.user');
+      case 'project':
+        return t('memberDraft.mcp.scopes.project');
+      case 'local':
+        return t('memberDraft.mcp.scopes.local');
+    }
+  };
+
   useEffect(() => {
     if (
       onWorkflowChange &&
@@ -331,14 +344,17 @@ export const MemberDraftRow = ({
     : (member.effort ?? inheritedEffort);
   const modelButtonLabelBase = effectiveModel?.trim()
     ? getProviderScopedTeamModelLabel(effectiveProviderId, effectiveModel.trim())
-    : 'Default';
+    : t('memberDraft.model.default');
   const modelButtonLabel = forceInheritedModelSettings
-    ? `${modelButtonLabelBase} (lead)`
+    ? t('memberDraft.model.leadSuffix', { label: modelButtonLabelBase })
     : modelButtonLabelBase;
-  const modelButtonAriaLabel = `${getTeamProviderLabel(effectiveProviderId)} provider, ${modelButtonLabel}`;
+  const modelButtonAriaLabel = t('memberDraft.model.ariaLabel', {
+    provider: getTeamProviderLabel(effectiveProviderId),
+    model: modelButtonLabel,
+  });
   const canOpenLockedModelPanel = lockProviderModel && !isRemoved && Boolean(lockedModelAction);
   const modelTooltipText = forceInheritedModelSettings
-    ? 'Provider, model, and effort are inherited from the lead while sync is enabled.'
+    ? t('memberDraft.model.inheritedTooltip')
     : lockProviderModel
       ? (lockedModelAction?.description ?? modelLockReason)
       : undefined;
@@ -347,7 +363,7 @@ export const MemberDraftRow = ({
   const worktreeIsolationDescription =
     worktreeIsolationDisabledReason && member.isolation !== 'worktree'
       ? worktreeIsolationDisabledReason
-      : 'Run this teammate in a separate git worktree. Apply/reject changes targets that worktree, not the lead workspace.';
+      : t('memberDraft.worktree.description');
   const worktreeIsolationDescriptionId = showWorktreeIsolationControls
     ? `member-${member.id}-worktree-isolation-description`
     : undefined;
@@ -413,16 +429,17 @@ export const MemberDraftRow = ({
     Boolean(message)
   );
   const hasWarnings = warningMessages.length > 0 || showSonnetExtraUsageWarning;
-  const anthropicContextModeLabel = limitContext ? '200K limit enabled' : 'default context setting';
+  const anthropicContextModeLabel = limitContext
+    ? t('memberDraft.anthropicContext.limitEnabled')
+    : t('memberDraft.anthropicContext.defaultSetting');
   const workflowTooltipText = workflowDraft.value.trim()
-    ? 'Edit teammate workflow'
-    : 'Add teammate workflow';
-  const mcpTooltipText = `${mcpButtonLabel}: Control this member's MCP inheritance policy`;
-  const mcpLockedInfoText =
-    'Agent Teams MCP only is enabled for all teammates. This teammate will launch with only the Agent Teams server.';
+    ? t('memberDraft.workflow.editTooltip')
+    : t('memberDraft.workflow.addTooltip');
+  const mcpTooltipText = t('memberDraft.mcp.tooltip', { label: mcpButtonLabel });
+  const mcpLockedInfoText = t('memberDraft.mcp.lockedInfo');
   const mcpSettingInfoText = agentTeamsMcpLocked
     ? mcpLockedInfoText
-    : 'Agent Teams MCP launches this teammate with only the Agent Teams server. Scope and allowlist modes apply only to this teammate launch.';
+    : t('memberDraft.mcp.settingInfo');
   const runtimeSummary = formatTeamModelSummary(
     effectiveProviderId,
     effectiveModel?.trim() ?? '',
@@ -457,11 +474,11 @@ export const MemberDraftRow = ({
           <Input
             className="h-8 text-xs"
             value={member.name}
-            aria-label={`Member ${index + 1} name`}
+            aria-label={t('memberDraft.nameAria', { index: index + 1 })}
             disabled={isRemoved || lockIdentity}
             title={lockIdentity ? identityLockReason : undefined}
             onChange={(event) => onNameChange(member.id, event.target.value)}
-            placeholder="member-name"
+            placeholder={t('memberDraft.placeholders.name')}
           />
         </div>
         {nameError ? <p className="text-[10px] text-red-300">{nameError}</p> : null}
@@ -469,7 +486,10 @@ export const MemberDraftRow = ({
       <div>
         {lockRole ? (
           <div className="flex h-8 items-center rounded-md border border-[var(--color-border)] bg-transparent px-3 text-xs text-[var(--color-text)] opacity-80">
-            {lockedRoleLabel || member.customRole || member.roleSelection || 'No role'}
+            {lockedRoleLabel ||
+              member.customRole ||
+              member.roleSelection ||
+              t('memberDraft.noRole')}
           </div>
         ) : (
           <RoleSelect
@@ -576,7 +596,7 @@ export const MemberDraftRow = ({
                     )}
                   >
                     <GitBranch className="size-3.5 shrink-0" />
-                    <span>Worktree</span>
+                    <span>{t('memberDraft.worktree.label')}</span>
                   </Label>
                 </div>
               </HoverTooltip>
@@ -654,8 +674,10 @@ export const MemberDraftRow = ({
               variant="outline"
               size="sm"
               className="size-8 shrink-0 px-0"
-              aria-label={`Restore ${member.name || `member ${index + 1}`}`}
-              title="Restore member"
+              aria-label={t('memberDraft.actions.restoreAria', {
+                name: member.name || t('memberDraft.nameFallback', { index: index + 1 }),
+              })}
+              title={t('memberDraft.actions.restore')}
               onClick={() => onRestore?.(member.id)}
             >
               <RotateCcw className="size-3.5" />
@@ -665,8 +687,10 @@ export const MemberDraftRow = ({
               variant="outline"
               size="sm"
               className="size-8 shrink-0 border-red-500/40 px-0 text-red-300 hover:bg-red-500/10 hover:text-red-200"
-              aria-label={`Remove ${member.name || `member ${index + 1}`}`}
-              title="Remove member"
+              aria-label={t('memberDraft.actions.removeAria', {
+                name: member.name || t('memberDraft.nameFallback', { index: index + 1 }),
+              })}
+              title={t('memberDraft.actions.remove')}
               onClick={() => onRemove(member.id)}
             >
               <Trash2 className="size-3.5" />
@@ -674,7 +698,9 @@ export const MemberDraftRow = ({
           )}
         </div>
         {isRemoved ? (
-          <div className="pl-1 text-[11px] text-[var(--color-text-muted)]">Removed</div>
+          <div className="pl-1 text-[11px] text-[var(--color-text-muted)]">
+            {t('memberDraft.removed')}
+          </div>
         ) : null}
       </div>
       {!isRemoved && hasWarnings ? (
@@ -707,7 +733,7 @@ export const MemberDraftRow = ({
                   htmlFor={`member-${member.id}-mcp-mode`}
                   className="text-[10px] text-[var(--color-text-muted)]"
                 >
-                  MCP mode
+                  {t('memberDraft.mcp.mode')}
                 </Label>
                 <Select
                   value={mcpMode}
@@ -722,10 +748,14 @@ export const MemberDraftRow = ({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="inheritLead">Inherit lead</SelectItem>
-                    <SelectItem value="inheritScopes">Choose scopes</SelectItem>
-                    <SelectItem value="strictAllowlist">Strict allowlist</SelectItem>
-                    <SelectItem value="appOnly">Agent Teams MCP</SelectItem>
+                    <SelectItem value="inheritLead">{t('memberDraft.mcp.inheritLead')}</SelectItem>
+                    <SelectItem value="inheritScopes">
+                      {t('memberDraft.mcp.chooseScopes')}
+                    </SelectItem>
+                    <SelectItem value="strictAllowlist">
+                      {t('memberDraft.mcp.strictAllowlist')}
+                    </SelectItem>
+                    <SelectItem value="appOnly">{t('memberDraft.mcp.agentTeamsMcp')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -749,7 +779,7 @@ export const MemberDraftRow = ({
                         }
                         onCheckedChange={(checked) => updateMcpScope(scope, checked === true)}
                       />
-                      <span className="capitalize">{scope}</span>
+                      <span className="capitalize">{getMcpScopeLabel(scope)}</span>
                     </label>
                   ))}
                 </div>
@@ -759,7 +789,7 @@ export const MemberDraftRow = ({
                       htmlFor={`member-${member.id}-mcp-servers`}
                       className="text-[10px] text-[var(--color-text-muted)]"
                     >
-                      Server names
+                      {t('memberDraft.mcp.serverNames')}
                     </Label>
                     <Input
                       id={`member-${member.id}-mcp-servers`}
@@ -767,7 +797,7 @@ export const MemberDraftRow = ({
                       value={mcpServerNames.join(', ')}
                       disabled={agentTeamsMcpLocked}
                       onChange={(event) => updateMcpServerNames(event.target.value)}
-                      placeholder="github, sentry"
+                      placeholder={t('memberDraft.placeholders.mcpServers')}
                     />
                   </div>
                 ) : null}
@@ -785,7 +815,7 @@ export const MemberDraftRow = ({
             htmlFor={`member-${member.id}-workflow`}
             className="block text-[10px] font-medium text-[var(--color-text-muted)]"
           >
-            Workflow (optional)
+            {t('memberDraft.workflow.label')}
           </label>
           <MentionableTextarea
             id={`member-${member.id}-workflow`}
@@ -801,10 +831,12 @@ export const MemberDraftRow = ({
             onChipRemove={handleChipRemove}
             projectPath={projectPath ?? undefined}
             onFileChipInsert={handleFileChipInsert}
-            placeholder="How this agent should behave, interact with others..."
+            placeholder={t('memberDraft.workflow.placeholder')}
             footerRight={
               workflowDraft.isSaved ? (
-                <span className="text-[10px] text-[var(--color-text-muted)]">Saved</span>
+                <span className="text-[10px] text-[var(--color-text-muted)]">
+                  {t('memberDraft.workflow.saved')}
+                </span>
               ) : null
             }
           />
@@ -816,16 +848,15 @@ export const MemberDraftRow = ({
             <div className="space-y-3 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
               <div className="space-y-1">
                 <p className="text-[11px] font-medium text-[var(--color-text)]">
-                  Current lead runtime
+                  {t('memberDraft.model.currentLeadRuntime')}
                 </p>
                 <p className="text-[11px] text-[var(--color-text-muted)]">{runtimeSummary}</p>
               </div>
               <p className="text-[11px] text-[var(--color-text-muted)]">
-                {lockedModelAction.description ??
-                  'Lead runtime changes open Relaunch Team, where provider, model, and effort can be updated.'}
+                {lockedModelAction.description ?? t('memberDraft.model.lockedActionFallback')}
               </p>
               <p className="text-[11px] text-amber-300">
-                Saving those runtime changes restarts the whole team.
+                {t('memberDraft.model.restartWholeTeam')}
               </p>
               <Button
                 type="button"
@@ -880,15 +911,15 @@ export const MemberDraftRow = ({
                 <div className="flex items-start gap-2 rounded-md border border-sky-500/20 bg-sky-500/5 px-3 py-2">
                   <Info className="mt-0.5 size-3.5 shrink-0 text-sky-400" />
                   <p className="text-[11px] leading-relaxed text-sky-300">
-                    Anthropic context is team-wide for this launch: {anthropicContextModeLabel}. Use
-                    the lead runtime panel&apos;s Limit context checkbox to change it.
+                    {t('memberDraft.anthropicContext.description', {
+                      mode: anthropicContextModeLabel,
+                    })}
                   </p>
                 </div>
               ) : null}
               {lockProviderModel && (
                 <p className="text-[11px] text-amber-300">
-                  {modelLockReason ??
-                    'Provider, model, and effort changes are disabled while the team is live. Reconnect the team to apply them safely.'}
+                  {modelLockReason ?? t('memberDraft.model.liveDisabled')}
                 </p>
               )}
             </>
