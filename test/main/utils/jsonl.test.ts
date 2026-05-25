@@ -3,13 +3,15 @@ import * as os from 'os';
 import * as path from 'path';
 import { describe, expect, it } from 'vitest';
 
+import type { ParsedMessage } from '../../../src/main/types';
 import {
   analyzeSessionFileMetadata,
   calculateMetrics,
+  countJsonlFileWithStats,
   parseJsonlFile,
+  parseJsonlFileWithStats,
   parseJsonlLine,
 } from '../../../src/main/utils/jsonl';
-import type { ParsedMessage } from '../../../src/main/types';
 
 // Helper to create a minimal ParsedMessage
 function createMessage(overrides: Partial<ParsedMessage> = {}): ParsedMessage {
@@ -190,6 +192,60 @@ describe('jsonl', () => {
   });
 
   describe('tolerant parsing', () => {
+    it('counts parseable entries without retaining messages', async () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jsonl-count-'));
+      try {
+        const filePath = path.join(tempDir, 'session.jsonl');
+        const validAssistant = JSON.stringify({
+          type: 'assistant',
+          uuid: 'a1',
+          timestamp: '2026-01-01T00:00:01.000Z',
+          message: {
+            role: 'assistant',
+            content: [{ type: 'text', text: 'hello' }],
+          },
+        });
+        const validSystem = JSON.stringify({
+          type: 'system',
+          uuid: 's1',
+          timestamp: '2026-01-01T00:00:02.000Z',
+          content: 'system line',
+        });
+        const invalidMissingMessage = JSON.stringify({
+          type: 'assistant',
+          uuid: 'bad-assistant',
+        });
+        const unknownType = JSON.stringify({
+          type: 'unknown',
+          uuid: 'unknown-1',
+        });
+        const partialJson =
+          '{"type":"assistant","uuid":"a2","timestamp":"2026-01-01T00:00:03.000Z","message":{"role":"assistant","content":[{"type":"text","text":"partial"';
+
+        fs.writeFileSync(
+          filePath,
+          [
+            validAssistant,
+            validSystem,
+            invalidMissingMessage,
+            unknownType,
+            'not json',
+            partialJson,
+          ].join('\n'),
+          'utf8'
+        );
+
+        const parsed = await parseJsonlFileWithStats(filePath);
+        const counted = await countJsonlFileWithStats(filePath);
+
+        expect(parsed.messages.map((message) => message.uuid)).toEqual(['a1', 's1']);
+        expect(counted.parsedLineCount).toBe(parsed.parsedLineCount);
+        expect(counted.consumedBytes).toBe(parsed.consumedBytes);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
     it('skips non-JSON garbage and ignores a partial trailing object', async () => {
       const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jsonl-tolerant-'));
       try {

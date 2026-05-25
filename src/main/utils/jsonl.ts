@@ -150,11 +150,13 @@ export async function parseJsonlStream(
     }
 
     try {
-      const parsed = parseJsonlLine(normalized);
-      if (parsed) {
-        if (collectMessages) {
+      if (collectMessages) {
+        const parsed = parseJsonlLine(normalized);
+        if (parsed) {
           messages.push(parsed);
+          parsedLineCount += 1;
         }
+      } else if (isCountableJsonlEntryLine(normalized)) {
         parsedLineCount += 1;
       }
     } catch {
@@ -193,11 +195,14 @@ export async function parseJsonlStream(
       const trailingLine = pending.toString('utf8');
       const normalized = normalizeJsonlLine(trailingLine);
       if (looksLikeJsonObjectLine(normalized)) {
-        const parsed = parseJsonlLine(normalized);
-        if (parsed) {
-          if (collectMessages) {
+        if (collectMessages) {
+          const parsed = parseJsonlLine(normalized);
+          if (parsed) {
             messages.push(parsed);
+            parsedLineCount += 1;
+            consumedBytes += pending.length;
           }
+        } else if (isCountableJsonlEntryLine(normalized)) {
           parsedLineCount += 1;
           consumedBytes += pending.length;
         }
@@ -253,6 +258,24 @@ function normalizeJsonlLine(line: string): string {
 
 function looksLikeJsonObjectLine(line: string): boolean {
   return line.startsWith('{');
+}
+
+function isCountableJsonlEntryLine(line: string): boolean {
+  const entry = JSON.parse(line) as Partial<ChatHistoryEntry> & {
+    uuid?: unknown;
+    type?: unknown;
+    message?: unknown;
+  };
+
+  if (typeof entry.uuid !== 'string' || !parseMessageType(String(entry.type))) {
+    return false;
+  }
+
+  if (entry.type === 'user' || entry.type === 'assistant') {
+    return entry.message != null && typeof entry.message === 'object';
+  }
+
+  return true;
 }
 
 // =============================================================================
