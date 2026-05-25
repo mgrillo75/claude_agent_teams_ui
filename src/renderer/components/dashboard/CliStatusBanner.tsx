@@ -1036,14 +1036,14 @@ const InstalledBanner = ({
               >
                 <div className="col-span-2 flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="flex items-center gap-2">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <span className="flex min-w-0 items-center gap-2">
                         <ProviderBrandLogo
                           providerId={provider.providerId}
                           className="size-4 shrink-0"
                         />
                         <span
-                          className="text-xs font-medium"
+                          className="truncate whitespace-nowrap text-xs font-medium"
                           style={{ color: 'var(--color-text)' }}
                         >
                           {provider.providerId === 'opencode'
@@ -1053,7 +1053,7 @@ const InstalledBanner = ({
                         {openCodeDashboardChips.map((chip) => (
                           <span
                             key={chip.label}
-                            className="rounded bg-[rgba(34,197,94,0.14)] px-1.5 py-px text-[9px] font-medium uppercase tracking-[0.06em] text-[rgb(74,222,128)]"
+                            className="shrink-0 whitespace-nowrap rounded bg-[rgba(34,197,94,0.14)] px-1.5 py-px text-[9px] font-medium uppercase tracking-[0.06em] text-[rgb(74,222,128)]"
                             title={chip.title}
                           >
                             {chip.label}
@@ -1061,7 +1061,7 @@ const InstalledBanner = ({
                         ))}
                       </span>
                       <span
-                        className="text-xs"
+                        className="whitespace-nowrap text-xs"
                         style={{
                           color: getProviderStatusColor(statusText, provider.authenticated),
                         }}

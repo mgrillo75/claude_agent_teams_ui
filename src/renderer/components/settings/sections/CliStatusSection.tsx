@@ -534,20 +534,21 @@ export const CliStatusSection = (): React.JSX.Element | null => {
                             <>
                               <div className="col-span-2 flex items-start justify-between gap-3">
                                 <div className="min-w-0 flex-1">
-                                  <div className="flex items-center gap-2 text-xs">
-                                    <span className="flex items-center gap-2">
+                                  <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
+                                    <span className="flex min-w-0 items-center gap-2">
                                       <ProviderBrandLogo
                                         providerId={provider.providerId}
                                         className="size-4 shrink-0"
                                       />
                                       <span
-                                        className="font-medium"
+                                        className="truncate whitespace-nowrap font-medium"
                                         style={{ color: 'var(--color-text-secondary)' }}
                                       >
                                         {provider.displayName}
                                       </span>
                                     </span>
                                     <span
+                                      className="whitespace-nowrap"
                                       style={{
                                         color: getProviderStatusColor(
                                           statusText,
