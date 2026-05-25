@@ -85,6 +85,7 @@ import { useShallow } from 'zustand/react/shallow';
 
 import { AddMemberDialog } from './dialogs/AddMemberDialog';
 import { EditTeamDialog } from './dialogs/EditTeamDialog';
+import { LaunchTeamDialogLoadingFallback } from './dialogs/LaunchTeamDialogLoadingFallback';
 import { ReviewDialog } from './dialogs/ReviewDialog';
 import { executeTeamRelaunch } from './dialogs/teamRelaunchFlow';
 import { KanbanBoard } from './kanban/KanbanBoard';
@@ -2580,7 +2581,15 @@ export const TeamDetailView = memo(function TeamDetailView({
             </div>
           </div>
           {launchDialogOpen && (
-            <Suspense fallback={null}>
+            <Suspense
+              fallback={
+                <LaunchTeamDialogLoadingFallback
+                  mode={launchDialogState.mode}
+                  teamName={teamName}
+                  onClose={closeLaunchDialog}
+                />
+              }
+            >
               <LaunchTeamDialog
                 mode={launchDialogState.mode}
                 open={launchDialogOpen}
@@ -3418,7 +3427,15 @@ export const TeamDetailView = memo(function TeamDetailView({
               </Dialog>
 
               {launchDialogOpen && (
-                <Suspense fallback={null}>
+                <Suspense
+                  fallback={
+                    <LaunchTeamDialogLoadingFallback
+                      mode={launchDialogState.mode}
+                      teamName={teamName}
+                      onClose={closeLaunchDialog}
+                    />
+                  }
+                >
                   <LaunchTeamDialog
                     mode={launchDialogState.mode}
                     open={launchDialogOpen}

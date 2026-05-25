@@ -62,6 +62,7 @@ import {
 } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
+import { LaunchTeamDialogLoadingFallback } from './dialogs/LaunchTeamDialogLoadingFallback';
 import { executeTeamRelaunch } from './dialogs/teamRelaunchFlow';
 import { TeamEmptyState } from './TeamEmptyState';
 import { EMPTY_TEAM_FILTER, TeamListFilterPopover } from './TeamListFilterPopover';
@@ -1094,7 +1095,15 @@ export const TeamListView = memo(function TeamListView(): React.JSX.Element {
   );
 
   const launchDialogElement = launchDialogOpen && (
-    <Suspense fallback={null}>
+    <Suspense
+      fallback={
+        <LaunchTeamDialogLoadingFallback
+          mode={launchDialogMode}
+          teamName={launchDialogTeamName}
+          onClose={() => setLaunchDialogOpen(false)}
+        />
+      }
+    >
       {launchDialogMode === 'relaunch' ? (
         <LaunchTeamDialog
           mode="relaunch"

@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
+import { LaunchTeamDialogLoadingFallback } from '../team/dialogs/LaunchTeamDialogLoadingFallback';
 import { ScheduleRunLogDialog } from '../team/schedule/ScheduleRunLogDialog';
 import { ScheduleRunRow } from '../team/schedule/ScheduleRunRow';
 import { ScheduleStatusBadge } from '../team/schedule/ScheduleStatusBadge';
@@ -588,7 +589,16 @@ export const SchedulesView = (): React.JSX.Element => {
 
       {/* Create/Edit Dialog */}
       {dialogOpen && (
-        <Suspense fallback={null}>
+        <Suspense
+          fallback={
+            <LaunchTeamDialogLoadingFallback
+              mode="schedule"
+              teamName={editingSchedule?.teamName}
+              isEditingSchedule={Boolean(editingSchedule)}
+              onClose={handleClose}
+            />
+          }
+        >
           <LaunchTeamDialog
             mode="schedule"
             open={dialogOpen}
