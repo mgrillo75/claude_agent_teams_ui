@@ -14,7 +14,13 @@ import type {
   TeamProvisioningSupportDiagnostic,
 } from '@shared/types';
 
-export const TEAM_RUNTIME_PROVIDER_IDS = ['anthropic', 'codex', 'gemini', 'opencode'] as const;
+export const TEAM_RUNTIME_PROVIDER_IDS = [
+  'anthropic',
+  'codex',
+  'gemini',
+  'opencode',
+  'kilocode',
+] as const;
 
 export type TeamRuntimeProviderId = (typeof TEAM_RUNTIME_PROVIDER_IDS)[number];
 

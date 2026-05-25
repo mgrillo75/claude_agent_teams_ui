@@ -28,12 +28,22 @@ const CODEX_PROVIDER_INSTALL_REFRESH_ATTEMPTS = 3;
 const CODEX_PROVIDER_INSTALL_REFRESH_RETRY_DELAY_MS = 700;
 
 export const MULTIMODEL_PROVIDER_IDS: CliProviderId[] = isGeminiUiFrozen()
+  ? ['anthropic', 'codex', 'opencode', 'kilocode']
+  : ['anthropic', 'codex', 'gemini', 'opencode', 'kilocode'];
+const MULTIMODEL_PROVIDER_HYDRATION_IDS: CliProviderId[] = isGeminiUiFrozen()
   ? ['anthropic', 'codex', 'opencode']
   : ['anthropic', 'codex', 'gemini', 'opencode'];
 const MULTIMODEL_PROVIDER_ID_SET = new Set<CliProviderId>(MULTIMODEL_PROVIDER_IDS);
+const MULTIMODEL_PROVIDER_HYDRATION_ID_SET = new Set<CliProviderId>(
+  MULTIMODEL_PROVIDER_HYDRATION_IDS
+);
 
 function isActiveMultimodelProviderId(providerId: CliProviderId): boolean {
   return MULTIMODEL_PROVIDER_ID_SET.has(providerId);
+}
+
+function isHydratableMultimodelProviderId(providerId: CliProviderId): boolean {
+  return MULTIMODEL_PROVIDER_HYDRATION_ID_SET.has(providerId);
 }
 
 export function createLoadingMultimodelCliStatus(): CliInstallationStatus {
@@ -259,7 +269,7 @@ export function getIncompleteMultimodelProviderIds(
   return status.providers
     .filter(
       (provider) =>
-        isActiveMultimodelProviderId(provider.providerId) &&
+        isHydratableMultimodelProviderId(provider.providerId) &&
         !isHydratedMultimodelProviderStatus(provider)
     )
     .map((provider) => provider.providerId);
@@ -275,7 +285,7 @@ export function getModelOnlyFallbackProviderIds(
   return status.providers
     .filter(
       (provider) =>
-        isActiveMultimodelProviderId(provider.providerId) &&
+        isHydratableMultimodelProviderId(provider.providerId) &&
         isModelOnlyFallbackProviderStatus(provider)
     )
     .map((provider) => provider.providerId);
@@ -293,7 +303,7 @@ export function reconcileMultimodelProviderLoading(
   const providersById = new Map(
     status.providers.map((provider) => [provider.providerId, provider])
   );
-  return MULTIMODEL_PROVIDER_IDS.reduce<Partial<Record<CliProviderId, boolean>>>(
+  return MULTIMODEL_PROVIDER_HYDRATION_IDS.reduce<Partial<Record<CliProviderId, boolean>>>(
     (nextLoading, providerId) => {
       const provider = providersById.get(providerId);
       return {
@@ -565,7 +575,9 @@ function isMultimodelCliStatus(
 function hasActiveProviderStatusLoading(
   providerLoading: Partial<Record<CliProviderId, boolean>>
 ): boolean {
-  return MULTIMODEL_PROVIDER_IDS.some((providerId) => providerLoading[providerId] === true);
+  return MULTIMODEL_PROVIDER_HYDRATION_IDS.some(
+    (providerId) => providerLoading[providerId] === true
+  );
 }
 
 function getAuthenticatedProvider(providers: CliProviderStatus[]): CliProviderStatus | null {
@@ -604,6 +616,8 @@ function getProviderDisplayName(providerId: CliProviderId): string {
       return 'Gemini';
     case 'opencode':
       return 'OpenCode (200+ models)';
+    case 'kilocode':
+      return 'KiloCode';
   }
 }
 
@@ -757,7 +771,7 @@ export const createCliInstallerSlice: StateCreator<AppState, [], [], CliInstalle
         : createLoadingMultimodelCliStatus();
     const shouldMarkIncompleteProvidersLoading = hydrateProviders || providerStatusMode === 'defer';
     const providerLoading = Object.fromEntries(
-      MULTIMODEL_PROVIDER_IDS.map((providerId) => [
+      MULTIMODEL_PROVIDER_HYDRATION_IDS.map((providerId) => [
         providerId,
         shouldMarkIncompleteProvidersLoading &&
           initialStatus.installed &&
@@ -808,14 +822,14 @@ export const createCliInstallerSlice: StateCreator<AppState, [], [], CliInstalle
 
         const nextCliStatus = mergeCliStatusPreservingHydratedProviders(state.cliStatus, metadata);
         const nextProviderLoading = Object.fromEntries(
-          MULTIMODEL_PROVIDER_IDS.map((providerId) => [
+          MULTIMODEL_PROVIDER_HYDRATION_IDS.map((providerId) => [
             providerId,
             !isHydratedMultimodelProviderStatus(
               nextCliStatus.providers.find((provider) => provider.providerId === providerId)
             ),
           ])
         ) as Partial<Record<CliProviderId, boolean>>;
-        pendingProviderIds = MULTIMODEL_PROVIDER_IDS.filter(
+        pendingProviderIds = MULTIMODEL_PROVIDER_HYDRATION_IDS.filter(
           (providerId) => nextProviderLoading[providerId] === true
         );
         const nextAuthState = isMultimodelCliStatus(nextCliStatus)
@@ -867,7 +881,7 @@ export const createCliInstallerSlice: StateCreator<AppState, [], [], CliInstalle
     try {
       if (hydrateProviders) {
         await Promise.allSettled(
-          MULTIMODEL_PROVIDER_IDS.map((providerId) =>
+          MULTIMODEL_PROVIDER_HYDRATION_IDS.map((providerId) =>
             get().fetchCliProviderStatus(providerId, {
               silent: false,
               epoch,
@@ -911,7 +925,7 @@ export const createCliInstallerSlice: StateCreator<AppState, [], [], CliInstalle
         });
         if (status.installed) {
           for (const provider of status.providers) {
-            if (!isActiveMultimodelProviderId(provider.providerId)) {
+            if (!isHydratableMultimodelProviderId(provider.providerId)) {
               continue;
             }
             void get().fetchCliProviderStatus(provider.providerId, {

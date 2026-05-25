@@ -62,7 +62,7 @@ const ProviderCapabilityCardSkeleton = ({
   providerId,
   displayName,
 }: {
-  providerId: 'anthropic' | 'codex' | 'gemini' | 'opencode';
+  providerId: 'anthropic' | 'codex' | 'gemini' | 'opencode' | 'kilocode';
   displayName: string;
 }): React.JSX.Element => {
   const { t } = useAppTranslation('extensions');

@@ -33,6 +33,10 @@ import {
   createCodexModelCatalogFeature,
 } from '@features/codex-model-catalog/main';
 import {
+  type KilocodeModelCatalogFeatureFacade,
+  createKilocodeModelCatalogFeature,
+} from '@features/kilocode-model-catalog/main';
+import {
   createMemberLogStreamFeature,
   registerMemberLogStreamIpc,
   removeMemberLogStreamIpc,
@@ -899,6 +903,7 @@ let updaterService: UpdaterService;
 let sshConnectionManager: SshConnectionManager;
 let codexAccountFeature: CodexAccountFeatureFacade | null = null;
 let codexModelCatalogFeature: CodexModelCatalogFeatureFacade | null = null;
+let kilocodeModelCatalogFeature: KilocodeModelCatalogFeatureFacade | null = null;
 let recentProjectsFeature: RecentProjectsFeatureFacade;
 let runtimeProviderManagementFeature: RuntimeProviderManagementFeatureFacade;
 let memberWorkSyncFeature: MemberWorkSyncFeatureFacade | null = null;
@@ -2103,6 +2108,10 @@ async function initializeServices(): Promise<void> {
     codexAccountFeature,
   });
   providerConnectionService.setCodexModelCatalogFeature(codexModelCatalogFeature);
+  kilocodeModelCatalogFeature = createKilocodeModelCatalogFeature({
+    logger: createLogger('Feature:KilocodeModelCatalog'),
+  });
+  providerConnectionService.setKilocodeModelCatalogFeature(kilocodeModelCatalogFeature);
 
   // startProcessHealthPolling() is deferred to after window creation
   // (did-finish-load handler) to avoid thread pool contention at startup.
@@ -2355,10 +2364,13 @@ async function shutdownServices(): Promise<void> {
     await runShutdownStep('skills watcher stop', () => skillsWatcherService?.stopAll());
     await runShutdownStep('provider connection feature detach', () => {
       providerConnectionService.setCodexModelCatalogFeature(null);
+      providerConnectionService.setKilocodeModelCatalogFeature(null);
       providerConnectionService.setCodexAccountFeature(null);
     });
     await runShutdownStep('Codex model catalog dispose', () => codexModelCatalogFeature?.dispose());
     codexModelCatalogFeature = null;
+    kilocodeModelCatalogFeature?.invalidate();
+    kilocodeModelCatalogFeature = null;
     await runShutdownStep('Codex account dispose', () => codexAccountFeature?.dispose());
     codexAccountFeature = null;
     await runShutdownStep('member work sync dispose', () => memberWorkSyncFeature?.dispose());

@@ -1311,6 +1311,8 @@ function getProviderRuntimeFailureLabel(providerId: TeamProviderId): string {
       return 'Gemini runtime';
     case 'opencode':
       return 'OpenCode runtime';
+    case 'kilocode':
+      return 'KiloCode runtime';
   }
 }
 
@@ -16568,6 +16570,17 @@ export class TeamProvisioningService {
       const providerSelectedModelIds = useStructuredModelChecks
         ? Array.from(new Set(providerModelChecks.map((check) => check.modelId)))
         : selectedModelIds;
+
+      if (providerId === 'kilocode') {
+        const kilocodeConnection =
+          await this.providerConnectionService.getConnectionInfo('kilocode');
+        if (!kilocodeConnection.apiKeyConfigured) {
+          blockingMessages.push(
+            'KiloCode: API key not configured. Set KILO_API_KEY or add it in Provider Settings.'
+          );
+        }
+        continue;
+      }
 
       if (providerId === 'opencode') {
         const adapter = this.getOpenCodeRuntimeAdapter();

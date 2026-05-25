@@ -42,6 +42,7 @@ const TEAM_PROVIDER_LABELS: Record<SupportedProviderId, string> = {
   codex: 'Codex',
   gemini: 'Gemini',
   opencode: 'OpenCode',
+  kilocode: 'KiloCode',
 };
 
 const ANTHROPIC_ALIAS_LABELS = {
@@ -140,6 +141,7 @@ const TEAM_PROVIDER_MODEL_OPTIONS: Record<SupportedProviderId, readonly TeamProv
       },
     ],
     opencode: [{ value: '', label: 'Default', badgeLabel: 'Default' }],
+    kilocode: [{ value: '', label: 'Default', badgeLabel: 'Default' }],
   };
 
 const TEAM_PROVIDER_MODEL_ORDER: Record<SupportedProviderId, Map<string, number>> = {
@@ -148,6 +150,9 @@ const TEAM_PROVIDER_MODEL_ORDER: Record<SupportedProviderId, Map<string, number>
   gemini: new Map(TEAM_PROVIDER_MODEL_OPTIONS.gemini.map((option, index) => [option.value, index])),
   opencode: new Map(
     TEAM_PROVIDER_MODEL_OPTIONS.opencode.map((option, index) => [option.value, index])
+  ),
+  kilocode: new Map(
+    TEAM_PROVIDER_MODEL_OPTIONS.kilocode.map((option, index) => [option.value, index])
   ),
 };
 
@@ -335,6 +340,9 @@ export function getTeamModelBadgeLabel(
     return trimmed.replace(/^gemini-/, '');
   }
   if (providerId === 'opencode') {
+    return getTeamModelLabel(trimmed) ?? trimmed;
+  }
+  if (providerId === 'kilocode') {
     return getTeamModelLabel(trimmed) ?? trimmed;
   }
   return trimmed;

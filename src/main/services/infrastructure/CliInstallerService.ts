@@ -45,6 +45,7 @@ import {
   type ProviderModelAvailabilityContext,
   type ProviderModelAvailabilitySnapshot,
 } from '../runtime/CliProviderModelAvailabilityService';
+import { providerConnectionService } from '../runtime/ProviderConnectionService';
 import { ClaudeBinaryResolver } from '../team/ClaudeBinaryResolver';
 import { getCliFlavorUiOptions, getConfiguredCliFlavor } from '../team/cliFlavor';
 
@@ -71,7 +72,12 @@ const GCS_BASE =
   'https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases';
 
 const CLI_INSTALLER_PROGRESS_CHANNEL = 'cliInstaller:progress';
-const FRONTEND_MULTIMODEL_PROVIDER_IDS: CliProviderId[] = ['anthropic', 'codex', 'opencode'];
+const FRONTEND_MULTIMODEL_PROVIDER_IDS: CliProviderId[] = [
+  'anthropic',
+  'codex',
+  'opencode',
+  'kilocode',
+];
 const FRONTEND_MULTIMODEL_PROVIDER_ID_SET = new Set<CliProviderId>(
   FRONTEND_MULTIMODEL_PROVIDER_IDS
 );
@@ -86,6 +92,8 @@ function getProviderDisplayName(providerId: CliProviderId): string {
       return 'Gemini';
     case 'opencode':
       return 'OpenCode (200+ models)';
+    case 'kilocode':
+      return 'KiloCode';
   }
 }
 
@@ -919,6 +927,10 @@ export class CliInstallerService {
       background: false,
     });
 
+    if (providerId === 'kilocode') {
+      return this.resolveKilocodeProviderStatus();
+    }
+
     const binaryPath = await ClaudeBinaryResolver.resolve();
     if (!binaryPath) {
       return null;
@@ -958,6 +970,10 @@ export class CliInstallerService {
       fallbackEnv: process.env,
       background: false,
     });
+
+    if (providerId === 'kilocode') {
+      return this.resolveKilocodeProviderStatus();
+    }
 
     const binaryPath = await ClaudeBinaryResolver.resolve();
     if (!binaryPath) {
@@ -1204,6 +1220,53 @@ export class CliInstallerService {
     result.authMethod = null;
   }
 
+  private async resolveKilocodeProviderStatus(): Promise<CliProviderStatus> {
+    const baseStatus: CliProviderStatus = {
+      providerId: 'kilocode',
+      displayName: 'KiloCode',
+      supported: false,
+      authenticated: false,
+      authMethod: null,
+      verificationState: 'verified',
+      modelVerificationState: 'idle',
+      statusMessage: null,
+      detailMessage: null,
+      models: [],
+      modelAvailability: [],
+      canLoginFromUi: true,
+      capabilities: {
+        teamLaunch: false,
+        oneShot: false,
+        extensions: createDefaultCliExtensionCapabilities(),
+      },
+      selectedBackendId: null,
+      resolvedBackendId: null,
+      availableBackends: [],
+      externalRuntimeDiagnostics: [],
+      backend: null,
+      connection: null,
+      modelCatalog: null,
+      runtimeCapabilities: null,
+      subscriptionRateLimits: null,
+    };
+    // enrichProviderStatus checks both the app key store and process.env for KILO_API_KEY
+    const enriched = await providerConnectionService.enrichProviderStatus(baseStatus);
+    const hasApiKey = Boolean(enriched.connection?.apiKeyConfigured);
+    const status: CliProviderStatus = {
+      ...enriched,
+      supported: hasApiKey,
+      authenticated: hasApiKey,
+      authMethod: hasApiKey ? 'api_key' : null,
+      statusMessage: hasApiKey ? null : 'Configure KILO_API_KEY to use KiloCode.',
+      capabilities: {
+        ...enriched.capabilities,
+        teamLaunch: hasApiKey,
+      },
+    };
+    this.updateLatestProviderStatus(status);
+    return status;
+  }
+
   private markProvidersDeferred(result: CliInstallationStatus): void {
     if (result.flavor !== 'agent_teams_orchestrator') {
       return;
@@ -1241,13 +1304,38 @@ export class CliInstallerService {
     if (result.flavor === 'agent_teams_orchestrator') {
       result.authStatusChecking = true;
       let statusTarget = result;
-      const applyProviders = (providersSnapshot: CliProviderStatus[], final: boolean): void => {
+      const buildFrontendProviders = async (
+        providersSnapshot: CliProviderStatus[]
+      ): Promise<CliProviderStatus[]> => {
+        const providersById = new Map(providersSnapshot.map((provider) => [provider.providerId, provider]));
+        const frontendProviders: CliProviderStatus[] = [];
+        for (const providerId of FRONTEND_MULTIMODEL_PROVIDER_IDS) {
+          if (providerId === 'kilocode') {
+            frontendProviders.push(await this.resolveKilocodeProviderStatus());
+            continue;
+          }
+          const provider = providersById.get(providerId);
+          if (provider) {
+            frontendProviders.push(provider);
+          }
+        }
+        return frontendProviders;
+      };
+      const applyProviders = async (
+        providersSnapshot: CliProviderStatus[],
+        final: boolean
+      ): Promise<void> => {
         if (generation !== this.statusGatherGeneration) {
           return;
         }
 
         const target = statusTarget;
-        const frontendProviders = filterFrontendMultimodelProviders(providersSnapshot);
+        const frontendProviders = await buildFrontendProviders(
+          filterFrontendMultimodelProviders(providersSnapshot)
+        );
+        if (generation !== this.statusGatherGeneration) {
+          return;
+        }
         target.providers = frontendProviders;
         target.authLoggedIn = hasFrontendAuthenticatedProvider(frontendProviders);
         target.authMethod = getFrontendAuthenticatedProvider(frontendProviders)?.authMethod ?? null;
@@ -1260,10 +1348,10 @@ export class CliInstallerService {
 
       const completion = this.multimodelBridgeService
         .getProviderStatuses(binaryPath, (providersSnapshot) => {
-          applyProviders(providersSnapshot, false);
+          void applyProviders(providersSnapshot, false);
         })
         .then((providers) => {
-          applyProviders(providers, true);
+          return applyProviders(providers, true);
         })
         .catch((error) => {
           if (generation !== this.statusGatherGeneration) {

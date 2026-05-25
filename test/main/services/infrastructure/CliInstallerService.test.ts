@@ -239,6 +239,7 @@ describe('CliInstallerService', () => {
         'anthropic',
         'codex',
         'opencode',
+        'kilocode',
       ]);
       expect(openCodeStatus).toMatchObject({
         displayName: 'OpenCode (200+ models)',
@@ -335,6 +336,7 @@ describe('CliInstallerService', () => {
         'anthropic',
         'codex',
         'opencode',
+        'kilocode',
       ]);
       expect(status.authLoggedIn).toBe(false);
       expect(status.authMethod).toBeNull();
@@ -380,7 +382,7 @@ describe('CliInstallerService', () => {
       expect(resolveInteractiveShellEnvBestEffortMock).not.toHaveBeenCalled();
       expect(status.authStatusChecking).toBe(false);
       expect(status.authLoggedIn).toBe(false);
-      expect(status.providers).toHaveLength(3);
+      expect(status.providers).toHaveLength(4);
       expect(
         status.providers.every(
           (provider) => provider.statusMessage === 'Provider status will refresh when needed.'
@@ -1213,13 +1215,12 @@ describe('CliInstallerService', () => {
         createTestProviderStatus('codex', false, null),
         createTestProviderStatus('opencode', false, null),
       ]);
-      await Promise.resolve();
-      await Promise.resolve();
-
-      const latest = service.getLatestStatusSnapshot();
-      expect(latest?.authStatusChecking).toBe(false);
-      expect(latest?.authLoggedIn).toBe(true);
-      expect(latest?.authMethod).toBe('oauth_token');
+      await vi.waitFor(() => {
+        const latest = service.getLatestStatusSnapshot();
+        expect(latest?.authStatusChecking).toBe(false);
+        expect(latest?.authLoggedIn).toBe(true);
+        expect(latest?.authMethod).toBe('oauth_token');
+      });
       expect(status.authStatusChecking).toBe(true);
       expect(status.authLoggedIn).toBe(false);
       expect(status.providers.every((provider) => provider.statusMessage === 'Checking...')).toBe(

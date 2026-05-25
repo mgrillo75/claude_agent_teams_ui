@@ -23,6 +23,7 @@ import type {
   CodexModelCatalogFeatureFacade,
   CodexModelCatalogRequest,
 } from '@features/codex-model-catalog/main';
+import type { KilocodeModelCatalogFeatureFacade } from '@features/kilocode-model-catalog/main';
 import type {
   CliProviderAuthMode,
   CliProviderConnectionInfo,
@@ -65,12 +66,18 @@ const PROVIDER_CAPABILITIES: Record<
     supportsApiKey: false,
     configurableAuthModes: [],
   },
+  kilocode: {
+    supportsOAuth: false,
+    supportsApiKey: true,
+    configurableAuthModes: ['api_key'],
+  },
 };
 
 const PROVIDER_API_KEY_ENV_VARS: Partial<Record<CliProviderId, string>> = {
   anthropic: 'ANTHROPIC_API_KEY',
   codex: 'OPENAI_API_KEY',
   gemini: 'GEMINI_API_KEY',
+  kilocode: 'KILO_API_KEY',
 };
 
 const ANTHROPIC_BASE_URL_ENV_VAR = 'ANTHROPIC_BASE_URL';
@@ -364,6 +371,10 @@ export class ProviderConnectionService {
   private codexAccountFeature: CodexAccountSnapshotReader | null = null;
   private codexModelCatalogFeature: Pick<CodexModelCatalogFeatureFacade, 'getCatalog'> | null =
     null;
+  private kilocodeModelCatalogFeature: Pick<
+    KilocodeModelCatalogFeatureFacade,
+    'getCatalog'
+  > | null = null;
   private readonly anthropicApiKeyVerificationCache = new Map<
     string,
     { result: AnthropicApiKeyVerificationResult; at: number }
@@ -391,6 +402,12 @@ export class ProviderConnectionService {
     this.codexModelCatalogFeature = feature;
   }
 
+  setKilocodeModelCatalogFeature(
+    feature: Pick<KilocodeModelCatalogFeatureFacade, 'getCatalog'> | null
+  ): void {
+    this.kilocodeModelCatalogFeature = feature;
+  }
+
   async getCodexModelCatalog(
     request: CodexModelCatalogRequest = {}
   ): Promise<CodexModelCatalogDto | null> {
@@ -416,6 +433,10 @@ export class ProviderConnectionService {
 
     if (providerId === 'codex') {
       return this.configManager.getConfig().providerConnections.codex.preferredAuthMode;
+    }
+
+    if (providerId === 'kilocode') {
+      return 'api_key';
     }
 
     return null;
@@ -599,6 +620,16 @@ export class ProviderConnectionService {
       return env;
     }
 
+    if (providerId === 'kilocode') {
+      const apiKey = await this.resolveProviderApiKeyForEnv(env, 'kilocode', options);
+      if (apiKey) {
+        env.KILO_API_KEY = apiKey;
+      } else if (typeof env.KILO_API_KEY === 'string' && !env.KILO_API_KEY.trim()) {
+        delete env.KILO_API_KEY;
+      }
+      return env;
+    }
+
     if (providerId !== 'codex') {
       return env;
     }
@@ -645,7 +676,7 @@ export class ProviderConnectionService {
     options?: StoredApiKeyAccessOptions
   ): Promise<NodeJS.ProcessEnv> {
     let nextEnv = env;
-    for (const providerId of ['anthropic', 'codex', 'gemini', 'opencode'] as const) {
+    for (const providerId of ['anthropic', 'codex', 'gemini', 'opencode', 'kilocode'] as const) {
       nextEnv = await this.applyConfiguredConnectionEnv(nextEnv, providerId, undefined, options);
     }
     return nextEnv;
@@ -677,6 +708,14 @@ export class ProviderConnectionService {
       const storedKey = await this.lookupStoredApiKeyValue('GEMINI_API_KEY', options);
       if (storedKey?.value.trim()) {
         env.GEMINI_API_KEY = storedKey.value;
+      }
+      return env;
+    }
+
+    if (providerId === 'kilocode') {
+      const apiKey = await this.resolveProviderApiKeyForEnv(env, 'kilocode', options);
+      if (apiKey) {
+        env.KILO_API_KEY = apiKey;
       }
       return env;
     }
@@ -722,7 +761,7 @@ export class ProviderConnectionService {
     options?: StoredApiKeyAccessOptions
   ): Promise<NodeJS.ProcessEnv> {
     let nextEnv = env;
-    for (const providerId of ['anthropic', 'codex', 'gemini', 'opencode'] as const) {
+    for (const providerId of ['anthropic', 'codex', 'gemini', 'opencode', 'kilocode'] as const) {
       nextEnv = await this.augmentConfiguredConnectionEnv(nextEnv, providerId, undefined, options);
     }
     return nextEnv;
@@ -763,6 +802,22 @@ export class ProviderConnectionService {
         'Anthropic API key mode is enabled, but no ANTHROPIC_API_KEY is configured. ' +
         'Add a stored/environment API key or switch Anthropic auth mode back to Auto or OAuth.'
       );
+    }
+
+    if (providerId === 'kilocode') {
+      if (typeof env.KILO_API_KEY === 'string' && env.KILO_API_KEY.trim()) {
+        return null;
+      }
+
+      if (await this.hasStoredApiKey('KILO_API_KEY')) {
+        return null;
+      }
+
+      if (this.getExternalCredential('kilocode')?.value.trim()) {
+        return null;
+      }
+
+      return 'KiloCode API key is not configured. Set KILO_API_KEY or add it in Provider Settings.';
     }
 
     if (providerId !== 'codex') {
@@ -847,7 +902,13 @@ export class ProviderConnectionService {
 
   async getConfiguredConnectionIssues(
     env: NodeJS.ProcessEnv,
-    providerIds: readonly CliProviderId[] = ['anthropic', 'codex', 'gemini', 'opencode'],
+    providerIds: readonly CliProviderId[] = [
+      'anthropic',
+      'codex',
+      'gemini',
+      'opencode',
+      'kilocode',
+    ],
     runtimeBackendOverrides?: Partial<Record<CliProviderId, string>>
   ): Promise<Partial<Record<CliProviderId, string>>> {
     const issues: Partial<Record<CliProviderId, string>> = {};
@@ -916,6 +977,10 @@ export class ProviderConnectionService {
       return this.enrichAnthropicProviderStatus(withConnection);
     }
 
+    if (provider.providerId === 'kilocode') {
+      return this.enrichKilocodeProviderStatus(withConnection);
+    }
+
     if (provider.providerId !== 'codex') {
       return withConnection;
     }
@@ -977,6 +1042,33 @@ export class ProviderConnectionService {
       };
     } catch {
       return withConnection;
+    }
+  }
+
+  private async enrichKilocodeProviderStatus(
+    provider: CliProviderStatus
+  ): Promise<CliProviderStatus> {
+    if (!this.kilocodeModelCatalogFeature || !provider.connection?.apiKeyConfigured) {
+      return provider;
+    }
+    try {
+      const catalog = await this.kilocodeModelCatalogFeature.getCatalog({
+        apiKey: await this.resolveStoredOrExternalProviderApiKey('kilocode'),
+      });
+      if (catalog.status === 'unavailable' || catalog.models.length === 0) {
+        return provider;
+      }
+      const models = catalog.models
+        .filter((m) => !m.hidden)
+        .map((m) => m.launchModel.trim())
+        .filter(Boolean);
+      return {
+        ...provider,
+        models: models.length > 0 ? models : provider.models,
+        modelCatalog: catalog,
+      };
+    } catch {
+      return provider;
     }
   }
 
@@ -1196,6 +1288,46 @@ export class ProviderConnectionService {
     return this.apiKeyService.lookupPreferred(envVarName);
   }
 
+  private async resolveStoredOrExternalProviderApiKey(
+    providerId: CliProviderId,
+    options?: StoredApiKeyAccessOptions
+  ): Promise<string | null> {
+    const envVarName = PROVIDER_API_KEY_ENV_VARS[providerId];
+    if (!envVarName) {
+      return null;
+    }
+
+    const storedKey = await this.lookupStoredApiKeyValue(envVarName, options);
+    if (storedKey?.value.trim()) {
+      return storedKey.value.trim();
+    }
+
+    return this.getExternalCredential(providerId)?.value.trim() || null;
+  }
+
+  private async resolveProviderApiKeyForEnv(
+    env: NodeJS.ProcessEnv,
+    providerId: CliProviderId,
+    options?: StoredApiKeyAccessOptions
+  ): Promise<string | null> {
+    const envVarName = PROVIDER_API_KEY_ENV_VARS[providerId];
+    if (!envVarName) {
+      return null;
+    }
+
+    const storedKey = await this.lookupStoredApiKeyValue(envVarName, options);
+    if (storedKey?.value.trim()) {
+      return storedKey.value.trim();
+    }
+
+    const existingValue = env[envVarName];
+    if (typeof existingValue === 'string' && existingValue.trim()) {
+      return existingValue.trim();
+    }
+
+    return this.getExternalCredential(providerId)?.value.trim() || null;
+  }
+
   private getConfiguredCodexRuntimeBackend(runtimeBackendOverride?: string | null): 'codex-native' {
     if (runtimeBackendOverride === CODEX_NATIVE_BACKEND_ID) {
       return runtimeBackendOverride;
@@ -1372,6 +1504,16 @@ export class ProviderConnectionService {
       if (apiKey) {
         return {
           label: 'Detected from OPENAI_API_KEY',
+          value: apiKey,
+        };
+      }
+    }
+
+    if (providerId === 'kilocode') {
+      const apiKey = this.getExternalEnvValue('KILO_API_KEY');
+      if (apiKey) {
+        return {
+          label: 'Detected from KILO_API_KEY',
           value: apiKey,
         };
       }

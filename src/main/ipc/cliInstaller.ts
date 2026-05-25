@@ -44,7 +44,12 @@ const cachedStatus = new Map<
 >();
 let statusCacheGeneration = 0;
 const STATUS_CACHE_TTL_MS = 5_000;
-const FRONTEND_MULTIMODEL_PROVIDER_IDS = new Set<CliProviderId>(['anthropic', 'codex', 'opencode']);
+const FRONTEND_MULTIMODEL_PROVIDER_IDS = new Set<CliProviderId>([
+  'anthropic',
+  'codex',
+  'opencode',
+  'kilocode',
+]);
 
 function isFrontendMultimodelProviderId(providerId: CliProviderId): boolean {
   return FRONTEND_MULTIMODEL_PROVIDER_IDS.has(providerId);

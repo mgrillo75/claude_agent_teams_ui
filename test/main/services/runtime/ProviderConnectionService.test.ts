@@ -40,6 +40,7 @@ describe('ProviderConnectionService', () => {
   const originalAnthropicApiKey = process.env.ANTHROPIC_API_KEY;
   const originalAnthropicAuthToken = process.env.ANTHROPIC_AUTH_TOKEN;
   const originalAnthropicBaseUrl = process.env.ANTHROPIC_BASE_URL;
+  const originalKiloApiKey = process.env.KILO_API_KEY;
 
   function createConfig(
     authMode: 'auto' | 'oauth' | 'api_key' = 'auto',
@@ -136,6 +137,7 @@ describe('ProviderConnectionService', () => {
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.ANTHROPIC_AUTH_TOKEN;
     delete process.env.ANTHROPIC_BASE_URL;
+    delete process.env.KILO_API_KEY;
   });
 
   afterEach(() => {
@@ -167,6 +169,12 @@ describe('ProviderConnectionService', () => {
       delete process.env.ANTHROPIC_BASE_URL;
     } else {
       process.env.ANTHROPIC_BASE_URL = originalAnthropicBaseUrl;
+    }
+
+    if (originalKiloApiKey === undefined) {
+      delete process.env.KILO_API_KEY;
+    } else {
+      process.env.KILO_API_KEY = originalKiloApiKey;
     }
   });
 
@@ -637,6 +645,126 @@ describe('ProviderConnectionService', () => {
 
     expect(lookupPreferred).toHaveBeenCalledWith('GEMINI_API_KEY');
     expect(result.GEMINI_API_KEY).toBe('gemini-stored-key');
+  });
+
+  it('injects stored KiloCode API keys for runtime launches', async () => {
+    const lookupPreferred = vi.fn().mockResolvedValue({
+      envVarName: 'KILO_API_KEY',
+      value: 'kilo-stored-key',
+    });
+    const { ProviderConnectionService } =
+      await import('@main/services/runtime/ProviderConnectionService');
+
+    const service = new ProviderConnectionService(
+      {
+        lookupPreferred,
+      } as never,
+      {
+        getConfig: () => createConfig('auto'),
+      } as never
+    );
+
+    const result = await service.applyConfiguredConnectionEnv({}, 'kilocode');
+
+    expect(lookupPreferred).toHaveBeenCalledWith('KILO_API_KEY');
+    expect(result.KILO_API_KEY).toBe('kilo-stored-key');
+    await expect(service.getConfiguredConnectionIssue(result, 'kilocode')).resolves.toBeNull();
+  });
+
+  it('reports a missing KiloCode API key before runtime launches', async () => {
+    const { ProviderConnectionService } =
+      await import('@main/services/runtime/ProviderConnectionService');
+
+    const service = new ProviderConnectionService(
+      {
+        lookupPreferred: vi.fn().mockResolvedValue(null),
+      } as never,
+      {
+        getConfig: () => createConfig('auto'),
+      } as never
+    );
+
+    const issue = await service.getConfiguredConnectionIssue({}, 'kilocode');
+
+    expect(issue).toContain('KiloCode API key is not configured');
+  });
+
+  it('passes stored KiloCode API keys to catalog hydration', async () => {
+    const lookupPreferred = vi.fn().mockResolvedValue({
+      envVarName: 'KILO_API_KEY',
+      value: 'kilo-stored-key',
+    });
+    const getCatalog = vi.fn().mockResolvedValue({
+      schemaVersion: 1,
+      providerId: 'kilocode',
+      source: 'app-server',
+      status: 'ready',
+      fetchedAt: '2026-05-25T00:00:00.000Z',
+      staleAt: '2026-05-25T00:10:00.000Z',
+      defaultModelId: 'kilo/test',
+      defaultLaunchModel: 'kilo/test',
+      models: [
+        {
+          id: 'kilo/test',
+          launchModel: 'kilo/test',
+          displayName: 'Kilo Test',
+          hidden: false,
+          supportedReasoningEfforts: [],
+          defaultReasoningEffort: null,
+          inputModalities: ['text'],
+          supportsPersonality: false,
+          isDefault: true,
+          upgrade: false,
+          source: 'app-server',
+        },
+      ],
+      diagnostics: {
+        configReadState: 'skipped',
+        appServerState: 'healthy',
+        message: null,
+        code: null,
+      },
+    });
+    const { ProviderConnectionService } =
+      await import('@main/services/runtime/ProviderConnectionService');
+
+    const service = new ProviderConnectionService(
+      {
+        lookupPreferred,
+      } as never,
+      {
+        getConfig: () => createConfig('auto'),
+      } as never
+    );
+    service.setKilocodeModelCatalogFeature({ getCatalog });
+
+    const enriched = await service.enrichProviderStatus({
+      providerId: 'kilocode',
+      displayName: 'KiloCode',
+      supported: true,
+      authenticated: true,
+      authMethod: 'api_key',
+      verificationState: 'verified',
+      modelVerificationState: 'idle',
+      statusMessage: null,
+      models: [],
+      modelAvailability: [],
+      canLoginFromUi: true,
+      capabilities: {
+        teamLaunch: true,
+        oneShot: false,
+        extensions: {
+          plugins: { supported: false, status: 'unsupported' },
+          mcp: { supported: false, status: 'unsupported' },
+          skills: { supported: false, status: 'unsupported' },
+          apiKeys: { supported: true, status: 'supported' },
+        },
+      },
+      backend: null,
+    } as never);
+
+    expect(getCatalog).toHaveBeenCalledWith({ apiKey: 'kilo-stored-key' });
+    expect(enriched.models).toEqual(['kilo/test']);
   });
 
   it('reports a missing Anthropic API key when api_key mode is selected', async () => {

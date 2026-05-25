@@ -68,7 +68,7 @@ import type { CodexRuntimeStatus } from '@features/codex-runtime-installer/contr
 import type { CliProviderAuthMode, CliProviderId, CliProviderStatus } from '@shared/types';
 import type { ApiKeyEntry } from '@shared/types/extensions';
 
-type ApiKeyProviderId = 'anthropic' | 'codex' | 'gemini';
+type ApiKeyProviderId = 'anthropic' | 'codex' | 'gemini' | 'kilocode';
 type PendingConnectionAction = 'auto' | 'oauth' | 'chatgpt' | 'api_key' | 'compatible' | null;
 
 interface ConnectionMethodCardOption {
@@ -98,7 +98,7 @@ interface Props {
 const API_KEY_PROVIDER_CONFIG: Record<
   ApiKeyProviderId,
   {
-    envVarName: 'ANTHROPIC_API_KEY' | 'OPENAI_API_KEY' | 'GEMINI_API_KEY';
+    envVarName: 'ANTHROPIC_API_KEY' | 'OPENAI_API_KEY' | 'GEMINI_API_KEY' | 'KILO_API_KEY';
     name: string;
     title: string;
     description: string;
@@ -129,6 +129,14 @@ const API_KEY_PROVIDER_CONFIG: Record<
       'Use `GEMINI_API_KEY` for the Gemini API backend. CLI SDK and ADC do not require it.',
     placeholder: 'AIza...',
   },
+  kilocode: {
+    envVarName: 'KILO_API_KEY',
+    name: 'KiloCode API Key',
+    title: 'API key',
+    description:
+      'Use your KiloCode API key to authenticate with the KiloCode gateway and load available models.',
+    placeholder: 'kc-...',
+  },
 };
 
 const API_KEY_PROVIDER_TRANSLATION_KEYS = {
@@ -151,7 +159,7 @@ const API_KEY_PROVIDER_TRANSLATION_KEYS = {
     placeholder: 'providerRuntime.apiKey.providers.gemini.placeholder',
   },
 } as const satisfies Record<
-  ApiKeyProviderId,
+  Exclude<ApiKeyProviderId, 'kilocode'>,
   {
     name: string;
     title: string;
@@ -165,7 +173,12 @@ const ANTHROPIC_COMPATIBLE_AUTH_TOKEN_NAME = 'Anthropic-compatible Auth Token';
 const FIRST_PARTY_ANTHROPIC_HOSTS = new Set(['api.anthropic.com', 'api-staging.anthropic.com']);
 
 function isApiKeyProviderId(providerId: CliProviderId): providerId is ApiKeyProviderId {
-  return providerId === 'anthropic' || providerId === 'codex' || providerId === 'gemini';
+  return (
+    providerId === 'anthropic' ||
+    providerId === 'codex' ||
+    providerId === 'gemini' ||
+    providerId === 'kilocode'
+  );
 }
 
 function isCodexRuntimeInstalling(
@@ -243,6 +256,8 @@ function getConnectionDescription(
       return t('providerRuntime.connection.descriptions.gemini');
     case 'opencode':
       return t('providerRuntime.connection.descriptions.opencode');
+    case 'kilocode':
+      return 'KiloCode uses an API key for authentication with the KiloCode gateway.';
   }
 }
 
@@ -259,6 +274,8 @@ function getRuntimeDescription(
       return t('providerRuntime.runtime.descriptions.gemini');
     case 'opencode':
       return t('providerRuntime.runtime.descriptions.opencode');
+    case 'kilocode':
+      return 'KiloCode uses its own managed runtime host. Configure an API key to use the KiloCode gateway.';
   }
 }
 
@@ -289,6 +306,10 @@ function getAuthModeDescription(
       default:
         return '';
     }
+  }
+
+  if (providerId === 'kilocode' && authMode === 'api_key') {
+    return 'Use a KiloCode API key for gateway access.';
   }
 
   return '';
@@ -1026,9 +1047,10 @@ export const ProviderRuntimeSettingsDialog = ({
       ? selectedProvider.providerId
       : null;
   const apiKeyConfig = apiKeyProviderId ? API_KEY_PROVIDER_CONFIG[apiKeyProviderId] : null;
-  const apiKeyTranslationKeys = apiKeyProviderId
-    ? API_KEY_PROVIDER_TRANSLATION_KEYS[apiKeyProviderId]
-    : null;
+  const apiKeyTranslationKeys =
+    apiKeyProviderId && apiKeyProviderId !== 'kilocode'
+      ? API_KEY_PROVIDER_TRANSLATION_KEYS[apiKeyProviderId]
+      : null;
   const apiKeyDisplayConfig = apiKeyTranslationKeys
     ? {
         title: t(apiKeyTranslationKeys.title),
@@ -1036,7 +1058,7 @@ export const ProviderRuntimeSettingsDialog = ({
         name: t(apiKeyTranslationKeys.name),
         placeholder: t(apiKeyTranslationKeys.placeholder),
       }
-    : null;
+    : apiKeyConfig;
   const showApiKeyForm =
     selectedProvider &&
     isApiKeyProviderId(selectedProvider.providerId) &&
