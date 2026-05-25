@@ -7,7 +7,12 @@ const rendererBundles = readdirSync(assetsDir)
   .sort();
 
 if (rendererBundles.length === 0) {
-  console.error('No renderer JavaScript bundles found under out/renderer/assets.');
+  console.error(
+    [
+      'No renderer JavaScript bundles found under out/renderer/assets.',
+      'Run `pnpm build` before packaging production artifacts.',
+    ].join('\n')
+  );
   process.exit(1);
 }
 

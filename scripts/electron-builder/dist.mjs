@@ -1,12 +1,31 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const require = createRequire(import.meta.url);
 const { buildElectronBuilderInvocations } = require('./dist-invocations.cjs');
 
 export { buildElectronBuilderInvocations };
+
+async function runRendererBundleGuard() {
+  const guardPath = fileURLToPath(new URL('../ci/verify-radix-renderer-bundle.mjs', import.meta.url));
+  await new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [guardPath], {
+      stdio: 'inherit',
+      env: process.env,
+    });
+
+    child.on('error', reject);
+    child.on('exit', (code, signal) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(new Error(`renderer bundle guard failed with ${signal ?? `exit code ${code}`}`));
+    });
+  });
+}
 
 async function runElectronBuilder(args) {
   const cliPath = require.resolve('electron-builder/cli.js');
@@ -40,6 +59,8 @@ async function main(argv) {
     );
     return;
   }
+
+  await runRendererBundleGuard();
 
   for (const invocation of invocations) {
     await runElectronBuilder(invocation.args);
