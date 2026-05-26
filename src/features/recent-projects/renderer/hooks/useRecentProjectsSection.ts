@@ -110,6 +110,7 @@ export function useRecentProjectsSection(
     initialSnapshot?.payload.projects ?? []
   );
   const activeContextIdRef = useRef(activeContextId);
+  activeContextIdRef.current = activeContextId;
   const provisioningState = useMemo(
     () => ({ currentProvisioningRunIdByTeam, provisioningRuns }),
     [currentProvisioningRunIdByTeam, provisioningRuns]
@@ -129,10 +130,6 @@ export function useRecentProjectsSection(
   useEffect(() => {
     recentProjectsRef.current = recentProjects;
   }, [recentProjects]);
-
-  useEffect(() => {
-    activeContextIdRef.current = activeContextId;
-  }, [activeContextId]);
 
   const reload = useCallback(
     async (options?: { force?: boolean }): Promise<void> => {
