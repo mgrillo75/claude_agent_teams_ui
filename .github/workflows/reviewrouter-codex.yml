@@ -17,7 +17,7 @@ jobs:
     steps:
       - name: ReviewRouter Codex OAuth review
         id: run_codex
-        uses: 777genius/review-router@a8569b01f257b3af3e575450554fca63fb4b6c6d
+        uses: 777genius/review-router@c23ae97660c3674a2ebc9076bb5cd4f1bbd85657
         with:
           mode: codex-oauth-rotating
           api-url: "https://api.reviewrouter.site"
