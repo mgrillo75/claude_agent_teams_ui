@@ -4,6 +4,10 @@ import { type DashboardRecentProject } from '@features/recent-projects/contracts
 import { api, isElectronMode } from '@renderer/api';
 import { useStore } from '@renderer/store';
 import { isTeamProvisioningActive } from '@renderer/store/slices/teamSlice';
+import {
+  captureContextScopedRequestEpoch,
+  isContextScopedRequestEpochCurrent,
+} from '@renderer/store/utils/contextScopedRequestEpoch';
 import { buildTaskCountsByProject } from '@renderer/utils/pathNormalize';
 import { useShallow } from 'zustand/react/shallow';
 
@@ -134,6 +138,7 @@ export function useRecentProjectsSection(
   const reload = useCallback(
     async (options?: { force?: boolean }): Promise<void> => {
       const requestContextId = activeContextId;
+      const requestContextEpoch = captureContextScopedRequestEpoch();
       const hasVisibleProjects =
         recentProjectsRef.current.length > 0 ||
         getRecentProjectsClientSnapshot(requestContextId) != null;
@@ -148,19 +153,28 @@ export function useRecentProjectsSection(
           () => api.getDashboardRecentProjects(),
           options
         );
-        if (activeContextIdRef.current !== requestContextId) {
+        if (
+          activeContextIdRef.current !== requestContextId ||
+          !isContextScopedRequestEpochCurrent(requestContextEpoch)
+        ) {
           return;
         }
         setRecentProjects(payload.projects);
         setRecentProjectsDegraded(payload.degraded);
         setDegradedRefreshCount((current) => (payload.degraded ? current + 1 : 0));
       } catch (nextError) {
-        if (activeContextIdRef.current !== requestContextId) {
+        if (
+          activeContextIdRef.current !== requestContextId ||
+          !isContextScopedRequestEpochCurrent(requestContextEpoch)
+        ) {
           return;
         }
         setError(nextError instanceof Error ? nextError.message : 'Failed to load recent projects');
       } finally {
-        if (activeContextIdRef.current === requestContextId) {
+        if (
+          activeContextIdRef.current === requestContextId &&
+          isContextScopedRequestEpochCurrent(requestContextEpoch)
+        ) {
           setLoading(false);
         }
       }
@@ -220,11 +234,17 @@ export function useRecentProjectsSection(
 
   useEffect(() => {
     let cancelled = false;
+    const requestContextId = activeContextId;
+    const requestContextEpoch = captureContextScopedRequestEpoch();
 
     void api.teams
       .aliveList()
       .then((teamNames) => {
-        if (!cancelled) {
+        if (
+          !cancelled &&
+          activeContextIdRef.current === requestContextId &&
+          isContextScopedRequestEpochCurrent(requestContextEpoch)
+        ) {
           setAliveTeams(teamNames);
         }
       })
@@ -233,7 +253,7 @@ export function useRecentProjectsSection(
     return () => {
       cancelled = true;
     };
-  }, [provisioningTeamNamesKey, teams]);
+  }, [activeContextId, provisioningTeamNamesKey, teams]);
 
   useEffect(() => {
     if (!searchQuery.trim()) {
