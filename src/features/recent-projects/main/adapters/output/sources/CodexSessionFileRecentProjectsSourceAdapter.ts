@@ -102,6 +102,11 @@ interface CodexSessionFileListingResult {
   timedOut: boolean;
 }
 
+interface InFlightListRequest {
+  contextKey: string;
+  promise: Promise<RecentProjectsSourceResult>;
+}
+
 function emptyCache(): CodexSessionFileCacheFile {
   return {
     schemaVersion: CODEX_SESSION_FILE_CACHE_SCHEMA_VERSION,
@@ -427,7 +432,7 @@ export class CodexSessionFileRecentProjectsSourceAdapter implements RecentProjec
   readonly timeoutMs = CODEX_SESSION_FILE_SOURCE_TIMEOUT_MS;
   readonly #codexHome: string;
   readonly #cachePath: string;
-  #inFlightList: Promise<RecentProjectsSourceResult> | null = null;
+  #inFlightList: InFlightListRequest | null = null;
 
   constructor(
     private readonly deps: {
@@ -447,20 +452,6 @@ export class CodexSessionFileRecentProjectsSourceAdapter implements RecentProjec
   }
 
   async list(): Promise<RecentProjectsSourceResult> {
-    if (this.#inFlightList) {
-      return this.#inFlightList;
-    }
-
-    const request = this.#listUncached().finally(() => {
-      if (this.#inFlightList === request) {
-        this.#inFlightList = null;
-      }
-    });
-    this.#inFlightList = request;
-    return request;
-  }
-
-  async #listUncached(): Promise<RecentProjectsSourceResult> {
     const activeContext = this.deps.getActiveContext();
     const localContext = this.deps.getLocalContext();
 
@@ -471,6 +462,21 @@ export class CodexSessionFileRecentProjectsSourceAdapter implements RecentProjec
       };
     }
 
+    const contextKey = `${activeContext.type}:${activeContext.id}`;
+    if (this.#inFlightList?.contextKey === contextKey) {
+      return this.#inFlightList.promise;
+    }
+
+    const request = this.#listLocal(activeContext).finally(() => {
+      if (this.#inFlightList?.promise === request) {
+        this.#inFlightList = null;
+      }
+    });
+    this.#inFlightList = { contextKey, promise: request };
+    return request;
+  }
+
+  async #listLocal(activeContext: ServiceContext): Promise<RecentProjectsSourceResult> {
     try {
       const snapshotResult = await this.#listRecentSessionSnapshots();
       const candidates = await Promise.all(

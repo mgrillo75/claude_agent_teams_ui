@@ -4,31 +4,15 @@ import {
 } from '@features/recent-projects/contracts';
 import { createLogger } from '@shared/utils/logger';
 
+import {
+  estimateDashboardRecentProjectsPayloadBytes,
+  getRecentProjectsMemoryDiagnostics,
+} from '../recentProjectsDiagnostics';
+
 import type { RecentProjectsFeatureFacade } from '@features/recent-projects/main/composition/createRecentProjectsFeature';
 import type { IpcMain } from 'electron';
 
 const logger = createLogger('Feature:RecentProjects:IPC');
-
-function getPayloadBytes(value: unknown): number {
-  try {
-    return Buffer.byteLength(JSON.stringify(value), 'utf8');
-  } catch {
-    return -1;
-  }
-}
-
-function getMemoryDiagnostics(): {
-  rssBytes: number;
-  heapUsedBytes: number;
-  heapTotalBytes: number;
-} {
-  const memory = process.memoryUsage();
-  return {
-    rssBytes: memory.rss,
-    heapUsedBytes: memory.heapUsed,
-    heapTotalBytes: memory.heapTotal,
-  };
-}
 
 export function registerRecentProjectsIpc(
   ipcMain: IpcMain,
@@ -47,8 +31,8 @@ export function registerRecentProjectsIpc(
         count: payload.projects.length,
         degraded: payload.degraded,
         durationMs: Date.now() - startedAt,
-        payloadBytes: getPayloadBytes(payload),
-        ...getMemoryDiagnostics(),
+        estimatedPayloadBytes: estimateDashboardRecentProjectsPayloadBytes(payload),
+        ...getRecentProjectsMemoryDiagnostics(),
       });
       return payload;
     } catch (error) {

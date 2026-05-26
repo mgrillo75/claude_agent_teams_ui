@@ -5,31 +5,15 @@ import {
 } from '@features/recent-projects/contracts';
 import { createLogger } from '@shared/utils/logger';
 
+import {
+  estimateDashboardRecentProjectsPayloadBytes,
+  getRecentProjectsMemoryDiagnostics,
+} from '../recentProjectsDiagnostics';
+
 import type { RecentProjectsFeatureFacade } from '@features/recent-projects/main/composition/createRecentProjectsFeature';
 import type { FastifyInstance } from 'fastify';
 
 const logger = createLogger('Feature:RecentProjects:HTTP');
-
-function getPayloadBytes(value: unknown): number {
-  try {
-    return Buffer.byteLength(JSON.stringify(value), 'utf8');
-  } catch {
-    return -1;
-  }
-}
-
-function getMemoryDiagnostics(): {
-  rssBytes: number;
-  heapUsedBytes: number;
-  heapTotalBytes: number;
-} {
-  const memory = process.memoryUsage();
-  return {
-    rssBytes: memory.rss,
-    heapUsedBytes: memory.heapUsed,
-    heapTotalBytes: memory.heapTotal,
-  };
-}
 
 export function registerRecentProjectsHttp(
   app: FastifyInstance,
@@ -48,8 +32,8 @@ export function registerRecentProjectsHttp(
         count: payload.projects.length,
         degraded: payload.degraded,
         durationMs: Date.now() - startedAt,
-        payloadBytes: getPayloadBytes(payload),
-        ...getMemoryDiagnostics(),
+        estimatedPayloadBytes: estimateDashboardRecentProjectsPayloadBytes(payload),
+        ...getRecentProjectsMemoryDiagnostics(),
       });
       return payload;
     } catch (error) {
