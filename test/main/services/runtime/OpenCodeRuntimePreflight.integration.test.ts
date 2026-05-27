@@ -55,6 +55,7 @@ vi.mock('@features/codex-runtime-installer/main', () => ({
 import { resolveVerifiedOpenCodeRuntimeBinaryPath } from '../../../../src/main/services/infrastructure/OpenCodeRuntimeInstallerService';
 import { ensureOpenCodeBridgeRuntimeBinaryEnv } from '../../../../src/main/services/runtime/openCodeBridgeRuntimeEnv';
 import { buildProviderAwareCliEnv } from '../../../../src/main/services/runtime/providerAwareCliEnv';
+import { clearResolvedNodePathForTests } from '../../../../src/main/services/team/TeamMcpConfigBuilder';
 import { execCli } from '../../../../src/main/utils/childProcess';
 import { setAppDataBasePath } from '../../../../src/main/utils/pathDecoder';
 import { clearShellEnvCache } from '../../../../src/main/utils/shellEnv';
@@ -72,6 +73,7 @@ describePosix('OpenCode packaged-runtime preflight integration', () => {
     tempDir = await mkdtemp(path.join(os.tmpdir(), 'opencode-prod-preflight-'));
     setAppDataBasePath(path.join(tempDir, 'app-data'));
     clearShellEnvCache();
+    clearResolvedNodePathForTests();
 
     originalPath = process.env.PATH;
     originalShell = process.env.SHELL;
@@ -142,7 +144,7 @@ describePosix('OpenCode packaged-runtime preflight integration', () => {
       [
         '#!/bin/sh',
         'if [ "$1" = "-e" ]; then',
-        '  printf "{\\"execPath\\":\\"%s\\",\\"version\\":\\"%s\\"}" "$FAKE_NODE_PATH" "22.0.0"',
+        '  printf "{\\"execPath\\":\\"%s\\",\\"version\\":\\"%s\\"}" "$FAKE_NODE_PATH" "24.16.0"',
         '  exit 0',
         'fi',
         'echo "unexpected node args: $*" >&2',

@@ -150,6 +150,66 @@ describe('mergeCodexProviderStatusWithSnapshot', () => {
     });
   });
 
+  it('clears a stale runtime-missing provider once the live snapshot is ready', () => {
+    const baseProvider = createBaseCodexProvider();
+    const baseConnection = baseProvider.connection!;
+    const merged = mergeCodexProviderStatusWithSnapshot(
+      {
+        ...baseProvider,
+        supported: false,
+        authenticated: false,
+        verificationState: 'error',
+        statusMessage: 'Codex CLI not found. Install Codex to use native account management.',
+        capabilities: {
+          teamLaunch: false,
+          oneShot: false,
+          extensions: createDefaultCliExtensionCapabilities(),
+        },
+        availableBackends: [
+          {
+            id: 'codex-native',
+            label: 'Codex native',
+            description: 'Use codex exec JSON mode.',
+            selectable: false,
+            recommended: true,
+            available: false,
+            state: 'runtime-missing',
+            audience: 'general',
+            statusMessage: 'Codex CLI not found',
+            detailMessage: 'Codex CLI not found',
+          },
+        ],
+        connection: {
+          ...baseConnection,
+          codex: {
+            ...baseConnection.codex!,
+            appServerState: 'runtime-missing',
+            appServerStatusMessage: 'Codex CLI not found',
+            launchAllowed: false,
+            launchIssueMessage: 'Codex CLI not found',
+            launchReadinessState: 'runtime_missing',
+          },
+        },
+      },
+      createReadyChatgptSnapshot()
+    );
+
+    expect(merged.supported).toBe(true);
+    expect(merged.authenticated).toBe(true);
+    expect(merged.verificationState).toBe('verified');
+    expect(merged.statusMessage).toBe('ChatGPT account ready');
+    expect(merged.capabilities.teamLaunch).toBe(true);
+    expect(merged.capabilities.oneShot).toBe(true);
+    expect(merged.connection?.codex?.appServerState).toBe('healthy');
+    expect(merged.connection?.codex?.launchReadinessState).toBe('ready_chatgpt');
+    expect(merged.availableBackends?.find((option) => option.id === 'codex-native')).toMatchObject({
+      available: true,
+      selectable: true,
+      state: 'ready',
+      statusMessage: 'Ready',
+    });
+  });
+
   it('hydrates codex connection truth even when the stale provider payload had no connection block', () => {
     const merged = mergeCodexProviderStatusWithSnapshot(
       {

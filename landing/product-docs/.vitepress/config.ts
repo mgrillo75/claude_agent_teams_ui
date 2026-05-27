@@ -32,6 +32,7 @@ const publicBaseUrl =
 const docsUrl = `${publicBaseUrl}docs/`;
 const downloadUrl = `${publicBaseUrl}download/`;
 const ruDownloadUrl = `${publicBaseUrl}ru/download/`;
+const ogImageUrl = `${publicBaseUrl}og-image-agent-teams-v6.png`;
 const landingPublicDir = fileURLToPath(new URL("../../public", import.meta.url));
 
 const rootGuide: DefaultTheme.SidebarItem[] = [
@@ -173,7 +174,7 @@ export default defineConfig({
     ["meta", { property: "og:title", content: SITE_TITLE }],
     ["meta", { property: "og:description", content: SITE_DESCRIPTION }],
     ["meta", { property: "og:url", content: docsUrl }],
-    ["meta", { property: "og:image", content: `${publicBaseUrl}og-image.png` }],
+    ["meta", { property: "og:image", content: ogImageUrl }],
     ["meta", { property: "og:image:width", content: "1200" }],
     ["meta", { property: "og:image:height", content: "630" }],
     ["meta", { property: "og:site_name", content: "Agent Teams" }],
@@ -181,7 +182,7 @@ export default defineConfig({
     ["meta", { name: "twitter:card", content: "summary_large_image" }],
     ["meta", { name: "twitter:title", content: SITE_TITLE }],
     ["meta", { name: "twitter:description", content: SITE_DESCRIPTION }],
-    ["meta", { name: "twitter:image", content: `${publicBaseUrl}og-image.png` }],
+    ["meta", { name: "twitter:image", content: ogImageUrl }],
     [
       "script",
       { type: "application/ld+json" },

@@ -160,11 +160,14 @@ export interface OpenCodeListRuntimePermissionsCommandBody {
   teamId: string;
   teamName: string;
   laneId?: string;
+  memberName?: string;
+  sessionId?: string | null;
   projectPath?: string;
 }
 
 export interface OpenCodeListRuntimePermissionsCommandData {
   permissions: OpenCodeRuntimePermissionCommandData[];
+  diagnostics?: string[];
 }
 
 export interface OpenCodeCleanupHostsCommandBody {

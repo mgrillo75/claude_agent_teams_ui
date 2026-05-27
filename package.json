@@ -16,6 +16,9 @@
   "bugs": {
     "url": "https://github.com/777genius/agent-teams-ai/issues"
   },
+  "engines": {
+    "node": ">=24.16.0 <25"
+  },
   "main": "dist-electron/main/index.cjs",
   "scripts": {
     "dev": "node ./scripts/dev-with-runtime.mjs",
@@ -83,10 +86,10 @@
     "test:coverage": "vitest run --coverage",
     "test:coverage:critical": "vitest run --coverage --config vitest.critical.config.ts",
     "standalone": "tsx src/main/standalone.ts",
-    "standalone:build": "electron-vite build && vite build --config docker/vite.standalone.config.ts",
+    "standalone:build": "node --max-old-space-size=8192 ./node_modules/electron-vite/bin/electron-vite.js build && node --max-old-space-size=8192 ./node_modules/vite/bin/vite.js build --config docker/vite.standalone.config.ts",
     "standalone:start": "node dist-standalone/index.cjs",
     "prepare": "husky",
-    "postinstall": "electron-rebuild -f -o node-pty,ssh2,cpu-features || echo 'native Electron rebuild failed (terminal/ssh features may be degraded)'"
+    "postinstall": "electron-rebuild -f -o node-pty,ssh2,cpu-features || echo 'native Electron rebuild failed (terminal/ssh features may be degraded)'; node ./scripts/ensure-electron-install.cjs"
   },
   "lint-staged": {
     "src/**/*.{ts,tsx,js,jsx}": [
@@ -212,7 +215,7 @@
     "@tailwindcss/typography": "^0.5.19",
     "@types/hast": "^3.0.4",
     "@types/mdast": "^4.0.4",
-    "@types/node": "^25.0.7",
+    "@types/node": "^24.12.4",
     "@types/pidusage": "2.0.5",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
@@ -388,7 +391,7 @@
       }
     ]
   },
-  "packageManager": "pnpm@10.33.0+sha512.10568bb4a6afb58c9eb3630da90cc9516417abebd3fabbe6739f0ae795728da1491e9db5a544c76ad8eb7570f5c4bb3d6c637b2cb41bfdcdb47fa823c8649319",
+  "packageManager": "pnpm@10.33.4+sha512.1c67b3b359b2d408119ba1ed289f34b8fc3c6873412bec6fd264fbdc82489e510fcbecb9ce9d22dae7f3b76269d8441046014bdca53b9979cd7a561ad631b800",
   "pnpm": {
     "overrides": {
       "@hono/node-server@1": "1.19.13",

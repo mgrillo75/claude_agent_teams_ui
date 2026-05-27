@@ -1,3 +1,4 @@
+import { buildCodexWorkspaceTrustSettingsArgs } from '@features/workspace-trust/core/domain';
 import { OPENCODE_WINDOWS_ACCESS_DENIED_MESSAGE } from '@shared/utils/openCodeWindowsAccessDenied';
 import { DEFAULT_PROVIDER_MODEL_SELECTION } from '@shared/utils/providerModelSelection';
 import { spawn } from 'child_process';
@@ -312,10 +313,25 @@ function spawnRealCli(
 ) {
   const spawnOptions = options ?? {};
   const needsWindowsCommandShell = process.platform === 'win32' && /\.(bat|cmd)$/i.test(command);
-  return spawn(command, [...args], {
-    ...spawnOptions,
-    ...(needsWindowsCommandShell ? { shell: true } : {}),
-  });
+  if (needsWindowsCommandShell) {
+    const commandLine = [command, ...args].map(quoteWindowsCmdArg).join(' ');
+    return spawn(commandLine, {
+      ...spawnOptions,
+      shell: true,
+    });
+  }
+
+  return spawn(command, [...args], spawnOptions);
+}
+
+function quoteWindowsCmdArg(value: string) {
+  if (value.length === 0) {
+    return '""';
+  }
+  if (!/[ \t\r\n"&|<>^()%!]/.test(value)) {
+    return value;
+  }
+  return `"${value.replace(/%/g, '%%').replace(/(["^&|<>])/g, '^$1')}"`;
 }
 
 async function removeTempRoot(dirPath: string): Promise<void> {
@@ -538,6 +554,44 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
     expect(result.envPatch.ANTHROPIC_AUTH_TOKEN).toBe('');
     expect(result.envPatch.CLAUDE_CODE_OAUTH_TOKEN).toBe('');
     expect(result.args).toContain('--anthropic-safe-passthrough');
+  });
+
+  it('passes only non-secret Codex runtime env to non-Codex leads for cross-provider teammates', async () => {
+    const svc = new TeamProvisioningService();
+    vi.spyOn(svc as any, 'buildProvisioningEnv').mockResolvedValue({
+      env: {
+        CLAUDE_CODE_CODEX_BACKEND: 'codex-native',
+        CLAUDE_CODE_CODEX_FORCED_LOGIN_METHOD: 'chatgpt',
+        CODEX_CLI_PATH: '/Users/tester/.local/bin/codex',
+        CODEX_HOME: '/Users/tester/.codex',
+        OPENAI_API_KEY: 'sk-openai-should-not-leak',
+        CODEX_API_KEY: 'sk-codex-should-not-leak',
+        GEMINI_API_KEY: 'gemini-should-not-leak',
+        ANTHROPIC_API_KEY: 'sk-ant-should-not-leak',
+        ANTHROPIC_AUTH_TOKEN: 'ant-token-should-not-leak',
+      },
+      authSource: 'codex_runtime',
+      geminiRuntimeAuth: null,
+      providerArgs: ['--settings', '{"codex":{"forced_login_method":"chatgpt"}}'],
+    });
+
+    const result = await (svc as any).buildCrossProviderMemberArgs(
+      'anthropic',
+      [{ name: 'jack', providerId: 'codex', model: 'gpt-5.4' }],
+      { teamRuntimeAuth: { teamName: 'mixed-team', authMaterialId: 'run-1' } }
+    );
+
+    expect(result.envPatch).toMatchObject({
+      CLAUDE_CODE_CODEX_BACKEND: 'codex-native',
+      CLAUDE_CODE_CODEX_FORCED_LOGIN_METHOD: 'chatgpt',
+      CODEX_CLI_PATH: '/Users/tester/.local/bin/codex',
+      CODEX_HOME: '/Users/tester/.codex',
+    });
+    expect(result.envPatch.OPENAI_API_KEY).toBeUndefined();
+    expect(result.envPatch.CODEX_API_KEY).toBeUndefined();
+    expect(result.envPatch.GEMINI_API_KEY).toBeUndefined();
+    expect(result.envPatch.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(result.envPatch.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
   });
 
   it('passes Anthropic-compatible bearer env to non-Anthropic leads without injecting ANTHROPIC_API_KEY', async () => {
@@ -2234,7 +2288,7 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
     expect(result.ready).toBe(true);
     expect(execCliMock).toHaveBeenCalledWith(
       '/fake/claude',
-      ['runtime', 'status', '--json', '--provider', 'codex'],
+      ['runtime', 'status', '--json', '--summary', '--provider', 'codex'],
       expect.objectContaining({ cwd: tempRoot })
     );
     expect(spawnProbe).toHaveBeenCalledTimes(1);
@@ -2278,11 +2332,53 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
         'runtime',
         'status',
         '--json',
+        '--summary',
         '--provider',
         'codex',
       ],
       expect.objectContaining({ cwd: tempRoot })
     );
+  });
+
+  it('accepts provider-specific auth status fallback payloads', async () => {
+    execCliMock.mockImplementation(async (_binaryPath: string | null, args: string[]) => {
+      if (args.includes('runtime')) {
+        throw new Error(
+          'Timeout running: orchestrator-cli runtime status --json --summary --provider anthropic'
+        );
+      }
+      if (args.includes('auth')) {
+        return {
+          stdout: JSON.stringify({
+            schemaVersion: 1,
+            provider: 'anthropic',
+            status: {
+              supported: true,
+              authenticated: true,
+              capabilities: { teamLaunch: true, oneShot: true },
+            },
+          }),
+          stderr: '',
+          exitCode: 0,
+        };
+      }
+      return { stdout: '', stderr: '', exitCode: 0 };
+    });
+
+    const svc = new TeamProvisioningService();
+    const result = await (svc as any).probeProviderRuntimeControlPlane({
+      claudePath: '/fake/claude',
+      cwd: tempRoot,
+      env: {
+        PATH: '/usr/bin',
+        SHELL: '/bin/zsh',
+      },
+      providerId: 'anthropic',
+      providerArgs: [],
+    });
+
+    expect(result.warning).toContain('runtime status was unavailable, but auth status passed');
+    expect(result.warning).not.toContain('auth status did not report Anthropic authentication');
   });
 
   it('falls back from runtime status timeout to auth status and still checks selected models', async () => {
@@ -3494,6 +3590,430 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
     expect(settingsPath).toContain('agent-teams-runtime-settings');
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
     expect(settings.hooks.Stop[0].hooks[0].command).toBe('/bin/true # test-hook');
+  });
+
+  it('coalesces inherited cross-provider JSON settings into the Anthropic runtime settings file', async () => {
+    const svc = new TeamProvisioningService();
+
+    const result = await (svc as any).buildTeamRuntimeLaunchArgsPlan({
+      teamName: 'anthropic-codex-inherited-settings-team',
+      providerId: 'anthropic',
+      launchIdentity: null,
+      envResolution: { providerArgs: [] },
+      extraArgs: [],
+      inheritedProviderArgs: ['--settings', '{"codex":{"forced_login_method":"chatgpt"}}'],
+      includeAnthropicHelper: false,
+      contextLabel: 'Team launch',
+    });
+
+    expect(result.settingsArgs[0]).toBe('--settings');
+    expect(result.inheritedProviderArgs).toEqual([]);
+    expect(result.appManagedSettingsPath).toBe(result.settingsArgs[1]);
+    const settings = JSON.parse(fs.readFileSync(result.settingsArgs[1], 'utf8'));
+    expect(settings.codex.forced_login_method).toBe('chatgpt');
+  });
+
+  it('merges provider, extra, and inherited JSON settings in launch precedence order', async () => {
+    const svc = new TeamProvisioningService();
+
+    const result = await (svc as any).buildTeamRuntimeLaunchArgsPlan({
+      teamName: 'anthropic-codex-merged-settings-team',
+      providerId: 'anthropic',
+      launchIdentity: null,
+      envResolution: {
+        providerArgs: [
+          '--settings',
+          '{"codex":{"forced_login_method":"api","nested":{"provider":true}}}',
+          '--provider-passthrough',
+        ],
+      },
+      extraArgs: [
+        '--settings={"codex":{"nested":{"extra":true}}}',
+        '--extra-passthrough',
+      ],
+      inheritedProviderArgs: [
+        '--settings',
+        '{"codex":{"forced_login_method":"chatgpt","nested":{"inherited":true}}}',
+        '--inherited-passthrough',
+      ],
+      includeAnthropicHelper: false,
+      contextLabel: 'Team launch',
+    });
+
+    expect(result.providerArgs).toEqual(['--provider-passthrough']);
+    expect(result.extraArgs).toEqual(['--extra-passthrough']);
+    expect(result.inheritedProviderArgs).toEqual(['--inherited-passthrough']);
+    const settings = JSON.parse(fs.readFileSync(result.settingsArgs[1], 'utf8'));
+    expect(settings.codex).toMatchObject({
+      forced_login_method: 'chatgpt',
+      nested: {
+        provider: true,
+        extra: true,
+        inherited: true,
+      },
+    });
+  });
+
+  it('coalesces equals-style inherited settings while preserving inherited passthrough args', async () => {
+    const svc = new TeamProvisioningService();
+
+    const result = await (svc as any).buildTeamRuntimeLaunchArgsPlan({
+      teamName: 'anthropic-codex-equals-inherited-settings-team',
+      providerId: 'anthropic',
+      launchIdentity: null,
+      envResolution: { providerArgs: [] },
+      extraArgs: [],
+      inheritedProviderArgs: [
+        '--settings={"codex":{"forced_login_method":"chatgpt"}}',
+        '--safe-inherited-flag',
+        'value',
+      ],
+      includeAnthropicHelper: false,
+      contextLabel: 'Team launch',
+    });
+
+    expect(result.inheritedProviderArgs).toEqual(['--safe-inherited-flag', 'value']);
+    const settings = JSON.parse(fs.readFileSync(result.settingsArgs[1], 'utf8'));
+    expect(settings.codex.forced_login_method).toBe('chatgpt');
+  });
+
+  it('leaves inherited settings untouched for non-Anthropic lead providers', async () => {
+    const svc = new TeamProvisioningService();
+    const inheritedProviderArgs = ['--settings', '{"anthropic":{"example":true}}'];
+
+    const result = await (svc as any).buildTeamRuntimeLaunchArgsPlan({
+      teamName: 'codex-lead-anthropic-inherited-settings-team',
+      providerId: 'codex',
+      launchIdentity: null,
+      envResolution: { providerArgs: [] },
+      extraArgs: [],
+      inheritedProviderArgs,
+      includeAnthropicHelper: false,
+      contextLabel: 'Team launch',
+    });
+
+    expect(result.settingsArgs).toEqual([]);
+    expect(result.inheritedProviderArgs).toEqual(inheritedProviderArgs);
+    expect(result.appManagedSettingsPath).toBeNull();
+  });
+
+  it('coalesces inherited JSON settings into Anthropic helper settings without keeping helper path args', async () => {
+    const svc = new TeamProvisioningService();
+    const helperDir = path.join(tempRoot, 'anthropic-helper');
+    const helperSettingsPath = path.join(helperDir, 'settings.json');
+
+    const result = await (svc as any).buildTeamRuntimeLaunchArgsPlan({
+      teamName: 'anthropic-helper-codex-inherited-settings-team',
+      providerId: 'anthropic',
+      launchIdentity: null,
+      envResolution: {
+        providerArgs: ['--settings', helperSettingsPath],
+        anthropicApiKeyHelper: {
+          directory: helperDir,
+          helperPath: path.join(helperDir, 'helper.sh'),
+          keyPath: path.join(helperDir, 'key'),
+          settingsPath: helperSettingsPath,
+          settingsObject: { apiKeyHelper: `'${path.join(helperDir, 'helper.sh')}'` },
+          settingsArgs: ['--settings', helperSettingsPath],
+          envPatch: {},
+        },
+      },
+      extraArgs: [],
+      inheritedProviderArgs: ['--settings', '{"codex":{"forced_login_method":"chatgpt"}}'],
+      includeAnthropicHelper: true,
+      contextLabel: 'Team launch',
+    });
+
+    expect(result.providerArgs).toEqual([]);
+    expect(result.inheritedProviderArgs).toEqual([]);
+    expect(result.settingsArgs[0]).toBe('--settings');
+    expect(result.settingsArgs[1]).toContain(helperDir);
+    expect(result.settingsArgs[1]).not.toBe(helperSettingsPath);
+    expect(result.appManagedSettingsPath).toBe(result.settingsArgs[1]);
+    const settings = JSON.parse(fs.readFileSync(result.settingsArgs[1], 'utf8'));
+    expect(settings.apiKeyHelper).toBe(`'${path.join(helperDir, 'helper.sh')}'`);
+    expect(settings.codex.forced_login_method).toBe('chatgpt');
+  });
+
+  it('keeps Anthropic helper credentials authoritative over inherited helper-like settings', async () => {
+    const svc = new TeamProvisioningService();
+    const helperDir = path.join(tempRoot, 'anthropic-helper-precedence');
+    const helperSettingsPath = path.join(helperDir, 'settings.json');
+    const helperPath = path.join(helperDir, 'helper.sh');
+
+    const result = await (svc as any).buildTeamRuntimeLaunchArgsPlan({
+      teamName: 'anthropic-helper-precedence-team',
+      providerId: 'anthropic',
+      launchIdentity: null,
+      envResolution: {
+        providerArgs: ['--settings', helperSettingsPath],
+        anthropicApiKeyHelper: {
+          directory: helperDir,
+          helperPath,
+          keyPath: path.join(helperDir, 'key'),
+          settingsPath: helperSettingsPath,
+          settingsObject: { apiKeyHelper: `'${helperPath}'` },
+          settingsArgs: ['--settings', helperSettingsPath],
+          envPatch: {},
+        },
+      },
+      extraArgs: [],
+      inheritedProviderArgs: [
+        '--settings',
+        '{"apiKeyHelper":"\\"/tmp/bad-helper.sh\\"","codex":{"forced_login_method":"chatgpt"}}',
+      ],
+      includeAnthropicHelper: true,
+      contextLabel: 'Team launch',
+    });
+
+    const settings = JSON.parse(fs.readFileSync(result.settingsArgs[1], 'utf8'));
+    expect(settings.apiKeyHelper).toBe(`'${helperPath}'`);
+    expect(JSON.stringify(settings)).not.toContain('/tmp/bad-helper.sh');
+    expect(settings.codex.forced_login_method).toBe('chatgpt');
+  });
+
+  it('coalesces multiple non-primary provider settings without leaking provider secrets into env patch', async () => {
+    const svc = new TeamProvisioningService();
+    vi.spyOn(svc as any, 'buildProvisioningEnv').mockImplementation(
+      (providerId: unknown) => {
+        const resolvedProviderId = typeof providerId === 'string' ? providerId : undefined;
+        if (resolvedProviderId === 'codex') {
+          return Promise.resolve({
+            env: {
+              CLAUDE_CODE_CODEX_BACKEND: 'codex-native',
+              CLAUDE_CODE_CODEX_FORCED_LOGIN_METHOD: 'chatgpt',
+              CODEX_CLI_PATH: '/opt/codex',
+              CODEX_HOME: '/Users/tester/.codex',
+              CODEX_API_KEY: 'sk-codex-should-not-leak',
+              OPENAI_API_KEY: 'sk-openai-should-not-leak',
+            },
+            authSource: 'codex_runtime',
+            geminiRuntimeAuth: null,
+            providerArgs: [
+              '--settings',
+              '{"codex":{"forced_login_method":"chatgpt"}}',
+              '--codex-passthrough',
+            ],
+          });
+        }
+        if (resolvedProviderId === 'gemini') {
+          return Promise.resolve({
+            env: {
+              GEMINI_API_KEY: 'gemini-should-not-leak',
+              GOOGLE_APPLICATION_CREDENTIALS: '/tmp/gcp-creds.json',
+            },
+            authSource: 'gemini_api_key',
+            geminiRuntimeAuth: null,
+            providerArgs: [
+              '--settings',
+              '{"gemini":{"auth_refresh":"gcp"}}',
+              '--gemini-passthrough',
+            ],
+          });
+        }
+        return Promise.resolve({
+          env: {},
+          authSource: 'none',
+          geminiRuntimeAuth: null,
+          providerArgs: [],
+        });
+      }
+    );
+
+    const crossProvider = await (svc as any).buildCrossProviderMemberArgs(
+      'anthropic',
+      [
+        { name: 'cody', providerId: 'codex', model: 'gpt-5.4' },
+        { name: 'gina', providerId: 'gemini', model: 'gemini-2.5-pro' },
+      ],
+      { teamRuntimeAuth: { teamName: 'mixed-team', authMaterialId: 'run-1' } }
+    );
+    const result = await (svc as any).buildTeamRuntimeLaunchArgsPlan({
+      teamName: 'anthropic-codex-gemini-inherited-settings-team',
+      providerId: 'anthropic',
+      launchIdentity: null,
+      envResolution: { providerArgs: [] },
+      extraArgs: [],
+      inheritedProviderArgs: crossProvider.args,
+      includeAnthropicHelper: false,
+      contextLabel: 'Team launch',
+    });
+
+    expect(crossProvider.envPatch).toMatchObject({
+      CLAUDE_CODE_CODEX_BACKEND: 'codex-native',
+      CLAUDE_CODE_CODEX_FORCED_LOGIN_METHOD: 'chatgpt',
+      CODEX_CLI_PATH: '/opt/codex',
+      CODEX_HOME: '/Users/tester/.codex',
+    });
+    expect(crossProvider.envPatch.CODEX_API_KEY).toBeUndefined();
+    expect(crossProvider.envPatch.OPENAI_API_KEY).toBeUndefined();
+    expect(crossProvider.envPatch.GEMINI_API_KEY).toBeUndefined();
+    expect(crossProvider.envPatch.GOOGLE_APPLICATION_CREDENTIALS).toBeUndefined();
+    expect(result.inheritedProviderArgs).toEqual(['--codex-passthrough', '--gemini-passthrough']);
+    const settings = JSON.parse(fs.readFileSync(result.settingsArgs[1], 'utf8'));
+    expect(settings.codex.forced_login_method).toBe('chatgpt');
+    expect(settings.gemini.auth_refresh).toBe('gcp');
+  });
+
+  it('coalesces workspace trust patches after inherited cross-provider args are patched', async () => {
+    const svc = new TeamProvisioningService();
+    const trustOverride = 'projects."/repo".trust_level="trusted"';
+    const inheritedProviderArgs = (svc as any).applyWorkspaceTrustArgPatches({
+      args: ['--settings', '{"codex":{"forced_login_method":"chatgpt"}}'],
+      patches: [
+        {
+          id: 'codex-trust',
+          owner: 'workspace-trust',
+          targetProvider: 'codex',
+          targetSurface: 'cross_provider_member_args',
+          dialect: 'claude-codex-runtime-settings',
+          args: buildCodexWorkspaceTrustSettingsArgs([trustOverride]),
+          dedupeKey: 'codex-trust',
+          sourceWorkspaceIds: ['workspace-1'],
+          reason: 'Codex native trust is carried through sibling runtime settings.',
+        },
+      ],
+      targetProvider: 'codex',
+      targetSurface: 'cross_provider_member_args',
+    });
+
+    const result = await (svc as any).buildTeamRuntimeLaunchArgsPlan({
+      teamName: 'anthropic-codex-workspace-trust-team',
+      providerId: 'anthropic',
+      launchIdentity: null,
+      envResolution: { providerArgs: [] },
+      extraArgs: [],
+      inheritedProviderArgs,
+      includeAnthropicHelper: false,
+      contextLabel: 'Team launch',
+    });
+
+    expect(result.inheritedProviderArgs).toEqual([]);
+    const settings = JSON.parse(fs.readFileSync(result.settingsArgs[1], 'utf8'));
+    expect(settings.codex).toMatchObject({
+      forced_login_method: 'chatgpt',
+      agent_teams_workspace_trust: {
+        config_overrides: [trustOverride],
+      },
+    });
+  });
+
+  it('rejects path-based settings when inherited mixed-provider settings must be coalesced', async () => {
+    const svc = new TeamProvisioningService();
+
+    await expect(
+      (svc as any).buildTeamRuntimeLaunchArgsPlan({
+        teamName: 'anthropic-codex-path-settings-team',
+        providerId: 'anthropic',
+        launchIdentity: null,
+        envResolution: { providerArgs: [] },
+        extraArgs: ['--settings', '/tmp/custom-settings.json'],
+        inheritedProviderArgs: ['--settings', '{"codex":{"forced_login_method":"chatgpt"}}'],
+        includeAnthropicHelper: false,
+        contextLabel: 'Team launch',
+      })
+    ).rejects.toThrow('mixed-provider launch cannot combine app-managed inherited settings');
+  });
+
+  it('rejects provider path-based settings when inherited mixed-provider settings must be coalesced', async () => {
+    const svc = new TeamProvisioningService();
+
+    await expect(
+      (svc as any).buildTeamRuntimeLaunchArgsPlan({
+        teamName: 'anthropic-codex-provider-path-settings-team',
+        providerId: 'anthropic',
+        launchIdentity: null,
+        envResolution: { providerArgs: ['--settings', '/tmp/provider-settings.json'] },
+        extraArgs: [],
+        inheritedProviderArgs: ['--settings', '{"codex":{"forced_login_method":"chatgpt"}}'],
+        includeAnthropicHelper: false,
+        contextLabel: 'Team launch',
+      })
+    ).rejects.toThrow('mixed-provider launch cannot combine app-managed inherited settings');
+  });
+
+  it('rejects inherited path-based settings alongside inherited mixed-provider JSON settings', async () => {
+    const svc = new TeamProvisioningService();
+
+    await expect(
+      (svc as any).buildTeamRuntimeLaunchArgsPlan({
+        teamName: 'anthropic-codex-inherited-path-settings-team',
+        providerId: 'anthropic',
+        launchIdentity: null,
+        envResolution: { providerArgs: [] },
+        extraArgs: [],
+        inheritedProviderArgs: [
+          '--settings',
+          '{"codex":{"forced_login_method":"chatgpt"}}',
+          '--settings',
+          '/tmp/inherited-custom-settings.json',
+        ],
+        includeAnthropicHelper: false,
+        contextLabel: 'Team launch',
+      })
+    ).rejects.toThrow('mixed-provider launch cannot combine app-managed inherited settings');
+  });
+
+  it('rejects dangling path-based settings when inherited mixed-provider settings must be coalesced', async () => {
+    const svc = new TeamProvisioningService();
+
+    await expect(
+      (svc as any).buildTeamRuntimeLaunchArgsPlan({
+        teamName: 'anthropic-codex-dangling-settings-team',
+        providerId: 'anthropic',
+        launchIdentity: null,
+        envResolution: { providerArgs: [] },
+        extraArgs: ['--settings'],
+        inheritedProviderArgs: ['--settings', '{"codex":{"forced_login_method":"chatgpt"}}'],
+        includeAnthropicHelper: false,
+        contextLabel: 'Team launch',
+      })
+    ).rejects.toThrow('mixed-provider launch cannot combine app-managed inherited settings');
+  });
+
+  it('rejects equals-style path settings when inherited mixed-provider settings must be coalesced', async () => {
+    const svc = new TeamProvisioningService();
+
+    await expect(
+      (svc as any).buildTeamRuntimeLaunchArgsPlan({
+        teamName: 'anthropic-codex-equals-path-settings-team',
+        providerId: 'anthropic',
+        launchIdentity: null,
+        envResolution: { providerArgs: ['--settings=/tmp/provider-settings.json'] },
+        extraArgs: [],
+        inheritedProviderArgs: ['--settings', '{"codex":{"forced_login_method":"chatgpt"}}'],
+        includeAnthropicHelper: false,
+        contextLabel: 'Team launch',
+      })
+    ).rejects.toThrow('mixed-provider launch cannot combine app-managed inherited settings');
+  });
+
+  it('rejects inherited path-based settings when Anthropic helper settings are app-managed', async () => {
+    const svc = new TeamProvisioningService();
+
+    await expect(
+      (svc as any).buildTeamRuntimeLaunchArgsPlan({
+        teamName: 'anthropic-helper-inherited-path-settings-team',
+        providerId: 'anthropic',
+        launchIdentity: null,
+        envResolution: {
+          providerArgs: [],
+          anthropicApiKeyHelper: {
+            directory: '/tmp/anthropic-helper',
+            helperPath: '/tmp/anthropic-helper/helper.sh',
+            keyPath: '/tmp/anthropic-helper/key',
+            settingsPath: '/tmp/anthropic-helper/settings.json',
+            settingsObject: { apiKeyHelper: "'/tmp/anthropic-helper/helper.sh'" },
+            settingsArgs: ['--settings', '/tmp/anthropic-helper/settings.json'],
+            envPatch: {},
+          },
+        },
+        extraArgs: [],
+        inheritedProviderArgs: ['--settings', '/tmp/custom-settings.json'],
+        includeAnthropicHelper: true,
+        contextLabel: 'Team launch',
+      })
+    ).rejects.toThrow('app-managed Anthropic API-key helper cannot be combined');
   });
 
   it('adds Codex turn-settled env when Codex is only a secondary member provider', async () => {

@@ -263,7 +263,8 @@ async function resolveCodexBinaryForAccountSnapshot(): Promise<string | null> {
   await resolveInteractiveShellEnvBestEffort({
     timeoutMs: CODEX_BINARY_COLD_RETRY_TIMEOUT_MS,
     fallbackEnv: process.env,
-    background: false,
+    background: true,
+    source: 'codex-account-binary-discovery',
   });
   CodexBinaryResolver.clearCache();
   return CodexBinaryResolver.resolve();
@@ -293,6 +294,7 @@ class CodexAccountFeatureFacadeImpl implements CodexAccountFeatureFacade {
 
   private snapshotCache: CodexAccountSnapshotDto | null = null;
   private snapshotObservedAt = 0;
+  private lastPublishedSnapshotUpdatedAtMs = 0;
   private refreshPromise: Promise<CodexAccountSnapshotDto> | null = null;
   private pendingRefreshOptions: CodexSnapshotRefreshOptions | null = null;
   private lastKnownAccount: CodexLastKnownAccount | null = null;
@@ -446,6 +448,7 @@ class CodexAccountFeatureFacadeImpl implements CodexAccountFeatureFacade {
     this.lastKnownAccount = null;
     this.lastKnownRateLimits = null;
     this.lastKnownRuntimeContext = null;
+    this.lastPublishedSnapshotUpdatedAtMs = 0;
     this.activeMutationCount = 0;
     if (this.mutationQueueRelease) {
       this.mutationQueueRelease();
@@ -519,7 +522,7 @@ class CodexAccountFeatureFacadeImpl implements CodexAccountFeatureFacade {
           runtimeContext: freshRuntimeContext,
           login,
           rateLimits: this.snapshotCache?.rateLimits ?? null,
-          updatedAt: new Date(now).toISOString(),
+          updatedAt: new Date().toISOString(),
         });
         return snapshot;
       }
@@ -539,7 +542,7 @@ class CodexAccountFeatureFacadeImpl implements CodexAccountFeatureFacade {
         localActiveChatgptAccountPresent,
         login,
         rateLimits: null,
-        updatedAt: new Date(now).toISOString(),
+        updatedAt: new Date().toISOString(),
       });
       return snapshot;
     }
@@ -699,20 +702,27 @@ class CodexAccountFeatureFacadeImpl implements CodexAccountFeatureFacade {
       runtimeContext,
       login,
       rateLimits,
-      updatedAt: new Date(now).toISOString(),
+      updatedAt: new Date().toISOString(),
     });
 
     return snapshot;
   }
 
   private setSnapshot(nextSnapshot: CodexAccountSnapshotDto): CodexAccountSnapshotDto {
+    const publishedAtMs = Math.max(Date.now(), this.lastPublishedSnapshotUpdatedAtMs + 1);
+    this.lastPublishedSnapshotUpdatedAtMs = publishedAtMs;
+    const publishedSnapshot = {
+      ...nextSnapshot,
+      updatedAt: new Date(publishedAtMs).toISOString(),
+    };
+
     if (this.disposed) {
-      return deepClone(nextSnapshot);
+      return deepClone(publishedSnapshot);
     }
 
-    this.snapshotCache = deepClone(nextSnapshot);
+    this.snapshotCache = deepClone(publishedSnapshot);
     this.snapshotObservedAt = Date.now();
-    const snapshot = deepClone(nextSnapshot);
+    const snapshot = deepClone(publishedSnapshot);
     this.presenter.publish(snapshot);
     for (const listener of this.listeners) {
       listener(snapshot);

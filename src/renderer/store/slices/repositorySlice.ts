@@ -5,6 +5,10 @@
 import { api } from '@renderer/api';
 import { createLogger } from '@shared/utils/logger';
 
+import {
+  captureContextScopedRequestEpoch,
+  isContextScopedRequestEpochCurrent,
+} from '../utils/contextScopedRequestEpoch';
 import { getSessionResetState } from '../utils/stateResetHelpers';
 
 import type { AppState } from '../types';
@@ -71,6 +75,8 @@ export const createRepositorySlice: StateCreator<AppState, [], [], RepositorySli
   fetchRepositoryGroups: async () => {
     // Guard: prevent concurrent fetches (component mount + centralized init chain)
     if (get().repositoryGroupsLoading) return;
+    const requestContextId = get().activeContextId;
+    const requestContextEpoch = captureContextScopedRequestEpoch();
     const startedAt = Date.now();
     set({ repositoryGroupsLoading: true, repositoryGroupsError: null });
     try {
@@ -79,6 +85,12 @@ export const createRepositorySlice: StateCreator<AppState, [], [], RepositorySli
         FETCH_REPOSITORY_GROUPS_TIMEOUT_MS,
         'get-repository-groups'
       );
+      if (
+        get().activeContextId !== requestContextId ||
+        !isContextScopedRequestEpochCurrent(requestContextEpoch)
+      ) {
+        return;
+      }
       // Already sorted by most recent session in the scanner
       set({
         repositoryGroups: groups,
@@ -90,6 +102,12 @@ export const createRepositorySlice: StateCreator<AppState, [], [], RepositorySli
         logger.warn(`fetchRepositoryGroups slow ms=${ms} count=${groups.length}`);
       }
     } catch (error) {
+      if (
+        get().activeContextId !== requestContextId ||
+        !isContextScopedRequestEpochCurrent(requestContextEpoch)
+      ) {
+        return;
+      }
       const ms = Date.now() - startedAt;
       logger.warn(
         `fetchRepositoryGroups failed ms=${ms}: ${error instanceof Error ? error.message : String(error)}`

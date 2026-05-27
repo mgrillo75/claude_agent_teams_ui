@@ -70,6 +70,10 @@ let providerRuntimeSettingsDialogProps: {
   open?: boolean;
   initialProviderId?: string;
 } | null = null;
+let terminalModalProps: {
+  onClose?: () => void;
+  onExit?: (exitCode: number) => void;
+} | null = null;
 const codexAccountHookState = {
   snapshot: null as CodexAccountSnapshotDto | null,
   loading: false,
@@ -160,7 +164,23 @@ vi.mock('@renderer/components/terminal/TerminalLogPanel', () => ({
 }));
 
 vi.mock('@renderer/components/terminal/TerminalModal', () => ({
-  TerminalModal: () => React.createElement('div', { 'data-testid': 'terminal-modal' }, 'terminal'),
+  TerminalModal: (props: { onClose?: () => void; onExit?: (exitCode: number) => void }) => {
+    terminalModalProps = props;
+    return React.createElement(
+      'div',
+      { 'data-testid': 'terminal-modal' },
+      React.createElement(
+        'button',
+        { 'data-testid': 'terminal-exit', onClick: () => props.onExit?.(0) },
+        'exit'
+      ),
+      React.createElement(
+        'button',
+        { 'data-testid': 'terminal-close', onClick: () => props.onClose?.() },
+        'close'
+      )
+    );
+  },
 }));
 
 vi.mock('@renderer/store', () => {
@@ -345,6 +365,7 @@ describe('CLI status visibility during completed install state', () => {
 
   beforeEach(() => {
     providerRuntimeSettingsDialogProps = null;
+    terminalModalProps = null;
     codexAccountHookState.snapshot = null;
     codexAccountHookState.loading = false;
     codexAccountHookState.rateLimitsLoading = false;
@@ -518,6 +539,50 @@ describe('CLI status visibility during completed install state', () => {
     });
   });
 
+  it('waits until the runtime login modal closes before refreshing auth status', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliStatus = createInstalledCliStatus({
+      authLoggedIn: false,
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(CliStatusBanner));
+      await flushLazyImports();
+    });
+
+    const loginButton = Array.from(host.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === 'Login'
+    );
+
+    await act(async () => {
+      loginButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await flushLazyImports();
+    });
+
+    expect(host.querySelector('[data-testid="terminal-modal"]')).not.toBeNull();
+    expect(terminalModalProps?.onExit).toBeUndefined();
+
+    storeState.invalidateCliStatus.mockClear();
+    storeState.bootstrapCliStatus.mockClear();
+
+    await act(async () => {
+      terminalModalProps?.onClose?.();
+      await flushLazyImports();
+    });
+
+    expect(storeState.invalidateCliStatus).toHaveBeenCalledTimes(1);
+    expect(storeState.bootstrapCliStatus).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      root.unmount();
+      await flushLazyImports();
+    });
+  });
+
   it('loads the installer terminal log only while installation is active', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     storeState.cliInstallerState = 'installing';
@@ -575,6 +640,151 @@ describe('CLI status visibility during completed install state', () => {
     expect(host.textContent).toContain('Checking providers...');
     expect(host.textContent).toContain('Checking...');
     expect(host.textContent).not.toContain('Providers: 0/3 connected');
+    expect(host.textContent).not.toContain('Models unavailable for this runtime build');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('renders Anthropic legacy fallback status as connected with model badges', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliInstallerState = 'idle';
+    storeState.cliStatus = createInstalledCliStatus({
+      flavor: 'agent_teams_orchestrator',
+      displayName: 'Multimodel runtime',
+      supportsSelfUpdate: false,
+      showVersionDetails: false,
+      showBinaryPath: false,
+      authLoggedIn: true,
+      authStatusChecking: false,
+      providers: [
+        {
+          providerId: 'anthropic',
+          displayName: 'Anthropic',
+          supported: true,
+          authenticated: true,
+          authMethod: 'claude.ai',
+          verificationState: 'verified',
+          statusMessage: null,
+          models: ['opus', 'opus[1m]'],
+          modelAvailability: [],
+          canLoginFromUi: true,
+          capabilities: {
+            teamLaunch: true,
+            oneShot: true,
+          },
+          backend: null,
+          modelCatalog: null,
+          modelCatalogRefreshState: 'idle',
+          runtimeCapabilities: null,
+        },
+      ],
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(CliStatusBanner));
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Anthropic');
+    expect(host.textContent).toContain('Connected via');
+    expect(host.textContent).toContain('Opus');
+    expect(host.textContent).not.toContain('Provider status unavailable');
+    expect(host.textContent).not.toContain('Models unavailable for this runtime build');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('renders OpenCode inventory fallback with model badges instead of unavailable text', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliInstallerState = 'idle';
+    storeState.openCodeRuntimeStatus = {
+      installed: true,
+      source: 'path',
+      state: 'ready',
+    };
+    storeState.cliStatus = createInstalledCliStatus({
+      flavor: 'agent_teams_orchestrator',
+      displayName: 'Multimodel runtime',
+      supportsSelfUpdate: false,
+      showVersionDetails: false,
+      showBinaryPath: false,
+      authLoggedIn: true,
+      authStatusChecking: false,
+      providers: [
+        {
+          providerId: 'anthropic',
+          displayName: 'Anthropic',
+          supported: true,
+          authenticated: true,
+          authMethod: 'api_key',
+          verificationState: 'verified',
+          statusMessage: null,
+          models: ['claude-haiku-4-5'],
+          modelAvailability: [],
+          canLoginFromUi: true,
+          capabilities: {
+            teamLaunch: true,
+            oneShot: true,
+          },
+          backend: null,
+          modelCatalog: null,
+          modelCatalogRefreshState: 'idle',
+          runtimeCapabilities: null,
+        },
+        createCodexNativeRolloutProvider({
+          state: 'ready',
+          statusMessage: 'ChatGPT account ready',
+          models: ['gpt-5.4'],
+        }),
+        {
+          providerId: 'opencode',
+          displayName: 'OpenCode (200+ models)',
+          supported: false,
+          authenticated: false,
+          authMethod: null,
+          verificationState: 'unknown',
+          statusMessage: null,
+          models: ['opencode/big-pickle'],
+          modelAvailability: [],
+          canLoginFromUi: false,
+          capabilities: {
+            teamLaunch: false,
+            oneShot: false,
+          },
+          backend: null,
+          availableBackends: [],
+          modelCatalog: null,
+          modelCatalogRefreshState: 'idle',
+          runtimeCapabilities: null,
+        },
+      ],
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(CliStatusBanner));
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('OpenCode');
+    expect(host.textContent).toContain('Providers: 3/3 connected');
+    expect(host.textContent).toContain('Models available');
+    expect(host.textContent).toContain('big-pickle');
+    expect(host.textContent).not.toContain('Checking...');
+    expect(host.textContent).not.toContain('Provider status unavailable');
     expect(host.textContent).not.toContain('Models unavailable for this runtime build');
 
     await act(async () => {
@@ -752,8 +962,7 @@ describe('CLI status visibility during completed install state', () => {
           state: 'runtime-missing',
           available: false,
           selectable: false,
-          statusMessage:
-            'Codex CLI not found. Install Codex to use native account management.',
+          statusMessage: 'Codex CLI not found. Install Codex to use native account management.',
           detailMessage: 'Codex native runtime is missing.',
           models: [],
         }),
@@ -1424,6 +1633,80 @@ describe('CLI status visibility during completed install state', () => {
     await act(async () => {
       root.unmount();
       await Promise.resolve();
+    });
+  });
+
+  it('waits until the provider login modal closes before refreshing provider auth status', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliInstallerState = 'idle';
+    storeState.cliStatus = createInstalledCliStatus({
+      flavor: 'agent_teams_orchestrator',
+      authLoggedIn: false,
+      providers: [
+        {
+          providerId: 'anthropic',
+          displayName: 'Anthropic',
+          supported: true,
+          authenticated: false,
+          authMethod: null,
+          verificationState: 'verified',
+          statusMessage: 'Not connected',
+          models: [],
+          canLoginFromUi: true,
+          capabilities: {
+            teamLaunch: true,
+            oneShot: true,
+          },
+          connection: {
+            supportsOAuth: true,
+            supportsApiKey: true,
+            configurableAuthModes: ['auto', 'oauth', 'api_key'],
+            configuredAuthMode: 'auto',
+            apiKeyConfigured: false,
+            apiKeySource: null,
+            apiKeySourceLabel: null,
+          },
+          backend: null,
+        },
+      ],
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(CliStatusBanner));
+      await flushLazyImports();
+    });
+
+    const connectButton = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Connect Anthropic')
+    );
+    expect(connectButton).not.toBeUndefined();
+
+    await act(async () => {
+      connectButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await flushLazyImports();
+    });
+
+    expect(host.querySelector('[data-testid="terminal-modal"]')).not.toBeNull();
+    expect(terminalModalProps?.onExit).toBeUndefined();
+
+    storeState.invalidateCliStatus.mockClear();
+    storeState.bootstrapCliStatus.mockClear();
+
+    await act(async () => {
+      terminalModalProps?.onClose?.();
+      await flushLazyImports();
+    });
+
+    expect(storeState.invalidateCliStatus).toHaveBeenCalledTimes(1);
+    expect(storeState.bootstrapCliStatus).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      root.unmount();
+      await flushLazyImports();
     });
   });
 

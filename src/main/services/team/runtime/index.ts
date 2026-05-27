@@ -14,6 +14,8 @@ export type {
   TeamRuntimeMemberStopEvidence,
   TeamRuntimePendingApproval,
   TeamRuntimePendingPermission,
+  TeamRuntimePermissionListInput,
+  TeamRuntimePermissionListResult,
   TeamRuntimePrepareFailure,
   TeamRuntimePrepareResult,
   TeamRuntimePrepareSuccess,

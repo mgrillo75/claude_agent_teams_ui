@@ -5,6 +5,8 @@ import type {
   OpenCodeBridgeRuntimeSnapshot,
   OpenCodeLaunchTeamCommandBody,
   OpenCodeLaunchTeamCommandData,
+  OpenCodeListRuntimePermissionsCommandBody,
+  OpenCodeListRuntimePermissionsCommandData,
   OpenCodeObserveMessageDeliveryCommandBody,
   OpenCodeObserveMessageDeliveryCommandData,
   OpenCodeReconcileTeamCommandBody,
@@ -24,6 +26,8 @@ import type {
   TeamRuntimeMemberStopEvidence,
   TeamRuntimePendingPermission,
   TeamRuntimePermissionAnswerInput,
+  TeamRuntimePermissionListInput,
+  TeamRuntimePermissionListResult,
   TeamRuntimePrepareResult,
   TeamRuntimeReconcileInput,
   TeamRuntimeReconcileResult,
@@ -59,6 +63,9 @@ export interface OpenCodeTeamRuntimeBridgePort {
   answerOpenCodeRuntimePermission?(
     input: OpenCodeAnswerPermissionCommandBody
   ): Promise<OpenCodeLaunchTeamCommandData>;
+  listOpenCodeRuntimePermissions?(
+    input: OpenCodeListRuntimePermissionsCommandBody
+  ): Promise<OpenCodeListRuntimePermissionsCommandData>;
 }
 
 export interface OpenCodeTeamRuntimeMessageInput {
@@ -597,6 +604,30 @@ export class OpenCodeTeamRuntimeAdapter implements TeamLaunchRuntimeAdapter {
       data,
       []
     );
+  }
+
+  async listRuntimePermissions(
+    input: TeamRuntimePermissionListInput
+  ): Promise<TeamRuntimePermissionListResult> {
+    if (!this.bridge.listOpenCodeRuntimePermissions) {
+      return {
+        permissions: [],
+        diagnostics: ['OpenCode runtime permission list bridge is not registered.'],
+      };
+    }
+
+    const data = await this.bridge.listOpenCodeRuntimePermissions({
+      teamId: input.teamName,
+      teamName: input.teamName,
+      laneId: input.laneId,
+      memberName: input.memberName,
+      sessionId: input.sessionId,
+      projectPath: input.cwd,
+    });
+    return {
+      permissions: normalizeOpenCodeRuntimePendingPermissions(data.permissions) ?? [],
+      diagnostics: data.diagnostics ?? [],
+    };
   }
 
   async stop(input: TeamRuntimeStopInput): Promise<TeamRuntimeStopResult> {

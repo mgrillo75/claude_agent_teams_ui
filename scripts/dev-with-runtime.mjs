@@ -4,10 +4,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
-import { spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
+
+import { spawnSyncWithWindowsShell } from './lib/windows-shell-spawn.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const uiRepoRoot = path.resolve(scriptDir, '..');
@@ -22,26 +23,10 @@ const scriptArgs = process.argv.slice(2);
 const shouldPrintRuntimePath = scriptArgs.includes('--print-runtime-path');
 const electronViteArgs = scriptArgs.filter((arg) => arg !== '--print-runtime-path' && arg !== '--');
 const runtimeDisplayName = 'teams orchestrator';
-const WINDOWS_SHELL_COMMANDS = new Set(['pnpm', 'npm', 'npx', 'yarn', 'yarnpkg', 'corepack']);
-
-function shouldUseWindowsShell(cmd) {
-  if (process.platform !== 'win32') {
-    return false;
-  }
-
-  const extension = path.extname(cmd).toLowerCase();
-  if (extension === '.cmd' || extension === '.bat') {
-    return true;
-  }
-
-  const commandName = path.basename(cmd).toLowerCase();
-  return WINDOWS_SHELL_COMMANDS.has(commandName);
-}
 
 function runOrExit(cmd, args, options = {}) {
-  const result = spawnSync(cmd, args, {
+  const result = spawnSyncWithWindowsShell(cmd, args, {
     stdio: 'inherit',
-    shell: shouldUseWindowsShell(cmd),
     ...options,
   });
 
@@ -56,9 +41,8 @@ function runOrExit(cmd, args, options = {}) {
 }
 
 function runAndCapture(cmd, args, options = {}) {
-  const result = spawnSync(cmd, args, {
+  const result = spawnSyncWithWindowsShell(cmd, args, {
     encoding: 'utf8',
-    shell: shouldUseWindowsShell(cmd),
     ...options,
   });
 
@@ -539,6 +523,7 @@ async function main() {
 
   const uiEnv = {
     ...process.env,
+    UV_THREADPOOL_SIZE: process.env.UV_THREADPOOL_SIZE?.trim() || '16',
     CLAUDE_AGENT_TEAMS_ORCHESTRATOR_CLI_PATH: resolvedRuntime.binaryPath,
   };
   delete uiEnv.CLAUDE_CLI_PATH;

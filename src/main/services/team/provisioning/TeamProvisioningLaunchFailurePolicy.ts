@@ -1,5 +1,16 @@
+import {
+  isProvisionedButNotAliveFailureReason,
+  stripProcessTableUnavailableDiagnosticSuffix,
+} from '@shared/utils/teamLaunchFailureReason';
+
 import { mentionsProcessTableUnavailable } from './TeamProvisioningLaunchDiagnostics';
 import { isBootstrapInstructionPrompt } from './TeamProvisioningPromptBuilders';
+
+export {
+  isCliProvisionedButNotAliveFailureReason,
+  isProvisionedButNotAliveFailureReason,
+  stripProcessTableUnavailableDiagnosticSuffix,
+} from '@shared/utils/teamLaunchFailureReason';
 
 import type { MemberLaunchState } from '@shared/types';
 
@@ -35,12 +46,6 @@ export function isProcessTableUnavailableFailureReason(reason?: string): boolean
     /^process table (?:is )?unavailable$/i.test(text) ||
     /^runtime pid could not be verified because process table (?:is )?unavailable$/i.test(text)
   );
-}
-
-export function stripProcessTableUnavailableDiagnosticSuffix(reason: string): string | null {
-  const match = /^(.*?);\s*process table (?:is )?unavailable$/i.exec(reason.trim());
-  const baseReason = match?.[1]?.trim();
-  return baseReason && baseReason.length > 0 ? baseReason : null;
 }
 
 function isBaseAutoClearableLaunchFailureReason(reason?: string): boolean {

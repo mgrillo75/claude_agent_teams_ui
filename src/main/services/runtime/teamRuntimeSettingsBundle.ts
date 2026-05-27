@@ -48,6 +48,7 @@ export function splitSettingsJsonArgs(args: string[]): SplitSettingsJsonArgsResu
       const parsed = parseJsonSettingsObject(value);
       if (parsed) {
         settingsFragments.push(parsed);
+        index += 1;
         continue;
       }
     }

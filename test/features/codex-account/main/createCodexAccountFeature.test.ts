@@ -370,9 +370,23 @@ describe('createCodexAccountFeature', () => {
   });
 
   it('retries Codex binary discovery after cold shell env resolves before publishing runtime-missing', async () => {
-    binaryResolveMock.mockResolvedValueOnce(null).mockResolvedValue('/usr/local/bin/codex');
-    resolveInteractiveShellEnvBestEffortMock.mockResolvedValue({
-      PATH: '/usr/local/bin:/usr/bin:/bin',
+    getCachedShellEnvMock.mockReturnValue(null);
+    binaryResolveMock.mockImplementation(async () =>
+      getCachedShellEnvMock()?.PATH?.includes('/custom/bin') ? '/custom/bin/codex' : null
+    );
+    resolveInteractiveShellEnvBestEffortMock.mockImplementation(async (options?: {
+      background?: boolean;
+      fallbackEnv?: NodeJS.ProcessEnv;
+    }) => {
+      if (options?.background === false) {
+        return options.fallbackEnv ?? {};
+      }
+
+      const shellEnv = {
+        PATH: '/custom/bin:/usr/bin:/bin',
+      };
+      getCachedShellEnvMock.mockReturnValue(shellEnv);
+      return shellEnv;
     });
     readAccountMock.mockResolvedValue({
       account: createAccountResponse(),
@@ -395,6 +409,8 @@ describe('createCodexAccountFeature', () => {
         expect.objectContaining({
           timeoutMs: 12_000,
           fallbackEnv: process.env,
+          background: true,
+          source: 'codex-account-binary-discovery',
         })
       );
       expect(binaryClearCacheMock).toHaveBeenCalledTimes(1);
@@ -403,6 +419,99 @@ describe('createCodexAccountFeature', () => {
       expect(snapshot.launchReadinessState).toBe('ready_chatgpt');
       expect(snapshot.launchIssueMessage).toBeNull();
     } finally {
+      await feature.dispose();
+    }
+  });
+
+  it('timestamps snapshots at publication time after a slow account read', async () => {
+    vi.useFakeTimers({
+      toFake: ['Date'],
+    });
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+    const accountReadDeferred = createDeferred<void>();
+    readAccountMock.mockImplementation(async () => {
+      await accountReadDeferred.promise;
+      return {
+        account: createAccountResponse(),
+        initialize: {
+          codexHome: '/Users/test/.codex',
+          platformFamily: 'unix',
+          platformOs: 'macos',
+        },
+      };
+    });
+
+    const feature = createCodexAccountFeature({
+      logger: createLoggerPort(),
+      configManager: createConfigManager('chatgpt'),
+    });
+
+    try {
+      const snapshotPromise = feature.refreshSnapshot();
+      await vi.waitFor(() => {
+        expect(readAccountMock).toHaveBeenCalledTimes(1);
+      });
+
+      vi.setSystemTime(new Date('2026-01-01T00:00:05.000Z'));
+      accountReadDeferred.resolve();
+
+      const snapshot = await snapshotPromise;
+
+      expect(snapshot.updatedAt).toBe('2026-01-01T00:00:05.000Z');
+      expect(snapshot.appServerState).toBe('healthy');
+    } finally {
+      vi.useRealTimers();
+      await feature.dispose();
+    }
+  });
+
+  it('publishes strictly increasing snapshot timestamps within the same millisecond', async () => {
+    vi.useFakeTimers({
+      toFake: ['Date'],
+    });
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+    readAccountMock.mockResolvedValue({
+      account: createAccountResponse(),
+      initialize: {
+        codexHome: '/Users/test/.codex',
+        platformFamily: 'unix',
+        platformOs: 'macos',
+      },
+    });
+
+    const feature = createCodexAccountFeature({
+      logger: createLoggerPort(),
+      configManager: createConfigManager('chatgpt'),
+    });
+    const publishedSnapshots: CodexAccountSnapshotDto[] = [];
+    const unsubscribe = feature.subscribe((snapshot) => {
+      publishedSnapshots.push(snapshot);
+    });
+
+    try {
+      await feature.refreshSnapshot();
+      emitLoginState({
+        status: 'pending',
+        error: null,
+        startedAt: '2026-01-01T00:00:00.000Z',
+        authUrl: 'https://chatgpt.com/auth',
+      });
+      emitLoginState({
+        status: 'cancelled',
+        error: null,
+        startedAt: null,
+        authUrl: null,
+      });
+
+      expect(publishedSnapshots.map((snapshot) => Date.parse(snapshot.updatedAt))).toEqual([
+        1_767_225_600_000,
+        1_767_225_600_001,
+        1_767_225_600_002,
+      ]);
+      expect(publishedSnapshots.at(-1)?.login.status).toBe('cancelled');
+    } finally {
+      unsubscribe();
+      vi.useRealTimers();
       await feature.dispose();
     }
   });

@@ -7,7 +7,8 @@
 
 import { api } from '@renderer/api';
 
-import { getFullResetState } from '../utils/stateResetHelpers';
+import { invalidateContextScopedRequestEpoch } from '../utils/contextScopedRequestEpoch';
+import { getContextScopedTeamResetState, getFullResetState } from '../utils/stateResetHelpers';
 
 import type { AppState } from '../types';
 import type {
@@ -71,6 +72,9 @@ export const createConnectionSlice: StateCreator<AppState, [], [], ConnectionSli
 
     try {
       const status = await api.ssh.connect(config);
+      if (status.state === 'connected') {
+        invalidateContextScopedRequestEpoch();
+      }
       set({
         connectionMode: status.state === 'connected' ? 'ssh' : 'local',
         connectionState: status.state,
@@ -81,7 +85,13 @@ export const createConnectionSlice: StateCreator<AppState, [], [], ConnectionSli
           ? {
               activeContextId: `ssh-${config.host}`,
               projects: [],
+              projectsLoading: false,
+              projectsInitialized: false,
+              projectsError: null,
               repositoryGroups: [],
+              repositoryGroupsLoading: false,
+              repositoryGroupsInitialized: false,
+              repositoryGroupsError: null,
               openTabs: [],
               activeTabId: null,
               selectedTabIds: [],
@@ -98,6 +108,9 @@ export const createConnectionSlice: StateCreator<AppState, [], [], ConnectionSli
                 focusedPaneId: 'pane-default',
               },
               ...getFullResetState(),
+              ...getContextScopedTeamResetState(),
+              isContextSwitching: false,
+              targetContextId: null,
             }
           : {}),
       });
@@ -107,6 +120,8 @@ export const createConnectionSlice: StateCreator<AppState, [], [], ConnectionSli
         const state = get();
         void state.fetchProjects();
         void state.fetchRepositoryGroups();
+        void state.fetchTeams();
+        void state.fetchAllTasks();
 
         // Save connection config (without password) for form pre-fill on next launch
         const saved: SshLastConnection = {
@@ -131,6 +146,7 @@ export const createConnectionSlice: StateCreator<AppState, [], [], ConnectionSli
   disconnectSsh: async (): Promise<void> => {
     try {
       const status = await api.ssh.disconnect();
+      invalidateContextScopedRequestEpoch();
       set({
         connectionMode: 'local',
         connectionState: status.state,
@@ -139,7 +155,13 @@ export const createConnectionSlice: StateCreator<AppState, [], [], ConnectionSli
         activeContextId: 'local',
         // Clear all stale SSH data including tabs so dashboard shows fresh local data
         projects: [],
+        projectsLoading: false,
+        projectsInitialized: false,
+        projectsError: null,
         repositoryGroups: [],
+        repositoryGroupsLoading: false,
+        repositoryGroupsInitialized: false,
+        repositoryGroupsError: null,
         openTabs: [],
         activeTabId: null,
         selectedTabIds: [],
@@ -156,12 +178,17 @@ export const createConnectionSlice: StateCreator<AppState, [], [], ConnectionSli
           focusedPaneId: 'pane-default',
         },
         ...getFullResetState(),
+        ...getContextScopedTeamResetState(),
+        isContextSwitching: false,
+        targetContextId: null,
       });
 
       // Re-fetch local data
       const state = get();
       void state.fetchProjects();
       void state.fetchRepositoryGroups();
+      void state.fetchTeams();
+      void state.fetchAllTasks();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       set({ connectionError: message });

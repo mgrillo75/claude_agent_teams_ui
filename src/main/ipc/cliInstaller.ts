@@ -38,6 +38,7 @@ const logger = createLogger('IPC:cliInstaller');
 let service: CliInstallerService;
 const statusInFlight = new Map<CliInstallerProviderStatusMode, Promise<CliInstallationStatus>>();
 const providerStatusInFlight = new Map<CliProviderId, Promise<CliProviderStatus | null>>();
+let providerRuntimeRequestTail: Promise<void> = Promise.resolve();
 const cachedStatus = new Map<
   CliInstallerProviderStatusMode,
   { value: CliInstallationStatus; at: number }
@@ -110,11 +111,21 @@ function canUseStatusForCacheKey(
   );
 }
 
+function runProviderRuntimeRequest<T>(operation: () => Promise<T>): Promise<T> {
+  const request = providerRuntimeRequestTail.then(operation, operation);
+  providerRuntimeRequestTail = request.then(
+    () => undefined,
+    () => undefined
+  );
+  return request;
+}
+
 /**
  * Initializes CLI installer handlers with the service instance.
  */
 export function initializeCliInstallerHandlers(installerService: CliInstallerService): void {
   service = installerService;
+  providerRuntimeRequestTail = Promise.resolve();
 }
 
 /**
@@ -255,8 +266,7 @@ async function handleGetProviderStatus(
     }
 
     const generation = statusCacheGeneration;
-    const request = service
-      .getProviderStatus(providerId)
+    const request = runProviderRuntimeRequest(() => service.getProviderStatus(providerId))
       .then((status) => {
         if (generation === statusCacheGeneration) {
           patchCachedProviderStatus(status);
@@ -296,7 +306,7 @@ async function handleVerifyProviderModels(
 ): Promise<IpcResult<CliProviderStatus | null>> {
   try {
     const generation = statusCacheGeneration;
-    const status = await service.verifyProviderModels(providerId);
+    const status = await runProviderRuntimeRequest(() => service.verifyProviderModels(providerId));
     if (generation === statusCacheGeneration) {
       patchCachedProviderStatus(status);
     }

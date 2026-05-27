@@ -2,8 +2,9 @@
 
 import path from 'node:path';
 import process from 'node:process';
-import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+
+import { spawnWithWindowsShell } from './lib/windows-shell-spawn.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, '..');
@@ -13,22 +14,11 @@ const corsOrigin =
   process.env.CORS_ORIGIN?.trim() ||
   `http://127.0.0.1:${webPort},http://localhost:${webPort}`;
 
-const WINDOWS_SHELL_COMMANDS = new Set(['pnpm', 'npm', 'npx', 'yarn', 'yarnpkg', 'corepack']);
-
-function shouldUseWindowsShell(cmd) {
-  if (process.platform !== 'win32') {
-    return false;
-  }
-
-  return WINDOWS_SHELL_COMMANDS.has(path.basename(cmd).toLowerCase());
-}
-
 function spawnProcess(cmd, args, env) {
-  return spawn(cmd, args, {
+  return spawnWithWindowsShell(cmd, args, {
     cwd: repoRoot,
     env: { ...process.env, ...env },
     stdio: 'inherit',
-    shell: shouldUseWindowsShell(cmd),
   });
 }
 

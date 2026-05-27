@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +9,7 @@ import {
   exitForSkippedPreflight,
   preflightOpenCodeLiveEnvironment,
 } from './lib/opencode-live-preflight.mjs';
+import { spawnSyncWithWindowsShell } from './lib/windows-shell-spawn.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, '..');
@@ -40,7 +40,7 @@ console.log(`Multi-lane: ${env.OPENCODE_E2E_MIXED_RECOVERY_MULTI === '1' ? 'enab
 const preflight = await preflightOpenCodeLiveEnvironment({ repoRoot });
 exitForSkippedPreflight(preflight);
 
-const result = spawnSync(
+const result = spawnSyncWithWindowsShell(
   'pnpm',
   [
     'exec',
@@ -56,7 +56,6 @@ const result = spawnSync(
     cwd: repoRoot,
     env,
     stdio: 'inherit',
-    shell: process.platform === 'win32',
   }
 );
 

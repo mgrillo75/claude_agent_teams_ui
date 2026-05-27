@@ -257,7 +257,13 @@ export class OpenCodeReadinessBridge implements OpenCodeTeamRuntimeBridgePort {
     if (result.ok) {
       return result.data;
     }
-    return { permissions: [] };
+    return {
+      permissions: [],
+      diagnostics: [
+        `OpenCode runtime permission list bridge failed: ${result.error.kind}: ${result.error.message}`,
+        ...result.diagnostics.map(formatDiagnosticEvent),
+      ],
+    };
   }
 
   async cleanupOpenCodeHosts(

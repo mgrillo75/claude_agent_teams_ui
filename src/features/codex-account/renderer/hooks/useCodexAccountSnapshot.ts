@@ -42,6 +42,11 @@ function getRefreshIntervalMs(options: {
     : CODEX_VISIBLE_STANDARD_REFRESH_MS;
 }
 
+function getSnapshotUpdatedAtMs(snapshot: CodexAccountSnapshotDto): number | null {
+  const updatedAtMs = Date.parse(snapshot.updatedAt);
+  return Number.isFinite(updatedAtMs) ? updatedAtMs : null;
+}
+
 export function useCodexAccountSnapshot(options: {
   enabled: boolean;
   includeRateLimits?: boolean;
@@ -68,6 +73,7 @@ export function useCodexAccountSnapshot(options: {
   const [error, setError] = useState<string | null>(null);
   const [visible, setVisible] = useState(() => isDocumentVisible());
   const lastUpdatedAtRef = useRef<number | null>(null);
+  const snapshotUpdatedAtRef = useRef<number | null>(null);
   const initialRefreshDelayMs = options.initialRefreshDelayMs ?? 0;
   const initialRefreshMaxDelayMs = options.initialRefreshMaxDelayMs;
   const [initialRefreshAttempted, setInitialRefreshAttempted] = useState(
@@ -75,6 +81,16 @@ export function useCodexAccountSnapshot(options: {
   );
 
   const applySnapshot = useCallback((nextSnapshot: CodexAccountSnapshotDto) => {
+    const nextUpdatedAtMs = getSnapshotUpdatedAtMs(nextSnapshot);
+    if (
+      nextUpdatedAtMs !== null &&
+      snapshotUpdatedAtRef.current !== null &&
+      nextUpdatedAtMs < snapshotUpdatedAtRef.current
+    ) {
+      return;
+    }
+
+    snapshotUpdatedAtRef.current = nextUpdatedAtMs ?? Date.now();
     lastUpdatedAtRef.current = Date.now();
     setSnapshot(nextSnapshot);
     setError(null);

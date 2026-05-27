@@ -26,7 +26,10 @@ import {
   type TeamRuntimeLaunchResult,
   type TeamRuntimeMemberLaunchEvidence,
   type TeamRuntimeMemberSpec,
+  type TeamRuntimePendingPermission,
   type TeamRuntimePermissionAnswerInput,
+  type TeamRuntimePermissionListInput,
+  type TeamRuntimePermissionListResult,
   type TeamRuntimePrepareResult,
   type TeamRuntimeReconcileInput,
   type TeamRuntimeReconcileResult,
@@ -10368,6 +10371,222 @@ describe('Team agent launch matrix safe e2e', () => {
     expect(adapter.messageInputs[0]?.runId).not.toBe(staleRun.runId);
   });
 
+  it('surfaces mixed OpenCode side-lane delivery permission blocks through shared approvals', async () => {
+    const teamName = 'mixed-opencode-delivery-permission-approval-safe-e2e';
+    await writeMixedTeamConfig({
+      teamName,
+      projectPath,
+      includeGeminiPrimary: true,
+      primaryProviderId: 'anthropic',
+    });
+    await writeTeamMeta(teamName, projectPath, { primaryProviderId: 'anthropic' });
+    await writeMembersMeta(teamName, {
+      includeGeminiPrimary: true,
+      primaryProviderId: 'anthropic',
+    });
+    const adapter = new PermissionBlockedOpenCodeRuntimeAdapter();
+    adapter.setRuntimePermissions('secondary:opencode:bob', [
+      {
+        providerId: 'opencode',
+        requestId: 'perm-bob-delivery',
+        sessionId: 'session-bob',
+        tool: 'bash',
+        title: 'Run pnpm test',
+        kind: 'tool',
+        raw: { patterns: ['pnpm test'] },
+      },
+    ]);
+    const svc = new TeamProvisioningService();
+    svc.setRuntimeAdapterRegistry(new TeamRuntimeAdapterRegistry([adapter]));
+    const approvalEvents: ToolApprovalEvent[] = [];
+    svc.setToolApprovalEventEmitter((event) => approvalEvents.push(event));
+    const run = createMixedLiveRun({ teamName, projectPath, primaryProviderId: 'anthropic' });
+    addGeminiPrimaryToMixedRun(run);
+    run.runId = `run-${teamName}-current`;
+    await markMixedOpenCodeLaneConfirmedForTest(run, 'bob');
+    trackLiveRun(svc, run);
+
+    await expect(
+      svc.deliverOpenCodeMemberMessage(teamName, {
+        memberName: 'bob',
+        text: 'trigger a side-lane permission-blocked delivery',
+        messageId: 'msg-mixed-opencode-permission-blocked',
+      })
+    ).resolves.toMatchObject({
+      delivered: false,
+      responseState: 'permission_blocked',
+    });
+
+    expect(adapter.permissionListInputs).toEqual([
+      {
+        teamName,
+        laneId: 'secondary:opencode:bob',
+        cwd: projectPath,
+        memberName: 'bob',
+        sessionId: 'session-bob',
+      },
+    ]);
+    const approval = approvalEvents.find(
+      (event): event is ToolApprovalRequest =>
+        !('dismissed' in event) && !('autoResolved' in event)
+    );
+    expect(approval).toMatchObject({
+      requestId: `opencode:${run.runId}:perm-bob-delivery`,
+      runId: run.runId,
+      teamName,
+      providerId: 'opencode',
+      source: 'bob',
+      toolName: 'Bash',
+      toolInput: {
+        provider: 'opencode',
+        providerRequestId: 'perm-bob-delivery',
+        command: 'pnpm test',
+      },
+      runtimePermission: {
+        providerId: 'opencode',
+        laneId: 'secondary:opencode:bob',
+        memberName: 'bob',
+        providerRequestId: 'perm-bob-delivery',
+      },
+    });
+    expect(run.memberSpawnStatuses.get('bob')).toMatchObject({
+      pendingPermissionRequestIds: ['perm-bob-delivery'],
+      runtimeDiagnostic: 'OpenCode runtime is waiting for permission approval',
+    });
+    await waitForCondition(async () => {
+      let persisted: { members?: Record<string, { pendingPermissionRequestIds?: string[] }> };
+      try {
+        persisted = JSON.parse(
+          await fs.readFile(path.join(getTeamsBasePath(), teamName, 'launch-state.json'), 'utf8')
+        ) as typeof persisted;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          return false;
+        }
+        throw error;
+      }
+      return persisted.members?.bob?.pendingPermissionRequestIds?.includes('perm-bob-delivery') === true;
+    });
+  });
+
+  it('persists mixed OpenCode permissions to the matching lane member when persisted keys diverge', async () => {
+    const teamName = 'mixed-opencode-delivery-permission-lane-key-safe-e2e';
+    await writeMixedTeamConfig({
+      teamName,
+      projectPath,
+      includeGeminiPrimary: true,
+      primaryProviderId: 'anthropic',
+    });
+    await writeTeamMeta(teamName, projectPath, { primaryProviderId: 'anthropic' });
+    await writeMembersMeta(teamName, {
+      includeGeminiPrimary: true,
+      primaryProviderId: 'anthropic',
+    });
+    const adapter = new PermissionBlockedOpenCodeRuntimeAdapter();
+    adapter.setRuntimePermissions('secondary:opencode:bob', [
+      {
+        providerId: 'opencode',
+        requestId: 'perm-bob-lane-key',
+        sessionId: 'session-bob',
+        tool: 'bash',
+        title: 'Run git status',
+        kind: 'tool',
+        raw: { patterns: ['git status'] },
+      },
+    ]);
+    const svc = new TeamProvisioningService();
+    svc.setRuntimeAdapterRegistry(new TeamRuntimeAdapterRegistry([adapter]));
+    const approvalEvents: ToolApprovalEvent[] = [];
+    svc.setToolApprovalEventEmitter((event) => approvalEvents.push(event));
+    const run = createMixedLiveRun({ teamName, projectPath, primaryProviderId: 'anthropic' });
+    addGeminiPrimaryToMixedRun(run);
+    run.runId = `run-${teamName}-current`;
+    run.isLaunch = false;
+    await markMixedOpenCodeLaneConfirmedForTest(run, 'bob');
+    trackLiveRun(svc, run);
+
+    const teamDir = path.join(getTeamsBasePath(), teamName);
+    await fs.mkdir(teamDir, { recursive: true });
+    await fs.writeFile(
+      path.join(teamDir, 'launch-state.json'),
+      `${JSON.stringify(
+        createPersistedLaunchSnapshot({
+          teamName,
+          expectedMembers: ['alice', 'reviewer', 'bob'],
+          leadSessionId: 'lead-session',
+          launchPhase: 'active',
+          members: {
+            bob: {
+              name: 'bob',
+              providerId: 'opencode',
+              model: 'opencode/old-primary',
+              laneId: 'primary',
+              laneKind: 'primary',
+              laneOwnerProviderId: 'anthropic',
+              launchState: 'confirmed_alive',
+              agentToolAccepted: true,
+              runtimeAlive: true,
+              bootstrapConfirmed: true,
+              hardFailure: false,
+              runtimeRunId: run.runId,
+              runtimeSessionId: 'session-primary-bob',
+              lastEvaluatedAt: '2026-04-23T10:00:00.000Z',
+            },
+            'secondary:opencode:bob': {
+              name: 'bob',
+              providerId: 'opencode',
+              model: 'opencode/minimax-m2.5-free',
+              laneId: 'secondary:opencode:bob',
+              laneKind: 'secondary',
+              laneOwnerProviderId: 'opencode',
+              launchState: 'confirmed_alive',
+              agentToolAccepted: true,
+              runtimeAlive: true,
+              bootstrapConfirmed: true,
+              hardFailure: false,
+              runtimeRunId: run.runId,
+              runtimeSessionId: 'session-bob',
+              livenessKind: 'confirmed_bootstrap',
+              lastEvaluatedAt: '2026-04-23T10:00:00.000Z',
+            },
+          },
+        })
+      )}\n`,
+      'utf8'
+    );
+
+    await expect(
+      svc.deliverOpenCodeMemberMessage(teamName, {
+        memberName: 'bob',
+        text: 'trigger a side-lane permission-blocked delivery with lane-keyed state',
+        messageId: 'msg-mixed-opencode-permission-lane-key',
+      })
+    ).resolves.toMatchObject({
+      delivered: false,
+      responseState: 'permission_blocked',
+    });
+
+    const approvals = approvalEvents.filter(
+      (event): event is ToolApprovalRequest =>
+        !('dismissed' in event) && !('autoResolved' in event)
+    );
+    expect(approvals).toEqual([
+      expect.objectContaining({
+        requestId: `opencode:${run.runId}:perm-bob-lane-key`,
+        source: 'bob',
+      }),
+    ]);
+    const persisted = JSON.parse(
+      await fs.readFile(path.join(teamDir, 'launch-state.json'), 'utf8')
+    ) as {
+      members?: Record<string, { pendingPermissionRequestIds?: string[] }>;
+    };
+    expect(persisted.members?.bob?.pendingPermissionRequestIds).toBeUndefined();
+    expect(
+      persisted.members?.['secondary:opencode:bob']?.pendingPermissionRequestIds
+    ).toEqual(['perm-bob-lane-key']);
+  });
+
   it('refreshes stale mixed OpenCode secondary session evidence before direct delivery when MCP transport changed', async () => {
     const teamName = 'mixed-opencode-secondary-transport-refresh-safe-e2e';
     await writeMixedTeamConfig({
@@ -10861,6 +11080,557 @@ describe('Team agent launch matrix safe e2e', () => {
       messageId: 'msg-current-pure-opencode',
     });
     expect(adapter.messageInputs[0]?.runId).not.toBe(first.runId);
+  });
+
+  it('surfaces pure OpenCode delivery permission blocks as the shared tool approval dialog', async () => {
+    const teamName = 'pure-opencode-delivery-permission-approval-safe-e2e';
+    const adapter = new PermissionBlockedOpenCodeRuntimeAdapter();
+    adapter.setRuntimePermissions('primary', [
+      {
+        providerId: 'opencode',
+        requestId: 'perm-alice-delivery',
+        sessionId: null,
+        tool: 'bash',
+        title: 'Run git status',
+        kind: 'tool',
+        raw: { patterns: ['git status'] },
+      },
+    ]);
+    const svc = new TeamProvisioningService();
+    svc.setRuntimeAdapterRegistry(new TeamRuntimeAdapterRegistry([adapter]));
+    const approvalEvents: ToolApprovalEvent[] = [];
+    svc.setToolApprovalEventEmitter((event) => approvalEvents.push(event));
+
+    const launch = await svc.createTeam(
+      {
+        teamName,
+        cwd: projectPath,
+        providerId: 'opencode',
+        model: 'opencode/big-pickle',
+        skipPermissions: true,
+        members: [{ name: 'alice', role: 'Developer', providerId: 'opencode' }],
+      },
+      () => undefined
+    );
+
+    await expect(
+      svc.deliverOpenCodeMemberMessage(teamName, {
+        memberName: 'alice',
+        text: 'trigger a permission-blocked delivery',
+        messageId: 'msg-pure-opencode-permission-blocked',
+      })
+    ).resolves.toMatchObject({
+      delivered: false,
+      responseState: 'permission_blocked',
+    });
+
+    expect(adapter.permissionListInputs).toEqual([
+      {
+        teamName,
+        laneId: 'primary',
+        cwd: projectPath,
+        memberName: 'alice',
+        sessionId: 'session-alice',
+      },
+    ]);
+    const approval = approvalEvents.find(
+      (event): event is ToolApprovalRequest =>
+        !('dismissed' in event) && !('autoResolved' in event)
+    );
+    expect(approval).toMatchObject({
+      requestId: `opencode:${launch.runId}:perm-alice-delivery`,
+      runId: launch.runId,
+      teamName,
+      providerId: 'opencode',
+      source: 'alice',
+      toolName: 'Bash',
+      toolInput: {
+        provider: 'opencode',
+        providerRequestId: 'perm-alice-delivery',
+        command: 'git status',
+      },
+      runtimePermission: {
+        providerId: 'opencode',
+        laneId: 'primary',
+        memberName: 'alice',
+        providerRequestId: 'perm-alice-delivery',
+      },
+    });
+    const statuses = await svc.getMemberSpawnStatuses(teamName);
+    expect(statuses.statuses.alice?.pendingPermissionRequestIds).toEqual([
+      'perm-alice-delivery',
+    ]);
+  });
+
+  it('keeps other primary OpenCode approvals when a delivery-blocked member syncs permissions', async () => {
+    const teamName = 'pure-opencode-delivery-permission-member-scope-safe-e2e';
+    const adapter = new PermissionBlockedOpenCodeRuntimeAdapter('partial_pending', {
+      alice: 'confirmed',
+      bob: 'permission',
+    });
+    adapter.setRuntimePermissions('primary', [
+      {
+        providerId: 'opencode',
+        requestId: 'perm-alice-delivery',
+        sessionId: 'session-alice',
+        tool: 'bash',
+        title: 'Run git status',
+        kind: 'tool',
+        raw: { patterns: ['git status'] },
+      },
+    ]);
+    const svc = new TeamProvisioningService();
+    svc.setRuntimeAdapterRegistry(new TeamRuntimeAdapterRegistry([adapter]));
+    const approvalEvents: ToolApprovalEvent[] = [];
+    svc.setToolApprovalEventEmitter((event) => approvalEvents.push(event));
+
+    const launch = await svc.createTeam(
+      {
+        teamName,
+        cwd: projectPath,
+        providerId: 'opencode',
+        model: 'opencode/big-pickle',
+        skipPermissions: false,
+        members: [
+          { name: 'alice', role: 'Developer', providerId: 'opencode' },
+          { name: 'bob', role: 'Reviewer', providerId: 'opencode' },
+        ],
+      },
+      () => undefined
+    );
+
+    expect(approvalEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          requestId: `opencode:${launch.runId}:perm-bob`,
+          source: 'bob',
+        }),
+      ])
+    );
+    approvalEvents.length = 0;
+
+    await expect(
+      svc.deliverOpenCodeMemberMessage(teamName, {
+        memberName: 'alice',
+        text: 'trigger alice permission-blocked delivery',
+        messageId: 'msg-pure-opencode-permission-blocked-member-scope',
+      })
+    ).resolves.toMatchObject({
+      delivered: false,
+      responseState: 'permission_blocked',
+    });
+
+    expect(approvalEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          requestId: `opencode:${launch.runId}:perm-alice-delivery`,
+          source: 'alice',
+        }),
+      ])
+    );
+    expect(approvalEvents).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          autoResolved: true,
+          requestId: `opencode:${launch.runId}:perm-bob`,
+          reason: 'runtime_resolved',
+        }),
+      ])
+    );
+
+    await svc.respondToToolApproval(teamName, launch.runId!, `opencode:${launch.runId}:perm-bob`, true);
+    expect(adapter.permissionAnswerInputs).toEqual([
+      expect.objectContaining({
+        runId: launch.runId,
+        teamName,
+        laneId: 'primary',
+        memberName: 'bob',
+        requestId: 'perm-bob',
+        decision: 'allow',
+      }),
+    ]);
+  });
+
+  it('does not surface stale OpenCode delivery permissions after the tracked run changes during listing', async () => {
+    const teamName = 'pure-opencode-delivery-permission-stale-run-safe-e2e';
+    const adapter = new PermissionBlockedOpenCodeRuntimeAdapter();
+    adapter.setRuntimePermissions('primary', [
+      {
+        providerId: 'opencode',
+        requestId: 'perm-alice-stale-run',
+        sessionId: 'session-alice',
+        tool: 'bash',
+        title: 'Run git status',
+        kind: 'tool',
+        raw: { patterns: ['git status'] },
+      },
+    ]);
+    let releaseList!: () => void;
+    let markListStarted!: () => void;
+    const listStarted = new Promise<void>((resolve) => {
+      markListStarted = resolve;
+    });
+    const releaseListPromise = new Promise<void>((resolve) => {
+      releaseList = resolve;
+    });
+    const originalListRuntimePermissions = adapter.listRuntimePermissions.bind(adapter);
+    vi.spyOn(adapter, 'listRuntimePermissions').mockImplementation(async (input) => {
+      markListStarted();
+      await releaseListPromise;
+      return originalListRuntimePermissions(input);
+    });
+
+    const svc = new TeamProvisioningService();
+    svc.setRuntimeAdapterRegistry(new TeamRuntimeAdapterRegistry([adapter]));
+    const approvalEvents: ToolApprovalEvent[] = [];
+    svc.setToolApprovalEventEmitter((event) => approvalEvents.push(event));
+
+    const launch = await svc.createTeam(
+      {
+        teamName,
+        cwd: projectPath,
+        providerId: 'opencode',
+        model: 'opencode/big-pickle',
+        skipPermissions: true,
+        members: [{ name: 'alice', role: 'Developer', providerId: 'opencode' }],
+      },
+      () => undefined
+    );
+
+    const delivery = svc.deliverOpenCodeMemberMessage(teamName, {
+      memberName: 'alice',
+      text: 'trigger permission listing while the run changes',
+      messageId: 'msg-pure-opencode-permission-stale-run',
+    });
+    await listStarted;
+    (svc as any).provisioningRunByTeam.set(teamName, `${launch.runId}-replacement`);
+    (svc as any).aliveRunByTeam.set(teamName, `${launch.runId}-replacement`);
+    releaseList();
+
+    await expect(delivery).resolves.toMatchObject({
+      delivered: false,
+      responseState: 'permission_blocked',
+    });
+    expect(approvalEvents).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          requestId: `opencode:${launch.runId}:perm-alice-stale-run`,
+        }),
+      ])
+    );
+  });
+
+  it('does not surface stale OpenCode delivery permissions after the tracked run changes during persisted-state read', async () => {
+    const teamName = 'pure-opencode-delivery-permission-stale-read-safe-e2e';
+    const adapter = new PermissionBlockedOpenCodeRuntimeAdapter();
+    adapter.setRuntimePermissions('primary', [
+      {
+        providerId: 'opencode',
+        requestId: 'perm-alice-stale-read',
+        sessionId: 'session-alice',
+        tool: 'bash',
+        title: 'Run git status',
+        kind: 'tool',
+        raw: { patterns: ['git status'] },
+      },
+    ]);
+    const originalListRuntimePermissions = adapter.listRuntimePermissions.bind(adapter);
+    let replaceRunOnNextLaunchStateRead = false;
+    vi.spyOn(adapter, 'listRuntimePermissions').mockImplementation(async (input) => {
+      const result = await originalListRuntimePermissions(input);
+      replaceRunOnNextLaunchStateRead = true;
+      return result;
+    });
+
+    const svc = new TeamProvisioningService();
+    svc.setRuntimeAdapterRegistry(new TeamRuntimeAdapterRegistry([adapter]));
+    const approvalEvents: ToolApprovalEvent[] = [];
+    svc.setToolApprovalEventEmitter((event) => approvalEvents.push(event));
+
+    const launch = await svc.createTeam(
+      {
+        teamName,
+        cwd: projectPath,
+        providerId: 'opencode',
+        model: 'opencode/big-pickle',
+        skipPermissions: true,
+        members: [{ name: 'alice', role: 'Developer', providerId: 'opencode' }],
+      },
+      () => undefined
+    );
+    const launchStateStore = (svc as any).launchStateStore as {
+      read(teamName: string): Promise<unknown>;
+    };
+    const originalRead = launchStateStore.read.bind(launchStateStore);
+    vi.spyOn(launchStateStore, 'read').mockImplementation(async (readTeamName) => {
+      const snapshot = await originalRead(readTeamName);
+      if (replaceRunOnNextLaunchStateRead && readTeamName === teamName) {
+        replaceRunOnNextLaunchStateRead = false;
+        (svc as any).provisioningRunByTeam.set(teamName, `${launch.runId}-replacement`);
+        (svc as any).aliveRunByTeam.set(teamName, `${launch.runId}-replacement`);
+      }
+      return snapshot;
+    });
+
+    await expect(
+      svc.deliverOpenCodeMemberMessage(teamName, {
+        memberName: 'alice',
+        text: 'trigger permission listing before the persisted state read changes run',
+        messageId: 'msg-pure-opencode-permission-stale-read',
+      })
+    ).resolves.toMatchObject({
+      delivered: false,
+      responseState: 'permission_blocked',
+    });
+    expect(approvalEvents).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          requestId: `opencode:${launch.runId}:perm-alice-stale-read`,
+        }),
+      ])
+    );
+  });
+
+  it('surfaces OpenCode permissions when inline delivery observe hits a pending request', async () => {
+    const teamName = 'pure-opencode-inline-observe-permission-approval-safe-e2e';
+    const adapter = new PermissionBlockedInlineObserveOpenCodeRuntimeAdapter();
+    adapter.setRuntimePermissions('primary', [
+      {
+        providerId: 'opencode',
+        requestId: 'perm-alice-inline-observe',
+        sessionId: 'session-alice',
+        tool: 'bash',
+        title: 'Run printf',
+        kind: 'tool',
+        raw: { patterns: ['printf inline-observe'] },
+      },
+    ]);
+    const svc = new TeamProvisioningService();
+    svc.setRuntimeAdapterRegistry(new TeamRuntimeAdapterRegistry([adapter]));
+    const approvalEvents: ToolApprovalEvent[] = [];
+    svc.setToolApprovalEventEmitter((event) => approvalEvents.push(event));
+
+    const launch = await svc.createTeam(
+      {
+        teamName,
+        cwd: projectPath,
+        providerId: 'opencode',
+        model: 'opencode/big-pickle',
+        skipPermissions: true,
+        members: [{ name: 'alice', role: 'Developer', providerId: 'opencode' }],
+      },
+      () => undefined
+    );
+
+    await expect(
+      svc.deliverOpenCodeMemberMessage(teamName, {
+        memberName: 'alice',
+        text: 'trigger inline observe permission block',
+        messageId: 'msg-pure-opencode-inline-observe-permission-blocked',
+        replyRecipient: 'user',
+        actionMode: 'ask',
+        source: 'watcher',
+        inboxTimestamp: '2026-05-08T10:00:00.000Z',
+      })
+    ).resolves.toMatchObject({
+      delivered: true,
+      accepted: true,
+      responsePending: true,
+      responseState: 'reconcile_failed',
+    });
+
+    expect(adapter.permissionListInputs).toEqual([
+      {
+        teamName,
+        laneId: 'primary',
+        cwd: projectPath,
+        memberName: 'alice',
+        sessionId: 'session-alice',
+      },
+    ]);
+    expect(adapter.observeInputs).toHaveLength(1);
+    expect(adapter.observeInputs[0]).toMatchObject({
+      sessionId: 'session-alice',
+      runtimePromptMessageId: 'prompt-msg-pure-opencode-inline-observe-permission-blocked',
+      prePromptCursor: 'cursor-before-inline-observe-permission',
+    });
+    const approval = approvalEvents.find(
+      (event): event is ToolApprovalRequest =>
+        !('dismissed' in event) && !('autoResolved' in event)
+    );
+    expect(approval).toMatchObject({
+      requestId: `opencode:${launch.runId}:perm-alice-inline-observe`,
+      runId: launch.runId,
+      teamName,
+      providerId: 'opencode',
+      source: 'alice',
+      toolName: 'Bash',
+      runtimePermission: {
+        providerId: 'opencode',
+        laneId: 'primary',
+        memberName: 'alice',
+        providerRequestId: 'perm-alice-inline-observe',
+        sessionId: 'session-alice',
+      },
+    });
+  });
+
+  it('does not assign unknown primary-lane OpenCode permission sessions to the delivery target', async () => {
+    const teamName = 'pure-opencode-primary-permission-session-scope-safe-e2e';
+    const adapter = new PermissionBlockedWithoutSessionOpenCodeRuntimeAdapter();
+    adapter.setRuntimePermissions('primary', [
+      {
+        providerId: 'opencode',
+        requestId: 'perm-alice-delivery',
+        sessionId: 'session-alice',
+        tool: 'bash',
+        title: 'Run git status',
+        kind: 'tool',
+        raw: { patterns: ['git status'] },
+      },
+      {
+        providerId: 'opencode',
+        requestId: 'perm-unknown-session',
+        sessionId: 'session-charlie',
+        tool: 'bash',
+        title: 'Run npm test',
+        kind: 'tool',
+        raw: { patterns: ['npm test'] },
+      },
+    ]);
+    const svc = new TeamProvisioningService();
+    svc.setRuntimeAdapterRegistry(new TeamRuntimeAdapterRegistry([adapter]));
+    const approvalEvents: ToolApprovalEvent[] = [];
+    svc.setToolApprovalEventEmitter((event) => approvalEvents.push(event));
+
+    const launch = await svc.createTeam(
+      {
+        teamName,
+        cwd: projectPath,
+        providerId: 'opencode',
+        model: 'opencode/big-pickle',
+        skipPermissions: true,
+        members: [
+          { name: 'alice', role: 'Developer', providerId: 'opencode' },
+          { name: 'bob', role: 'Reviewer', providerId: 'opencode' },
+        ],
+      },
+      () => undefined
+    );
+
+    await expect(
+      svc.deliverOpenCodeMemberMessage(teamName, {
+        memberName: 'alice',
+        text: 'trigger a permission-blocked delivery without session evidence',
+        messageId: 'msg-pure-opencode-permission-blocked-no-session',
+      })
+    ).resolves.toMatchObject({
+      delivered: false,
+      responseState: 'permission_blocked',
+    });
+
+    const approvals = approvalEvents.filter(
+      (event): event is ToolApprovalRequest =>
+        !('dismissed' in event) && !('autoResolved' in event)
+    );
+    expect(approvals.map((event) => event.runtimePermission?.providerRequestId)).toEqual([
+      'perm-alice-delivery',
+    ]);
+    expect(approvals[0]).toMatchObject({
+      requestId: `opencode:${launch.runId}:perm-alice-delivery`,
+      source: 'alice',
+      runtimePermission: {
+        providerId: 'opencode',
+        laneId: 'primary',
+        memberName: 'alice',
+        providerRequestId: 'perm-alice-delivery',
+        sessionId: 'session-alice',
+      },
+    });
+  });
+
+  it('uses current OpenCode runtime session evidence when persisted launch state is unavailable', async () => {
+    const teamName = 'pure-opencode-primary-permission-runtime-session-map-safe-e2e';
+    const adapter = new PermissionBlockedWithoutSessionOpenCodeRuntimeAdapter();
+    adapter.setRuntimePermissions('primary', [
+      {
+        providerId: 'opencode',
+        requestId: 'perm-alice-delivery',
+        sessionId: 'session-alice',
+        tool: 'bash',
+        title: 'Run git status',
+        kind: 'tool',
+        raw: { patterns: ['git status'] },
+      },
+      {
+        providerId: 'opencode',
+        requestId: 'perm-unknown-session',
+        sessionId: 'session-charlie',
+        tool: 'bash',
+        title: 'Run npm test',
+        kind: 'tool',
+        raw: { patterns: ['npm test'] },
+      },
+    ]);
+    const svc = new TeamProvisioningService();
+    svc.setRuntimeAdapterRegistry(new TeamRuntimeAdapterRegistry([adapter]));
+    const approvalEvents: ToolApprovalEvent[] = [];
+    svc.setToolApprovalEventEmitter((event) => approvalEvents.push(event));
+
+    const launch = await svc.createTeam(
+      {
+        teamName,
+        cwd: projectPath,
+        providerId: 'opencode',
+        model: 'opencode/big-pickle',
+        skipPermissions: true,
+        members: [
+          { name: 'alice', role: 'Developer', providerId: 'opencode' },
+          { name: 'bob', role: 'Reviewer', providerId: 'opencode' },
+        ],
+      },
+      () => undefined
+    );
+    await fs.rm(path.join(getTeamsBasePath(), teamName, 'launch-state.json'), { force: true });
+
+    await expect(
+      svc.deliverOpenCodeMemberMessage(teamName, {
+        memberName: 'alice',
+        text: 'trigger permission-blocked delivery after launch-state disappeared',
+        messageId: 'msg-pure-opencode-permission-runtime-session-map',
+      })
+    ).resolves.toMatchObject({
+      delivered: false,
+      responseState: 'permission_blocked',
+    });
+
+    expect(adapter.permissionListInputs).toEqual([
+      {
+        teamName,
+        laneId: 'primary',
+        cwd: projectPath,
+        memberName: 'alice',
+        sessionId: undefined,
+      },
+    ]);
+    const approvals = approvalEvents.filter(
+      (event): event is ToolApprovalRequest =>
+        !('dismissed' in event) && !('autoResolved' in event)
+    );
+    expect(approvals.map((event) => event.runtimePermission?.providerRequestId)).toEqual([
+      'perm-alice-delivery',
+    ]);
+    expect(approvals[0]).toMatchObject({
+      requestId: `opencode:${launch.runId}:perm-alice-delivery`,
+      source: 'alice',
+      runtimePermission: {
+        providerId: 'opencode',
+        laneId: 'primary',
+        memberName: 'alice',
+        providerRequestId: 'perm-alice-delivery',
+        sessionId: 'session-alice',
+      },
+    });
   });
 
   it('refreshes stale OpenCode session evidence before direct delivery when MCP transport changed', async () => {
@@ -18403,8 +19173,16 @@ class FakeOpenCodeRuntimeAdapter implements TeamLaunchRuntimeAdapter {
   readonly launchInputs: TeamRuntimeLaunchInput[] = [];
   readonly messageInputs: OpenCodeTeamRuntimeMessageInput[] = [];
   readonly permissionAnswerInputs: TeamRuntimePermissionAnswerInput[] = [];
+  readonly permissionListInputs: Array<{
+    teamName: string;
+    laneId: string;
+    cwd: string;
+    memberName?: string;
+    sessionId?: string | null;
+  }> = [];
   readonly reconcileInputs: TeamRuntimeReconcileInput[] = [];
   readonly stopInputs: TeamRuntimeStopInput[] = [];
+  private readonly runtimePermissionsByLane = new Map<string, TeamRuntimePendingPermission[]>();
 
   constructor(
     private launchState: TeamRuntimeLaunchResult['teamLaunchState'] = 'clean_success',
@@ -18417,6 +19195,10 @@ class FakeOpenCodeRuntimeAdapter implements TeamLaunchRuntimeAdapter {
   ): void {
     this.launchState = launchState;
     this.memberOutcomes = memberOutcomes;
+  }
+
+  setRuntimePermissions(laneId: string, permissions: TeamRuntimePendingPermission[]): void {
+    this.runtimePermissionsByLane.set(laneId, permissions);
   }
 
   async prepare(input: TeamRuntimeLaunchInput): Promise<TeamRuntimePrepareResult> {
@@ -18490,6 +19272,24 @@ class FakeOpenCodeRuntimeAdapter implements TeamLaunchRuntimeAdapter {
       ),
       warnings: [],
       diagnostics: ['fake OpenCode permission answer'],
+    };
+  }
+
+  async listRuntimePermissions(
+    input: TeamRuntimePermissionListInput
+  ): Promise<TeamRuntimePermissionListResult> {
+    const laneId = input.laneId ?? 'primary';
+    const cwd = input.cwd ?? '';
+    this.permissionListInputs.push({
+      teamName: input.teamName,
+      laneId,
+      cwd,
+      memberName: input.memberName,
+      sessionId: input.sessionId,
+    });
+    return {
+      permissions: [...(this.runtimePermissionsByLane.get(laneId) ?? [])],
+      diagnostics: [],
     };
   }
 
@@ -18671,6 +19471,86 @@ class VisibleReplyOpenCodeRuntimeAdapter extends FakeOpenCodeRuntimeAdapter {
         reason: 'visible_message_sent',
       },
     };
+  }
+}
+
+class PermissionBlockedOpenCodeRuntimeAdapter extends FakeOpenCodeRuntimeAdapter {
+  override async sendMessageToMember(
+    input: OpenCodeTeamRuntimeMessageInput
+  ): Promise<OpenCodeTeamRuntimeMessageResult> {
+    this.messageInputs.push(input);
+    return {
+      ok: false,
+      providerId: 'opencode',
+      memberName: input.memberName,
+      sessionId: `session-${input.memberName}`,
+      responseObservation: {
+        state: 'permission_blocked',
+        deliveredUserMessageId: null,
+        assistantMessageId: null,
+        toolCallNames: [],
+        visibleMessageToolCallId: null,
+        visibleReplyMessageId: null,
+        visibleReplyCorrelation: null,
+        latestAssistantPreview: null,
+        reason: 'OpenCode session has 1 pending permission request(s)',
+      },
+      diagnostics: [
+        'OpenCode API error',
+        'OpenCode session has 1 pending permission request(s)',
+      ],
+    };
+  }
+}
+
+class PermissionBlockedWithoutSessionOpenCodeRuntimeAdapter extends PermissionBlockedOpenCodeRuntimeAdapter {
+  override async sendMessageToMember(
+    input: OpenCodeTeamRuntimeMessageInput
+  ): Promise<OpenCodeTeamRuntimeMessageResult> {
+    const result = await super.sendMessageToMember(input);
+    return {
+      ...result,
+      sessionId: undefined,
+    };
+  }
+}
+
+class PermissionBlockedInlineObserveOpenCodeRuntimeAdapter extends FakeOpenCodeRuntimeAdapter {
+  readonly observeInputs: Array<
+    OpenCodeTeamRuntimeMessageInput & { prePromptCursor?: string | null }
+  > = [];
+
+  override async sendMessageToMember(
+    input: OpenCodeTeamRuntimeMessageInput
+  ): Promise<OpenCodeTeamRuntimeMessageResult> {
+    this.messageInputs.push(input);
+    return {
+      ok: true,
+      providerId: 'opencode',
+      memberName: input.memberName,
+      sessionId: `session-${input.memberName}`,
+      runtimePromptMessageId: `prompt-${input.messageId ?? input.memberName}`,
+      prePromptCursor: 'cursor-before-inline-observe-permission',
+      responseObservation: {
+        state: 'tool_error',
+        deliveredUserMessageId: `delivered-${input.messageId ?? input.memberName}`,
+        assistantMessageId: `assistant-${input.messageId ?? input.memberName}`,
+        toolCallNames: ['agent-teams_message_send'],
+        visibleMessageToolCallId: `call-${input.messageId ?? input.memberName}`,
+        visibleReplyMessageId: null,
+        visibleReplyCorrelation: null,
+        latestAssistantPreview: null,
+        reason: 'message_send_tool_error_without_visible_reply_proof',
+      },
+      diagnostics: ['OpenCode tool failed without output'],
+    };
+  }
+
+  async observeMessageDelivery(
+    input: OpenCodeTeamRuntimeMessageInput & { prePromptCursor?: string | null }
+  ): Promise<OpenCodeTeamRuntimeMessageResult> {
+    this.observeInputs.push(input);
+    throw new Error('OpenCode session has 1 pending permission request(s)');
   }
 }
 

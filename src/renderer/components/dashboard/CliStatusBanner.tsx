@@ -37,6 +37,7 @@ import {
   getProviderDisconnectAction,
   isConnectionManagedRuntimeProvider,
   isOpenCodeCatalogHydrating,
+  isProviderInventoryOnlyFallback,
   shouldShowProviderConnectAction,
   shouldShowProviderStatusSkeleton,
 } from '@renderer/components/runtime/providerConnectionUi';
@@ -527,6 +528,10 @@ function isPendingMultimodelProviderStatus(provider: CliProviderStatus): boolean
   );
 }
 
+function isProviderCountedAsConnected(provider: CliProviderStatus): boolean {
+  return provider.authenticated || isProviderInventoryOnlyFallback(provider);
+}
+
 function formatRuntimeAuthSummary(
   cliStatus: NonNullable<ReturnType<typeof useCliInstaller>['cliStatus']>,
   visibleProviders: readonly CliProviderStatus[],
@@ -541,7 +546,7 @@ function formatRuntimeAuthSummary(
       return t('cliStatus.provider.checkingProviders');
     }
     const denominator = visibleProviders.length;
-    const connected = visibleProviders.filter((provider) => provider.authenticated).length;
+    const connected = visibleProviders.filter(isProviderCountedAsConnected).length;
 
     return t('cliStatus.provider.connectedCount', { connected, denominator });
   }
@@ -571,7 +576,7 @@ function isCheckingMultimodelStatus(
 function hasVisibleAuthenticatedMultimodelProvider(
   visibleProviders: readonly CliProviderStatus[]
 ): boolean {
-  return visibleProviders.some((provider) => provider.authenticated);
+  return visibleProviders.some(isProviderCountedAsConnected);
 }
 
 function isOpenCodeProviderEffectivelyReady(provider: CliProviderStatus): boolean {
@@ -1759,9 +1764,6 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
                 setProviderTerminal(null);
                 recheckAuthState();
               }}
-              onExit={() => {
-                recheckAuthState();
-              }}
               autoCloseOnSuccessMs={3000}
               successMessage={
                 providerTerminal.action === 'login'
@@ -2353,21 +2355,6 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
               args={['auth', 'login']}
               onClose={() => {
                 setShowLoginTerminal(false);
-                setIsVerifyingAuth(true);
-                void (async () => {
-                  try {
-                    await invalidateCliStatus();
-                    if (multimodelEnabled) {
-                      await bootstrapCliStatus({ multimodelEnabled: true });
-                    } else {
-                      await fetchCliStatus();
-                    }
-                  } finally {
-                    setIsVerifyingAuth(false);
-                  }
-                })();
-              }}
-              onExit={() => {
                 setIsVerifyingAuth(true);
                 void (async () => {
                   try {

@@ -57,6 +57,20 @@ async function writeRollout(
   await fs.utimes(filePath, mtime, mtime);
 }
 
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (error: unknown) => void;
+} {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, resolve, reject };
+}
+
 describe('CodexSessionFileRecentProjectsSourceAdapter', () => {
   let tempDir: string;
 
@@ -338,6 +352,83 @@ describe('CodexSessionFileRecentProjectsSourceAdapter', () => {
     expect(openSpy).not.toHaveBeenCalled();
   });
 
+  it('coalesces concurrent Codex session-file source reads', async () => {
+    const codexHome = path.join(tempDir, '.codex');
+    const logger = createLogger();
+    const resolveResult = deferred<null>();
+    const identityResolver = {
+      resolve: vi.fn().mockReturnValue(resolveResult.promise),
+    } as unknown as RecentProjectIdentityResolver;
+    await writeRollout(
+      path.join(codexHome, 'sessions', '2026', '04', '14', 'rollout-alpha.jsonl'),
+      {
+        cwd: '/Users/test/projects/alpha',
+        branch: 'main',
+      },
+      new Date('2026-04-14T12:00:00.000Z')
+    );
+
+    const adapter = new CodexSessionFileRecentProjectsSourceAdapter({
+      getActiveContext: () => ({ type: 'local', id: 'local-1' }) as never,
+      getLocalContext: () => ({ type: 'local', id: 'local-1' }) as never,
+      identityResolver,
+      logger,
+      codexHome,
+      appDataPath: path.join(tempDir, 'app-data'),
+    });
+
+    const first = adapter.list();
+    await vi.waitFor(() => expect(identityResolver.resolve).toHaveBeenCalledTimes(1));
+    const second = adapter.list();
+
+    resolveResult.resolve(null);
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      expect.objectContaining({ degraded: false }),
+      expect.objectContaining({ degraded: false }),
+    ]);
+    expect(identityResolver.resolve).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not reuse an in-flight local Codex session-file read for another active context', async () => {
+    const codexHome = path.join(tempDir, '.codex');
+    const logger = createLogger();
+    const resolveResult = deferred<null>();
+    const identityResolver = {
+      resolve: vi.fn().mockReturnValue(resolveResult.promise),
+    } as unknown as RecentProjectIdentityResolver;
+    let activeContext: unknown = { type: 'local', id: 'local-1' };
+    await writeRollout(
+      path.join(codexHome, 'sessions', '2026', '04', '14', 'rollout-alpha.jsonl'),
+      {
+        cwd: '/Users/test/projects/alpha',
+        branch: 'main',
+      },
+      new Date('2026-04-14T12:00:00.000Z')
+    );
+
+    const adapter = new CodexSessionFileRecentProjectsSourceAdapter({
+      getActiveContext: () => activeContext as never,
+      getLocalContext: () => ({ type: 'local', id: 'local-1' }) as never,
+      identityResolver,
+      logger,
+      codexHome,
+      appDataPath: path.join(tempDir, 'app-data'),
+    });
+
+    const first = adapter.list();
+    await vi.waitFor(() => expect(identityResolver.resolve).toHaveBeenCalledTimes(1));
+
+    activeContext = { type: 'ssh', id: 'ssh-1' };
+    await expect(adapter.list()).resolves.toEqual({
+      candidates: [],
+      degraded: false,
+    });
+
+    resolveResult.resolve(null);
+    await expect(first).resolves.toEqual(expect.objectContaining({ degraded: false }));
+    expect(identityResolver.resolve).toHaveBeenCalledTimes(1);
+  });
+
   it('invalidates cached session metadata when the jsonl fingerprint changes', async () => {
     const codexHome = path.join(tempDir, '.codex');
     const appDataPath = path.join(tempDir, 'app-data');
@@ -505,6 +596,61 @@ describe('CodexSessionFileRecentProjectsSourceAdapter', () => {
     });
   });
 
+  it('skips an oversized legacy session-file cache before reading it', async () => {
+    const codexHome = path.join(tempDir, '.codex');
+    const appDataPath = path.join(tempDir, 'app-data');
+    const logger = createLogger();
+    const identityResolver = {
+      resolve: vi.fn().mockResolvedValue(null),
+    } as unknown as RecentProjectIdentityResolver;
+    await writeRollout(
+      path.join(codexHome, 'sessions', '2026', '04', '14', 'rollout-alpha.jsonl'),
+      {
+        cwd: '/Users/test/projects/alpha',
+      },
+      new Date('2026-04-14T12:00:00.000Z')
+    );
+    const cachePath = getSessionFileCachePath(appDataPath);
+    await fs.mkdir(path.dirname(cachePath), { recursive: true });
+    await fs.writeFile(cachePath, 'x', 'utf8');
+    await fs.truncate(cachePath, 4 * 1024 * 1024 + 1);
+    const readFileSpy = vi.spyOn(fs, 'readFile');
+
+    const adapter = new CodexSessionFileRecentProjectsSourceAdapter({
+      getActiveContext: () => ({ type: 'local', id: 'local-1' }) as never,
+      getLocalContext: () => ({ type: 'local', id: 'local-1' }) as never,
+      identityResolver,
+      logger,
+      codexHome,
+      appDataPath,
+    });
+
+    const result = await adapter.list();
+
+    expect(readFileSpy).not.toHaveBeenCalledWith(cachePath, 'utf8');
+    expect(result).toEqual({
+      candidates: [
+        expect.objectContaining({
+          primaryPath: '/Users/test/projects/alpha',
+        }),
+      ],
+      degraded: false,
+    });
+    expect(logger.warn).toHaveBeenCalledWith(
+      'codex session-file recent-projects cache skipped - too large',
+      expect.objectContaining({
+        bytes: 4 * 1024 * 1024 + 1,
+        maxBytes: 4 * 1024 * 1024,
+      })
+    );
+    await expect(fs.stat(cachePath)).resolves.toEqual(
+      expect.objectContaining({
+        size: expect.any(Number),
+      })
+    );
+    expect((await fs.stat(cachePath)).size).toBeLessThan(4 * 1024 * 1024);
+  });
+
   it('returns a degraded partial result under the uncached read cap and completes on the next cached pass', async () => {
     const codexHome = path.join(tempDir, '.codex');
     const appDataPath = path.join(tempDir, 'app-data');
@@ -573,6 +719,56 @@ describe('CodexSessionFileRecentProjectsSourceAdapter', () => {
       '/Users/test/projects/alpha',
       '/Users/test/projects/beta',
     ]);
+  });
+
+  it('bounds discovered Codex session files before reading metadata', async () => {
+    const codexHome = path.join(tempDir, '.codex');
+    const appDataPath = path.join(tempDir, 'app-data');
+    const logger = createLogger();
+    const identityResolver = {
+      resolve: vi.fn().mockResolvedValue(null),
+    } as unknown as RecentProjectIdentityResolver;
+    const baseTime = Date.parse('2026-04-14T12:00:00.000Z');
+
+    await Promise.all(
+      Array.from({ length: 505 }).map((_, index) =>
+        writeRollout(
+          path.join(codexHome, 'sessions', '2026', '04', '14', `rollout-alpha-${index}.jsonl`),
+          {
+            cwd: '/Users/test/projects/alpha',
+            branch: 'main',
+          },
+          new Date(baseTime - index * 1000)
+        )
+      )
+    );
+    const readdirSpy = vi.spyOn(fs, 'readdir');
+
+    const adapter = new CodexSessionFileRecentProjectsSourceAdapter({
+      getActiveContext: () => ({ type: 'local', id: 'local-1' }) as never,
+      getLocalContext: () => ({ type: 'local', id: 'local-1' }) as never,
+      identityResolver,
+      logger,
+      codexHome,
+      appDataPath,
+    });
+    const result = await adapter.list();
+
+    expect(result.degraded).toBe(true);
+    expect(result.candidates.map((candidate) => candidate.primaryPath)).toEqual([
+      '/Users/test/projects/alpha',
+    ]);
+    expect(logger.warn).toHaveBeenCalledWith(
+      'codex session-file recent-projects source partial',
+      expect.objectContaining({
+        files: 500,
+        visitedFiles: 505,
+        droppedOlderFiles: 5,
+        uncachedReads: 160,
+        skippedUncached: 340,
+      })
+    );
+    expect(readdirSpy).not.toHaveBeenCalled();
   });
 
   it('skips non-interactive and ephemeral sessions', async () => {

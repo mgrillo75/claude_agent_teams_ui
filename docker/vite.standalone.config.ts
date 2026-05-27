@@ -14,6 +14,7 @@ import type { Plugin } from 'vite'
 // `vite build --config docker/vite.standalone.config.ts`, so __dirname
 // is docker/. All paths must resolve relative to the repo root.
 const ROOT = resolve(__dirname, '..')
+const sourceMapsEnabled = process.env.AGENT_TEAMS_DISABLE_SOURCEMAPS !== '1'
 
 // Node.js built-in modules that should be externalized
 const nodeBuiltins = new Set([
@@ -35,11 +36,13 @@ function nativeModuleStub(): Plugin {
   const STUB_ID = '\0native-stub'
   return {
     name: 'native-module-stub',
+    enforce: 'pre',
     resolveId(source) {
       if (source.endsWith('.node')) return STUB_ID
       return null
     },
     load(id) {
+      if (id.endsWith('.node')) return 'export default {}'
       if (id === STUB_ID) return 'export default {}'
       return null
     }
@@ -63,6 +66,8 @@ export const ipcMain = { handle: noop, on: noop, removeHandler: noop };
 export const shell = { openPath: noop, openExternal: noop };
 export const dialog = { showOpenDialog: async () => ({ canceled: true, filePaths: [] }) };
 export const Notification = class { show() {} };
+export const nativeImage = { createFromPath: () => proxyObj, createEmpty: () => proxyObj };
+export const net = { fetch: globalThis.fetch };
 export const safeStorage = { isEncryptionAvailable: () => false, encryptString: noop, decryptString: () => '' };
 export const screen = proxyObj;
 export default proxyObj;
@@ -87,6 +92,7 @@ export default defineConfig({
   plugins: [nativeModuleStub(), electronStub()],
   resolve: {
     alias: {
+      '@features': resolve(ROOT, 'src/features'),
       '@main': resolve(ROOT, 'src/main'),
       '@shared': resolve(ROOT, 'src/shared'),
       '@preload': resolve(ROOT, 'src/preload')
@@ -99,7 +105,7 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist-standalone',
-    target: 'node20',
+    target: 'node24',
     ssr: true,
     rollupOptions: {
       input: {
@@ -119,6 +125,6 @@ export default defineConfig({
       }
     },
     minify: false,
-    sourcemap: true
+    sourcemap: sourceMapsEnabled
   }
 })

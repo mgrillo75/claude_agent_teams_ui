@@ -54,6 +54,74 @@ export function getProjectSelectionResetState(): Partial<AppState> {
 }
 
 /**
+ * Reset team/task data that belongs to the active main-process context.
+ * These caches are populated through context-aware IPC calls and must not
+ * survive a local/SSH context switch.
+ */
+export function getContextScopedTeamResetState(): Partial<AppState> {
+  return {
+    teams: [],
+    teamByName: {},
+    teamBySessionId: {},
+    branchByPath: {},
+    teamsLoading: false,
+    teamsError: null,
+    globalTasks: [],
+    globalTasksLoading: false,
+    globalTasksInitialized: false,
+    globalTasksError: null,
+    globalTaskDetail: null,
+    pendingMemberProfile: null,
+    pendingTeamSectionFocus: null,
+    pendingReviewRequest: null,
+    selectedTeamName: null,
+    selectedTeamData: null,
+    teamDataCacheByName: {},
+    selectedTeamLoading: false,
+    selectedTeamLoadNonce: 0,
+    selectedTeamError: null,
+    sendingMessage: false,
+    sendMessageError: null,
+    sendMessageWarning: null,
+    sendMessageDebugDetails: null,
+    lastSendMessageResult: null,
+    reviewActionError: null,
+    graphLayoutModeByTeam: {},
+    gridOwnerOrderByTeam: {},
+    slotAssignmentsByTeam: {},
+    teamMessagesByName: {},
+    memberActivityMetaByTeam: {},
+    graphLayoutSessionByTeam: {},
+    provisioningRuns: {},
+    provisioningSnapshotByTeam: {},
+    currentProvisioningRunIdByTeam: {},
+    currentRuntimeRunIdByTeam: {},
+    ignoredProvisioningRunIds: {},
+    ignoredRuntimeRunIds: {},
+    provisioningStartedAtFloorByTeam: {},
+    leadActivityByTeam: {},
+    leadContextByTeam: {},
+    activeTaskLogActivityByTeam: {},
+    activeToolsByTeam: {},
+    finishedVisibleByTeam: {},
+    toolHistoryByTeam: {},
+    memberSpawnStatusesByTeam: {},
+    memberSpawnSnapshotsByTeam: {},
+    teamAgentRuntimeByTeam: {},
+    provisioningErrorByTeam: {},
+    crossTeamTargets: [],
+    crossTeamTargetsLoading: false,
+    kanbanFilterQuery: null,
+    addingComment: false,
+    addCommentError: null,
+    deletedTasks: [],
+    deletedTasksLoading: false,
+    pendingApprovals: [],
+    resolvedApprovals: new Map(),
+  };
+}
+
+/**
  * Full state reset (session + project + repository + conversation).
  * Used when closing all tabs or resetting to initial state.
  */

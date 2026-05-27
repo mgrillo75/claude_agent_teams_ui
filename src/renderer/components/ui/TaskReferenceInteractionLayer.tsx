@@ -17,6 +17,39 @@ interface TaskReferenceInteractionLayerProps {
 
 type PositionedTaskReference = InlineMatchPosition<MentionSuggestion>;
 
+function areTaskSuggestionsEquivalent(a: MentionSuggestion, b: MentionSuggestion): boolean {
+  return (
+    a.id === b.id &&
+    a.name === b.name &&
+    a.taskId === b.taskId &&
+    a.teamName === b.teamName &&
+    a.teamDisplayName === b.teamDisplayName &&
+    a.ownerName === b.ownerName &&
+    a.ownerColor === b.ownerColor
+  );
+}
+
+function areTaskReferencePositionsEquivalent(
+  current: PositionedTaskReference[],
+  next: PositionedTaskReference[]
+): boolean {
+  if (current.length !== next.length) return false;
+
+  return current.every((position, index) => {
+    const nextPosition = next[index];
+    return (
+      position.start === nextPosition.start &&
+      position.end === nextPosition.end &&
+      position.token === nextPosition.token &&
+      position.top === nextPosition.top &&
+      position.left === nextPosition.left &&
+      position.width === nextPosition.width &&
+      position.height === nextPosition.height &&
+      areTaskSuggestionsEquivalent(position.item, nextPosition.item)
+    );
+  });
+}
+
 export const TaskReferenceInteractionLayer = ({
   taskSuggestions,
   value,
@@ -24,11 +57,18 @@ export const TaskReferenceInteractionLayer = ({
   scrollTop,
 }: TaskReferenceInteractionLayerProps): React.JSX.Element | null => {
   const [positions, setPositions] = React.useState<PositionedTaskReference[]>([]);
+  const positionsRef = React.useRef<PositionedTaskReference[]>([]);
   const openGlobalTaskDetail = useStore((s) => s.openGlobalTaskDetail);
+
+  const commitPositions = React.useCallback((nextPositions: PositionedTaskReference[]) => {
+    if (areTaskReferencePositionsEquivalent(positionsRef.current, nextPositions)) return;
+    positionsRef.current = nextPositions;
+    setPositions(nextPositions);
+  }, []);
 
   React.useLayoutEffect(() => {
     if (taskSuggestions.length === 0 || !value.includes('#')) {
-      setPositions([]);
+      commitPositions([]);
       return;
     }
 
@@ -42,8 +82,8 @@ export const TaskReferenceInteractionLayer = ({
       token: match.raw,
     }));
 
-    setPositions(calculateInlineMatchPositions(textarea, value, matches));
-  }, [taskSuggestions, textareaRef, value]);
+    commitPositions(calculateInlineMatchPositions(textarea, value, matches));
+  }, [commitPositions, taskSuggestions, textareaRef, value]);
 
   if (positions.length === 0) return null;
 

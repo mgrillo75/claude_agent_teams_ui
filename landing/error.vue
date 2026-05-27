@@ -9,7 +9,7 @@ const props = defineProps<{
 const { t } = useI18n();
 const config = useRuntimeConfig();
 const siteUrl = ((config.public.siteUrl as string) || "https://777genius.github.io/agent-teams-ai").replace(/\/+$/, "");
-const ogImage = `${siteUrl}/og-image-agent-teams-v5.png`;
+const ogImage = `${siteUrl}/og-image-agent-teams-v6.png`;
 
 const statusCode = computed(() => props.error?.statusCode || 404);
 const isNotFound = computed(() => statusCode.value === 404);

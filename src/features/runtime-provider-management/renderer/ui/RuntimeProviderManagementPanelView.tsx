@@ -2287,8 +2287,7 @@ export function RuntimeProviderManagementPanelView({
         : t('runtimeProvider.providers.countFallback');
   const launchableModelCount = state.view?.configuredModels?.length ?? 0;
   const modelsLoading = state.loading && launchableModelCount === 0;
-  const activeSection =
-    selectedSection ?? (modelsLoading || launchableModelCount > 0 ? 'models' : 'providers');
+  const activeSection = selectedSection ?? 'providers';
   const hasProjectContext = Boolean(projectPath?.trim());
 
   return (

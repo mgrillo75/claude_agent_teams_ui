@@ -56,6 +56,19 @@ export interface TeamRuntimePermissionAnswerInput {
   previousLaunchState: PersistedTeamLaunchSnapshot | null;
 }
 
+export interface TeamRuntimePermissionListInput {
+  teamName: string;
+  laneId?: string;
+  cwd?: string;
+  memberName?: string;
+  sessionId?: string | null;
+}
+
+export interface TeamRuntimePermissionListResult {
+  permissions: TeamRuntimePendingPermission[];
+  diagnostics: string[];
+}
+
 export interface TeamRuntimeLaunchInput {
   runId: string;
   teamName: string;
@@ -206,6 +219,9 @@ export interface TeamLaunchRuntimeAdapter {
   answerRuntimePermission?(
     input: TeamRuntimePermissionAnswerInput
   ): Promise<TeamRuntimeLaunchResult>;
+  listRuntimePermissions?(
+    input: TeamRuntimePermissionListInput
+  ): Promise<TeamRuntimePermissionListResult>;
 }
 
 export function isTeamRuntimeProviderId(value: unknown): value is TeamRuntimeProviderId {

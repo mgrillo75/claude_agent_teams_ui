@@ -64,8 +64,43 @@ export const EmbeddedTerminal = ({
 
     term.open(container);
 
-    // Fit after opening so dimensions are correct
-    const rafId = requestAnimationFrame(() => fitAddon.fit());
+    const spawnTerminal = (): void => {
+      if (disposed) return;
+
+      const spawnOptions: PtySpawnOptions = {
+        ...(command ? { command } : {}),
+        ...(args ? { args } : {}),
+        ...(cwd ? { cwd } : {}),
+        ...(env ? { env } : {}),
+        cols: term.cols,
+        rows: term.rows,
+      };
+
+      api.terminal
+        .spawn(spawnOptions)
+        .then((id) => {
+          if (disposed) {
+            api.terminal.kill(id);
+            return;
+          }
+          ptyId = id;
+          // Send actual terminal size after spawn (fitAddon.fit() may have changed cols/rows).
+          api.terminal.resize(id, term.cols, term.rows);
+        })
+        .catch((err: unknown) => {
+          if (disposed) return;
+          term.write(
+            `\r\n\x1b[31mFailed to start terminal: ${err instanceof Error ? err.message : String(err)}\x1b[0m\r\n`
+          );
+        });
+    };
+
+    // Defer spawning until after the first frame. React StrictMode replays effects
+    // in development; canceling this RAF prevents duplicate one-shot commands.
+    const rafId = requestAnimationFrame(() => {
+      fitAddon.fit();
+      spawnTerminal();
+    });
 
     // Ctrl+C with selection → copy to clipboard (instead of sending SIGINT)
     term.attachCustomKeyEventHandler((event) => {
@@ -96,32 +131,6 @@ export const EmbeddedTerminal = ({
         onExit?.(exitCode);
       }
     });
-
-    // Spawn PTY
-    const spawnOptions: PtySpawnOptions = {
-      ...(command ? { command } : {}),
-      ...(args ? { args } : {}),
-      ...(cwd ? { cwd } : {}),
-      ...(env ? { env } : {}),
-      cols: term.cols,
-      rows: term.rows,
-    };
-
-    api.terminal
-      .spawn(spawnOptions)
-      .then((id) => {
-        if (disposed) return;
-        ptyId = id;
-        // Send actual terminal size after spawn (fitAddon.fit() may have
-        // changed cols/rows via RAF after spawnOptions was constructed)
-        api.terminal.resize(id, term.cols, term.rows);
-      })
-      .catch((err: unknown) => {
-        if (disposed) return;
-        term.write(
-          `\r\n\x1b[31mFailed to start terminal: ${err instanceof Error ? err.message : String(err)}\x1b[0m\r\n`
-        );
-      });
 
     // ResizeObserver → fitAddon.fit() → pty.resize()
     const observer = new ResizeObserver(() => {

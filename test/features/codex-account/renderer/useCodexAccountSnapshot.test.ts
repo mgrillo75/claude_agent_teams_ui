@@ -13,7 +13,9 @@ const apiMocks = vi.hoisted(() => ({
   startCodexChatgptLogin: vi.fn(),
   cancelCodexChatgptLogin: vi.fn(),
   logoutCodexAccount: vi.fn(),
-  onCodexAccountSnapshotChanged: vi.fn(() => () => undefined),
+  onCodexAccountSnapshotChanged: vi.fn<
+    (callback: (event: unknown, snapshot: CodexAccountSnapshotDto) => void) => () => void
+  >(() => () => undefined),
 }));
 
 type IdleCallbackForTest = (deadline: {
@@ -68,6 +70,16 @@ function createSnapshot(): CodexAccountSnapshotDto {
       planType: 'pro',
     },
     updatedAt: new Date().toISOString(),
+  };
+}
+
+function withSnapshotOverrides(
+  snapshot: CodexAccountSnapshotDto,
+  overrides: Partial<CodexAccountSnapshotDto>
+): CodexAccountSnapshotDto {
+  return {
+    ...snapshot,
+    ...overrides,
   };
 }
 
@@ -127,6 +139,65 @@ describe('useCodexAccountSnapshot', () => {
     });
     expect(apiMocks.getCodexAccountSnapshot).not.toHaveBeenCalled();
     expect(host.textContent).toContain('belief@example.com');
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it('ignores older pushed Codex snapshots after a fresher snapshot was applied', async () => {
+    let snapshotListener:
+      | ((event: unknown, snapshot: CodexAccountSnapshotDto) => void)
+      | null = null;
+    const staleSnapshot = withSnapshotOverrides(createSnapshot(), {
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      managedAccount: {
+        type: 'chatgpt',
+        email: 'stale@example.com',
+        planType: 'pro',
+      },
+    });
+    const freshSnapshot = withSnapshotOverrides(createSnapshot(), {
+      updatedAt: '2026-01-01T00:00:01.000Z',
+      managedAccount: {
+        type: 'chatgpt',
+        email: 'fresh@example.com',
+        planType: 'pro',
+      },
+    });
+    apiMocks.getCodexAccountSnapshot.mockResolvedValue(freshSnapshot);
+    apiMocks.onCodexAccountSnapshotChanged.mockImplementation(
+      (callback: (event: unknown, snapshot: CodexAccountSnapshotDto) => void) => {
+        snapshotListener = callback;
+        return () => undefined;
+      }
+    );
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    function Harness(): React.ReactElement {
+      const state = useCodexAccountSnapshot({
+        enabled: true,
+      });
+
+      return React.createElement('div', null, state.snapshot?.managedAccount?.email ?? 'empty');
+    }
+
+    await act(async () => {
+      root.render(React.createElement(Harness));
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('fresh@example.com');
+
+    await act(async () => {
+      snapshotListener?.({}, staleSnapshot);
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('fresh@example.com');
 
     act(() => {
       root.unmount();

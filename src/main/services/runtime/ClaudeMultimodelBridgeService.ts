@@ -25,6 +25,9 @@ const logger = createLogger('ClaudeMultimodelBridgeService');
 
 const PROVIDER_STATUS_TIMEOUT_MS = 90_000;
 const PROVIDER_STATUS_SUMMARY_TIMEOUT_MS = 30_000;
+const LEGACY_FALLBACK_PROVIDER_STATUS_SUMMARY_TIMEOUT_MS = 5_000;
+const OPENCODE_FALLBACK_PROVIDER_STATUS_SUMMARY_TIMEOUT_MS = 12_000;
+const LEGACY_PROVIDER_AUTH_TIMEOUT_MS = 15_000;
 const PROVIDER_MODELS_TIMEOUT_MS = 25_000;
 const PROVIDER_STATUS_MAX_BUFFER_BYTES = 8 * 1024 * 1024;
 const PROVIDER_MODELS_MAX_BUFFER_BYTES = 8 * 1024 * 1024;
@@ -112,34 +115,35 @@ interface RuntimeProviderModelCatalogResponse {
   };
 }
 
+interface ProviderStatusPayloadResponse {
+  supported?: boolean;
+  authenticated?: boolean;
+  authMethod?: string | null;
+  verificationState?: 'verified' | 'unknown' | 'offline' | 'error';
+  canLoginFromUi?: boolean;
+  statusMessage?: string | null;
+  detailMessage?: string | null;
+  capabilities?: {
+    teamLaunch?: boolean;
+    oneShot?: boolean;
+    extensions?: RuntimeExtensionCapabilitiesResponse;
+  };
+  backend?: {
+    kind?: string;
+    label?: string;
+    endpointLabel?: string | null;
+    projectId?: string | null;
+    authMethodDetail?: string | null;
+  } | null;
+  runtimeCapabilities?: RuntimeProviderCapabilitiesResponse;
+  subscriptionRateLimits?: RuntimeSubscriptionRateLimitSnapshotResponse | null;
+}
+
 interface ProviderStatusCommandResponse {
   schemaVersion?: number;
-  providers?: Record<
-    string,
-    {
-      supported?: boolean;
-      authenticated?: boolean;
-      authMethod?: string | null;
-      verificationState?: 'verified' | 'unknown' | 'offline' | 'error';
-      canLoginFromUi?: boolean;
-      statusMessage?: string | null;
-      detailMessage?: string | null;
-      capabilities?: {
-        teamLaunch?: boolean;
-        oneShot?: boolean;
-        extensions?: RuntimeExtensionCapabilitiesResponse;
-      };
-      backend?: {
-        kind?: string;
-        label?: string;
-        endpointLabel?: string | null;
-        projectId?: string | null;
-        authMethodDetail?: string | null;
-      } | null;
-      runtimeCapabilities?: RuntimeProviderCapabilitiesResponse;
-      subscriptionRateLimits?: RuntimeSubscriptionRateLimitSnapshotResponse | null;
-    }
-  >;
+  provider?: string;
+  status?: ProviderStatusPayloadResponse;
+  providers?: Record<string, ProviderStatusPayloadResponse>;
 }
 
 interface ProviderModelsCommandResponse {
@@ -879,6 +883,171 @@ export class ClaudeMultimodelBridgeService {
     return lower.includes('timed out') || lower.includes('timeout');
   }
 
+  private shouldUseLegacyProviderTimeoutFallback(providerId: CliProviderId): boolean {
+    return providerId === 'anthropic' || providerId === 'codex' || providerId === 'opencode';
+  }
+
+  private getProviderStatusRuntimeTimeout(
+    providerId: CliProviderId,
+    options: { summary?: boolean; timeoutMs?: number }
+  ): number {
+    if (options.summary && this.shouldUseLegacyProviderTimeoutFallback(providerId)) {
+      const fallbackTimeout =
+        providerId === 'opencode'
+          ? OPENCODE_FALLBACK_PROVIDER_STATUS_SUMMARY_TIMEOUT_MS
+          : LEGACY_FALLBACK_PROVIDER_STATUS_SUMMARY_TIMEOUT_MS;
+      return Math.min(options.timeoutMs ?? PROVIDER_STATUS_SUMMARY_TIMEOUT_MS, fallbackTimeout);
+    }
+    return (
+      options.timeoutMs ??
+      (options.summary ? PROVIDER_STATUS_SUMMARY_TIMEOUT_MS : PROVIDER_STATUS_TIMEOUT_MS)
+    );
+  }
+
+  private getLegacyProviderStatusPayload(
+    providerId: CliProviderId,
+    parsed: ProviderStatusCommandResponse
+  ): ProviderStatusPayloadResponse | undefined {
+    if (parsed.providers?.[providerId]) {
+      return parsed.providers[providerId];
+    }
+    return parsed.provider === providerId ? parsed.status : undefined;
+  }
+
+  private mergeLegacyProviderStatusPayload(
+    provider: CliProviderStatus,
+    runtimeStatus: ProviderStatusPayloadResponse | undefined
+  ): CliProviderStatus {
+    if (!runtimeStatus) {
+      return provider;
+    }
+
+    return {
+      ...provider,
+      supported: runtimeStatus.supported === true,
+      authenticated: runtimeStatus.authenticated === true,
+      authMethod: runtimeStatus.authMethod ?? null,
+      verificationState: runtimeStatus.verificationState ?? 'unknown',
+      statusMessage: runtimeStatus.statusMessage ?? null,
+      detailMessage: runtimeStatus.detailMessage ?? null,
+      canLoginFromUi: runtimeStatus.canLoginFromUi !== false,
+      capabilities: {
+        teamLaunch: runtimeStatus.capabilities?.teamLaunch === true,
+        oneShot: runtimeStatus.capabilities?.oneShot === true,
+        extensions: mapRuntimeExtensionCapabilities(
+          provider.providerId,
+          runtimeStatus.capabilities?.extensions
+        ),
+      },
+      backend: runtimeStatus.backend?.kind
+        ? {
+            kind: runtimeStatus.backend.kind,
+            label: runtimeStatus.backend.label ?? runtimeStatus.backend.kind,
+            endpointLabel: runtimeStatus.backend.endpointLabel ?? null,
+            projectId: runtimeStatus.backend.projectId ?? null,
+            authMethodDetail: runtimeStatus.backend.authMethodDetail ?? null,
+          }
+        : null,
+    };
+  }
+
+  private async getProviderStatusFromLegacyProbes(
+    binaryPath: string,
+    providerId: CliProviderId
+  ): Promise<CliProviderStatus> {
+    const { env, connectionIssues } = await this.buildProviderCliEnv(binaryPath, providerId);
+    let provider = createDefaultProviderStatus(providerId);
+    let fulfilledProbeCount = 0;
+
+    const authStatusPromise =
+      providerId === 'anthropic' || providerId === 'codex'
+        ? execCli(binaryPath, ['auth', 'status', '--json', '--provider', providerId], {
+            timeout: LEGACY_PROVIDER_AUTH_TIMEOUT_MS,
+            maxBuffer: PROVIDER_STATUS_MAX_BUFFER_BYTES,
+            env,
+          })
+        : Promise.resolve(null);
+
+    const modelListPromise = execCli(
+      binaryPath,
+      ['model', 'list', '--json', '--provider', providerId],
+      {
+        timeout: PROVIDER_MODELS_TIMEOUT_MS,
+        maxBuffer: PROVIDER_MODELS_MAX_BUFFER_BYTES,
+        env,
+      }
+    );
+
+    const [authStatusResult, modelListResult] = await Promise.allSettled([
+      authStatusPromise,
+      modelListPromise,
+    ]);
+
+    if (authStatusResult.status === 'fulfilled' && authStatusResult.value) {
+      const parsed = extractJsonObject<ProviderStatusCommandResponse>(
+        authStatusResult.value.stdout
+      );
+      provider = this.mergeLegacyProviderStatusPayload(
+        provider,
+        this.getLegacyProviderStatusPayload(providerId, parsed)
+      );
+      fulfilledProbeCount += 1;
+    } else if (authStatusResult.status === 'rejected') {
+      logger.warn(
+        `Legacy provider auth status unavailable for ${providerId}: ${
+          authStatusResult.reason instanceof Error
+            ? authStatusResult.reason.message
+            : String(authStatusResult.reason)
+        }`
+      );
+    }
+
+    if (modelListResult.status === 'fulfilled') {
+      const parsed = extractJsonObject<ProviderModelsCommandResponse>(modelListResult.value.stdout);
+      const runtimeModels = extractModelIds(parsed.providers?.[providerId]?.models);
+      if (runtimeModels.length > 0) {
+        provider = {
+          ...provider,
+          models: runtimeModels,
+        };
+      }
+      fulfilledProbeCount += 1;
+    } else {
+      logger.warn(
+        `Legacy provider models unavailable for ${providerId}: ${
+          modelListResult.reason instanceof Error
+            ? modelListResult.reason.message
+            : String(modelListResult.reason)
+        }`
+      );
+    }
+
+    if (fulfilledProbeCount === 0) {
+      throw new Error(`Legacy provider probes unavailable for ${providerId}`);
+    }
+
+    return providerConnectionService.enrichProviderStatus(
+      this.applyConnectionIssue(provider, connectionIssues)
+    );
+  }
+
+  private async getProviderStatusFromLegacyProbesOrError(
+    binaryPath: string,
+    providerId: CliProviderId,
+    originalError: unknown
+  ): Promise<CliProviderStatus> {
+    try {
+      return await this.getProviderStatusFromLegacyProbes(binaryPath, providerId);
+    } catch (fallbackError) {
+      logger.warn(
+        `Legacy provider probes unavailable for ${providerId}: ${
+          fallbackError instanceof Error ? fallbackError.message : String(fallbackError)
+        }`
+      );
+      return createRuntimeStatusErrorProviderStatus(providerId, originalError);
+    }
+  }
+
   private mapRuntimeProviderStatus(
     providerId: CliProviderId,
     runtimeStatus: NonNullable<UnifiedRuntimeStatusResponse['providers']>[string] | undefined
@@ -1024,9 +1193,7 @@ export class ClaudeMultimodelBridgeService {
     if (options.summary) {
       args.push('--summary');
     }
-    const timeout =
-      options.timeoutMs ??
-      (options.summary ? PROVIDER_STATUS_SUMMARY_TIMEOUT_MS : PROVIDER_STATUS_TIMEOUT_MS);
+    const timeout = this.getProviderStatusRuntimeTimeout(providerId, options);
     const { stdout } = await execCli(binaryPath, args, {
       timeout,
       maxBuffer: PROVIDER_STATUS_MAX_BUFFER_BYTES,
@@ -1081,6 +1248,7 @@ export class ClaudeMultimodelBridgeService {
         }
       })
     );
+    failures.sort((a, b) => providerIds.indexOf(a.providerId) - providerIds.indexOf(b.providerId));
 
     if (failures.length === 0) {
       return this.buildProviderStatusesSnapshot(providers, providerIds);
@@ -1091,10 +1259,18 @@ export class ClaudeMultimodelBridgeService {
         logger.warn(
           `Provider-scoped runtime status timed out for ${failures
             .map(({ providerId }) => providerId)
-            .join(', ')}; using error provider statuses without slower fallback probes`
+            .join(', ')}; falling back to scoped legacy provider probes`
         );
-        for (const { providerId, error } of failures) {
-          providers.set(providerId, createRuntimeStatusErrorProviderStatus(providerId, error));
+        const fallbackProviders = await Promise.all(
+          failures.map(async ({ providerId, error }) => ({
+            providerId,
+            provider: this.shouldUseLegacyProviderTimeoutFallback(providerId)
+              ? await this.getProviderStatusFromLegacyProbesOrError(binaryPath, providerId, error)
+              : createRuntimeStatusErrorProviderStatus(providerId, error),
+          }))
+        );
+        for (const { providerId, provider } of fallbackProviders) {
+          providers.set(providerId, provider);
         }
         onUpdate?.(this.buildProviderStatusesSnapshot(providers, providerIds));
         return this.buildProviderStatusesSnapshot(providers, providerIds);
@@ -1109,8 +1285,18 @@ export class ClaudeMultimodelBridgeService {
         .join(', ')}; using partial provider statuses`
     );
 
-    for (const { providerId, error } of failures) {
-      providers.set(providerId, createRuntimeStatusErrorProviderStatus(providerId, error));
+    const fallbackProviders = await Promise.all(
+      failures.map(async ({ providerId, error }) => ({
+        providerId,
+        provider:
+          this.isRuntimeStatusTimeoutError(error) &&
+          this.shouldUseLegacyProviderTimeoutFallback(providerId)
+            ? await this.getProviderStatusFromLegacyProbesOrError(binaryPath, providerId, error)
+            : createRuntimeStatusErrorProviderStatus(providerId, error),
+      }))
+    );
+    for (const { providerId, provider } of fallbackProviders) {
+      providers.set(providerId, provider);
     }
     onUpdate?.(this.buildProviderStatusesSnapshot(providers, providerIds));
     return this.buildProviderStatusesSnapshot(providers, providerIds);
@@ -1322,6 +1508,17 @@ export class ClaudeMultimodelBridgeService {
         try {
           return await this.getProviderStatusFromScopedRuntimeStatus(binaryPath, providerId);
         } catch (fullError) {
+          if (
+            this.isRuntimeStatusTimeoutError(fullError) &&
+            this.shouldUseLegacyProviderTimeoutFallback(providerId)
+          ) {
+            logger.warn(
+              `Provider-scoped full runtime status timed out for ${providerId}, falling back to scoped legacy probes: ${
+                fullError instanceof Error ? fullError.message : String(fullError)
+              }`
+            );
+            return this.getProviderStatusFromLegacyProbesOrError(binaryPath, providerId, fullError);
+          }
           logger.warn(
             `Provider-scoped full runtime status unavailable for ${providerId}, returning scoped error: ${
               fullError instanceof Error ? fullError.message : String(fullError)
@@ -1332,10 +1529,21 @@ export class ClaudeMultimodelBridgeService {
       }
 
       logger.warn(
-        `Provider-scoped summary runtime status unavailable for ${providerId}, returning scoped error: ${
+        `Provider-scoped summary runtime status unavailable for ${providerId}: ${
           error instanceof Error ? error.message : String(error)
         }`
       );
+      if (
+        this.isRuntimeStatusTimeoutError(error) &&
+        this.shouldUseLegacyProviderTimeoutFallback(providerId)
+      ) {
+        logger.warn(
+          `Provider-scoped summary runtime status timed out for ${providerId}, falling back to scoped legacy probes: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+        return this.getProviderStatusFromLegacyProbesOrError(binaryPath, providerId, error);
+      }
       return createRuntimeStatusErrorProviderStatus(providerId, error);
     }
   }

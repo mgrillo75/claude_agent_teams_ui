@@ -55,6 +55,8 @@ const sentrySourceMapTargets = {
   },
 } as const
 
+const sourceMapSetting = process.env.AGENT_TEAMS_DISABLE_SOURCEMAPS === '1' ? false : 'hidden'
+
 // Sentry source map upload - only active in CI when SENTRY_AUTH_TOKEN is set.
 function createSentryPlugins(target: keyof typeof sentrySourceMapTargets): Plugin[] {
   if (!process.env.SENTRY_AUTH_TOKEN) return []
@@ -98,7 +100,7 @@ export default defineConfig({
       commonjsOptions: {
         strictRequires: [/node_modules\/.*ssh2\//],
       },
-      sourcemap: 'hidden',
+      sourcemap: sourceMapSetting,
       outDir: 'dist-electron/main',
       rollupOptions: {
         input: {
@@ -169,7 +171,7 @@ export default defineConfig({
     },
     plugins: [react(), ...createSentryPlugins('renderer')],
     build: {
-      sourcemap: 'hidden',
+      sourcemap: sourceMapSetting,
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'src/renderer/index.html')

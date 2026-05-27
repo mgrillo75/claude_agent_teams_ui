@@ -9,7 +9,12 @@ import { api } from '@renderer/api';
 import { contextStorage } from '@renderer/services/contextStorage';
 import { draftStorage } from '@renderer/services/draftStorage';
 
-import { getFullResetState } from '../utils/stateResetHelpers';
+import {
+  captureContextScopedRequestEpoch,
+  invalidateContextScopedRequestEpoch,
+  isContextScopedRequestEpochCurrent,
+} from '../utils/contextScopedRequestEpoch';
+import { getContextScopedTeamResetState, getFullResetState } from '../utils/stateResetHelpers';
 
 import type { AppState } from '../types';
 import type { ContextSnapshot } from '@renderer/services/contextStorage';
@@ -47,6 +52,7 @@ export interface ContextSlice {
 function getEmptyContextState(): Partial<AppState> {
   return {
     ...getFullResetState(),
+    ...getContextScopedTeamResetState(),
     projects: [],
     projectsLoading: false,
     projectsInitialized: false,
@@ -75,6 +81,16 @@ function getEmptyContextState(): Partial<AppState> {
       focusedPaneId: 'pane-default',
     },
   };
+}
+
+function isContextSwitchRequestCurrent(
+  get: () => AppState,
+  targetContextId: string,
+  requestEpoch: number
+): boolean {
+  return (
+    get().activeContextId === targetContextId && isContextScopedRequestEpochCurrent(requestEpoch)
+  );
 }
 
 /**
@@ -259,11 +275,36 @@ export const createContextSlice: StateCreator<AppState, [], [], ContextSlice> = 
 
       // Fetch active context from main process
       const activeContextId = await api.context.getActive();
+      const previousContextId = get().activeContextId;
+      const contextChanged = activeContextId !== previousContextId;
+      if (contextChanged) {
+        invalidateContextScopedRequestEpoch();
+      }
 
       set({
+        ...(contextChanged
+          ? {
+              ...getFullResetState(),
+              ...getContextScopedTeamResetState(),
+              projects: [],
+              projectsLoading: false,
+              projectsInitialized: false,
+              projectsError: null,
+              repositoryGroups: [],
+              repositoryGroupsLoading: false,
+              repositoryGroupsInitialized: false,
+              repositoryGroupsError: null,
+            }
+          : {}),
         contextSnapshotsReady: true,
         activeContextId,
       });
+      if (contextChanged) {
+        void get().fetchProjects();
+        void get().fetchRepositoryGroups();
+        void get().fetchTeams();
+        void get().fetchAllTasks();
+      }
 
       // Fetch available contexts
       await get().fetchAvailableContexts();
@@ -313,10 +354,12 @@ export const createContextSlice: StateCreator<AppState, [], [], ContextSlice> = 
         contextStorage.loadSnapshot(targetContextId),
         api.context.switch(targetContextId),
       ]);
+      invalidateContextScopedRequestEpoch();
 
       // Step 2: Apply cached snapshot immediately for instant visual feedback
       if (targetSnapshot) {
         set({
+          ...getContextScopedTeamResetState(),
           projects: targetSnapshot.projects,
           projectsLoading: false,
           projectsInitialized: true,
@@ -348,7 +391,15 @@ export const createContextSlice: StateCreator<AppState, [], [], ContextSlice> = 
           isContextSwitching: false,
           targetContextId: null,
         });
+      } else {
+        set({
+          ...getEmptyContextState(),
+          activeContextId: targetContextId,
+          isContextSwitching: true,
+          targetContextId,
+        });
       }
+      const switchRequestEpoch = captureContextScopedRequestEpoch();
 
       // Step 3: Fetch fresh data in background (slow over SSH)
       // Wrapped in try/catch so fetch failures don't wipe valid snapshot data.
@@ -358,6 +409,9 @@ export const createContextSlice: StateCreator<AppState, [], [], ContextSlice> = 
           api.getProjects(),
           api.getRepositoryGroups(),
         ]);
+        if (!isContextSwitchRequestCurrent(get, targetContextId, switchRequestEpoch)) {
+          return;
+        }
 
         if (targetSnapshot) {
           // Guard: don't overwrite snapshot data if fetch returned empty
@@ -388,6 +442,9 @@ export const createContextSlice: StateCreator<AppState, [], [], ContextSlice> = 
         }
       } catch (fetchError) {
         console.error('[contextSlice] Background data refresh failed:', fetchError);
+        if (!isContextSwitchRequestCurrent(get, targetContextId, switchRequestEpoch)) {
+          return;
+        }
         // Keep snapshot data as fallback — don't wipe user's view
         if (!targetSnapshot) {
           // No snapshot and fetch failed — finalize switch with empty state
@@ -401,7 +458,12 @@ export const createContextSlice: StateCreator<AppState, [], [], ContextSlice> = 
       }
 
       // Step 4: Fetch notifications in background
+      if (!isContextSwitchRequestCurrent(get, targetContextId, switchRequestEpoch)) {
+        return;
+      }
       void get().fetchNotifications();
+      void get().fetchTeams();
+      void get().fetchAllTasks();
     } catch (error) {
       console.error('[contextSlice] Failed to switch context:', error);
       // Do NOT leave in broken state

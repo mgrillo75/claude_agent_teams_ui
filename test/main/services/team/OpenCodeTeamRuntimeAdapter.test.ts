@@ -1586,6 +1586,91 @@ describe('OpenCodeTeamRuntimeAdapter', () => {
     ).rejects.toThrow('OpenCode permission answer bridge is not registered.');
   });
 
+  it('lists OpenCode runtime permissions through the bridge', async () => {
+    const listOpenCodeRuntimePermissions = vi.fn<
+      NonNullable<OpenCodeTeamRuntimeBridgePort['listOpenCodeRuntimePermissions']>
+    >(async () => ({
+      permissions: [
+        {
+          requestId: 'perm-1',
+          sessionId: 'session-alice',
+          tool: 'bash',
+          title: 'Run git status',
+          kind: 'tool',
+          raw: { patterns: ['git status'] },
+        },
+        {
+          requestId: 'perm-1',
+          sessionId: 'session-alice',
+          tool: 'bash',
+          title: 'Duplicate',
+          kind: 'tool',
+        },
+        {
+          requestId: '   ',
+          sessionId: null,
+          tool: null,
+          title: null,
+          kind: null,
+        },
+      ],
+      diagnostics: ['permission list recovered from bridge warning'],
+    }));
+    const adapter = new OpenCodeTeamRuntimeAdapter(
+      bridgePort(readiness({ state: 'ready', launchAllowed: true }), {
+        listOpenCodeRuntimePermissions,
+      })
+    );
+
+    await expect(
+      adapter.listRuntimePermissions({
+        teamName: 'team-a',
+        laneId: 'secondary:opencode:alice',
+        memberName: 'alice',
+        sessionId: 'session-alice',
+        cwd: '/repo',
+      })
+    ).resolves.toEqual({
+      permissions: [
+        {
+          providerId: 'opencode',
+          requestId: 'perm-1',
+          sessionId: 'session-alice',
+          tool: 'bash',
+          title: 'Run git status',
+          kind: 'tool',
+          raw: { patterns: ['git status'] },
+        },
+      ],
+      diagnostics: ['permission list recovered from bridge warning'],
+    });
+    expect(listOpenCodeRuntimePermissions).toHaveBeenCalledWith({
+      teamId: 'team-a',
+      teamName: 'team-a',
+      laneId: 'secondary:opencode:alice',
+      memberName: 'alice',
+      sessionId: 'session-alice',
+      projectPath: '/repo',
+    });
+  });
+
+  it('returns a diagnostic when the OpenCode runtime permission list bridge is unavailable', async () => {
+    const adapter = new OpenCodeTeamRuntimeAdapter(
+      bridgePort(readiness({ state: 'ready', launchAllowed: true }))
+    );
+
+    await expect(
+      adapter.listRuntimePermissions({
+        teamName: 'team-a',
+        laneId: 'primary',
+        cwd: '/repo',
+      })
+    ).resolves.toEqual({
+      permissions: [],
+      diagnostics: ['OpenCode runtime permission list bridge is not registered.'],
+    });
+  });
+
   it('does not mark created bridge members without runtimePid as runtimeAlive', async () => {
     const launchOpenCodeTeam = vi.fn(
       async () =>

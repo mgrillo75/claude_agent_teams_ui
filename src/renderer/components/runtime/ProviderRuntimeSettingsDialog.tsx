@@ -54,6 +54,7 @@ import {
 import {
   formatProviderAuthMethodLabelForProvider,
   formatProviderAuthModeLabelForProvider,
+  formatProviderStatusText,
   getProviderConnectLabel,
   getProviderCurrentRuntimeSummary,
   isConnectionManagedRuntimeProvider,
@@ -414,7 +415,7 @@ function getProviderUsageLabel(
           t
         ),
       })
-    : provider.statusMessage || t('providerRuntime.usage.notConnected');
+    : formatProviderStatusText(provider, t);
 }
 
 function getCompactOpenCodeProviderDetailMessage(detailMessage?: string | null): string | null {
@@ -1150,10 +1151,8 @@ export const ProviderRuntimeSettingsDialog = ({
 
   let connectionStatusLabel: string | null = null;
   if (selectedProvider) {
-    if (!hideConnectionMethodMeta && selectedProvider.authenticated) {
+    if (!hideConnectionMethodMeta) {
       connectionStatusLabel = getProviderUsageLabel(selectedProvider, t);
-    } else if (!hideConnectionMethodMeta) {
-      connectionStatusLabel = t('providerRuntime.usage.notConnected');
     }
   }
   const showSelectedProviderSummary = Boolean(selectedProvider) && !connectionManagedRuntime;
@@ -1635,13 +1634,7 @@ export const ProviderRuntimeSettingsDialog = ({
                 onProviderChanged={() => onRefreshProvider?.('opencode')}
               />
             ) : (
-              <div
-                className="space-y-3 rounded-lg border p-3"
-                style={{
-                  borderColor: 'var(--color-border-subtle)',
-                  backgroundColor: 'rgba(255, 255, 255, 0.025)',
-                }}
-              >
+              <div className="space-y-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>

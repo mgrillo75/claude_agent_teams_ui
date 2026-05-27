@@ -16,6 +16,27 @@ interface SlashCommandInteractionLayerProps {
   scrollTop: number;
 }
 
+interface SlashCommandPosition {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+}
+
+function areSlashCommandPositionsEquivalent(
+  current: SlashCommandPosition | null,
+  next: SlashCommandPosition | null
+): boolean {
+  if (current === next) return true;
+  if (!current || !next) return false;
+  return (
+    current.top === next.top &&
+    current.left === next.left &&
+    current.width === next.width &&
+    current.height === next.height
+  );
+}
+
 export const SlashCommandInteractionLayer = ({
   command,
   definition,
@@ -23,12 +44,14 @@ export const SlashCommandInteractionLayer = ({
   textareaRef,
   scrollTop,
 }: SlashCommandInteractionLayerProps): React.JSX.Element | null => {
-  const [position, setPosition] = React.useState<{
-    top: number;
-    left: number;
-    width: number;
-    height: number;
-  } | null>(null);
+  const [position, setPosition] = React.useState<SlashCommandPosition | null>(null);
+  const positionRef = React.useRef<SlashCommandPosition | null>(null);
+
+  const commitPosition = React.useCallback((nextPosition: SlashCommandPosition | null) => {
+    if (areSlashCommandPositionsEquivalent(positionRef.current, nextPosition)) return;
+    positionRef.current = nextPosition;
+    setPosition(nextPosition);
+  }, []);
 
   React.useLayoutEffect(() => {
     const textarea = textareaRef.current;
@@ -44,17 +67,17 @@ export const SlashCommandInteractionLayer = ({
     ]);
 
     if (!match) {
-      setPosition(null);
+      commitPosition(null);
       return;
     }
 
-    setPosition({
+    commitPosition({
       top: match.top,
       left: match.left,
       width: match.width,
       height: match.height,
     });
-  }, [command, textareaRef, value]);
+  }, [command, commitPosition, textareaRef, value]);
 
   if (!definition || !position) return null;
 

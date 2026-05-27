@@ -131,6 +131,11 @@ import {
 import { structurallyShareTeamSnapshot } from '../team/teamSnapshotStructuralSharing';
 import { parseToolApprovalSettings } from '../team/teamToolApprovalSettings';
 import { noteTeamRefreshFanout } from '../teamRefreshFanoutDiagnostics';
+import {
+  captureContextScopedRequestEpoch,
+  isContextScopedRequestEpochCurrent,
+  resetContextScopedRequestEpochForTests,
+} from '../utils/contextScopedRequestEpoch';
 import { getWorktreeNavigationState } from '../utils/stateResetHelpers';
 
 import type {
@@ -236,6 +241,7 @@ const pendingFreshTeamMessagesHeadRefreshes = new Set<string>();
 const inFlightTeamMemberActivityMetaRequests = new Map<string, Promise<void>>();
 const pendingFreshTeamMemberActivityMetaRefreshes = new Set<string>();
 const pendingTeamPendingReplyRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
+let latestTeamsFetchRequestId = 0;
 let inFlightGlobalTasksRefresh: Promise<void> | null = null;
 let pendingFreshGlobalTasksRefresh = false;
 interface RefreshTeamDataOptions {
@@ -286,9 +292,13 @@ export function __resetTeamSliceModuleStateForTests(): void {
     clearTimeout(timer);
   }
   pendingTeamPendingReplyRefreshTimers.clear();
+  latestTeamsFetchRequestId = 0;
+  inFlightGlobalTasksRefresh = null;
+  pendingFreshGlobalTasksRefresh = false;
   clearAllPendingReplyRefreshWaits();
   clearAllLastResolvedTeamDataRefreshes();
   clearAllTeamLocalStateEpochs();
+  resetContextScopedRequestEpochForTests();
   clearAllMemberSpawnStatusesIpcBackoffs();
   clearAllTeamRefreshBurstDiagnostics();
   clearAllMemberSpawnUiEqualLastWarns();
@@ -423,15 +433,56 @@ function drainQueuedFullRefreshAfterThinSettles(teamName: string, get: () => Tea
   void get().refreshTeamData(teamName, { withDedup: true });
 }
 
+interface ContextRequestScope {
+  contextId: string;
+  contextEpoch: number;
+}
+
+interface TeamRequestScope extends ContextRequestScope {
+  teamStateEpoch: number;
+}
+
+function captureContextRequestScope(get: () => AppState): ContextRequestScope {
+  return {
+    contextId: get().activeContextId,
+    contextEpoch: captureContextScopedRequestEpoch(),
+  };
+}
+
+function isContextRequestScopeCurrent(get: () => AppState, scope: ContextRequestScope): boolean {
+  return (
+    get().activeContextId === scope.contextId &&
+    isContextScopedRequestEpochCurrent(scope.contextEpoch)
+  );
+}
+
+function captureTeamRequestScope(get: () => AppState, teamName: string): TeamRequestScope {
+  return {
+    ...captureContextRequestScope(get),
+    teamStateEpoch: captureTeamLocalStateEpoch(teamName),
+  };
+}
+
+function isTeamRequestScopeCurrent(
+  get: () => AppState,
+  teamName: string,
+  scope: TeamRequestScope
+): boolean {
+  return (
+    isContextRequestScopeCurrent(get, scope) &&
+    isTeamLocalStateEpochCurrent(teamName, scope.teamStateEpoch)
+  );
+}
+
 function isSelectedTeamLoadStillCurrent(
-  get: () => TeamSlice,
+  get: () => AppState,
   teamName: string,
   requestNonce: number,
-  teamStateEpoch: number
+  requestScope: TeamRequestScope
 ): boolean {
   const state = get();
   return (
-    isTeamLocalStateEpochCurrent(teamName, teamStateEpoch) &&
+    isTeamRequestScopeCurrent(get, teamName, requestScope) &&
     state.selectedTeamName === teamName &&
     state.selectedTeamLoadNonce === requestNonce &&
     state.selectedTeamData?.teamName === teamName
@@ -441,10 +492,10 @@ function isSelectedTeamLoadStillCurrent(
 function schedulePostPaintTeamEnrichments(params: {
   teamName: string;
   requestNonce: number;
-  teamStateEpoch: number;
-  get: () => TeamSlice;
+  requestScope: TeamRequestScope;
+  get: () => AppState;
 }): void {
-  const { teamName, requestNonce, teamStateEpoch, get } = params;
+  const { teamName, requestNonce, requestScope, get } = params;
 
   cancelPostPaintTeamEnrichments(teamName);
 
@@ -455,7 +506,7 @@ function schedulePostPaintTeamEnrichments(params: {
     postPaintTeamEnrichmentTimers.delete(teamName);
 
     void (async () => {
-      if (!isTeamLocalStateEpochCurrent(teamName, teamStateEpoch)) {
+      if (!isTeamRequestScopeCurrent(get, teamName, requestScope)) {
         queuedFullTeamDataRefreshesAfterThin.delete(teamName);
         return;
       }
@@ -481,7 +532,7 @@ function schedulePostPaintTeamEnrichments(params: {
 
       try {
         const headResult = await get().refreshTeamMessagesHead(teamName);
-        if (!isSelectedTeamLoadStillCurrent(get, teamName, requestNonce, teamStateEpoch)) {
+        if (!isSelectedTeamLoadStillCurrent(get, teamName, requestNonce, requestScope)) {
           return;
         }
         if (headResult.feedChanged || isMemberActivityMetaStale(get(), teamName)) {
@@ -1224,8 +1275,12 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
     if (isMemberSpawnStatusesIpcBackoffActive(teamName)) {
       return;
     }
+    const requestScope = captureTeamRequestScope(get, teamName);
     try {
       const snapshot = await api.teams.getMemberSpawnStatuses(teamName);
+      if (!isTeamRequestScopeCurrent(get, teamName, requestScope)) {
+        return;
+      }
       clearMemberSpawnStatusesIpcBackoff(teamName);
       set((prev) => {
         if (snapshot.runId != null && prev.ignoredRuntimeRunIds[snapshot.runId] === teamName) {
@@ -1288,6 +1343,9 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         };
       });
     } catch (error) {
+      if (!isTeamRequestScopeCurrent(get, teamName, requestScope)) {
+        return;
+      }
       const message = error instanceof Error ? error.message : String(error);
       if (message.includes("No handler registered for 'team:memberSpawnStatuses'")) {
         recordMemberSpawnStatusesIpcRetryBackoff(
@@ -1300,8 +1358,12 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   },
   fetchTeamAgentRuntime: async (teamName: string) => {
     if (!api.teams?.getTeamAgentRuntime) return;
+    const requestScope = captureTeamRequestScope(get, teamName);
     try {
       const snapshot = await api.teams.getTeamAgentRuntime(teamName);
+      if (!isTeamRequestScopeCurrent(get, teamName, requestScope)) {
+        return;
+      }
       set((prev) => {
         if (snapshot.runId != null && prev.ignoredRuntimeRunIds[snapshot.runId] === teamName) {
           return {};
@@ -1401,6 +1463,8 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
     // Only effective during initial load (when teamsLoading is set to true below).
     // Refreshes are already serialized by the throttle timer in onTeamChange.
     if (get().teamsLoading) return;
+    const requestScope = captureContextRequestScope(get);
+    const requestId = ++latestTeamsFetchRequestId;
     // Only show loading spinner on initial load — avoids flickering when refreshing
     const isInitialLoad = get().teams.length === 0;
     if (isInitialLoad) {
@@ -1412,6 +1476,12 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         TEAM_FETCH_TIMEOUT_MS,
         'fetchTeams'
       );
+      if (
+        !isContextRequestScopeCurrent(get, requestScope) ||
+        latestTeamsFetchRequestId !== requestId
+      ) {
+        return;
+      }
       const teamByName: Record<string, TeamSummary> = {};
       const teamBySessionId: Record<string, TeamSummary> = {};
       for (const team of teams) {
@@ -1444,6 +1514,12 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         };
       });
     } catch (error) {
+      if (
+        !isContextRequestScopeCurrent(get, requestScope) ||
+        latestTeamsFetchRequestId !== requestId
+      ) {
+        return;
+      }
       // On refresh failure, keep existing teams visible
       set({
         teamsLoading: false,
@@ -1475,15 +1551,19 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         if (isInitialLoad) {
           set({ globalTasksLoading: true, globalTasksError: null });
         }
+        const requestScope = captureContextRequestScope(get);
         const oldTasks = get().globalTasks;
-        const wasFirst = consumeFirstGlobalTasksFetchFlag();
         try {
           const tasks = await withTimeout(
             unwrapIpc('team:getAllTasks', () => api.teams.getAllTasks()),
             TEAM_FETCH_TIMEOUT_MS,
             'fetchAllTasks'
           );
+          if (!isContextRequestScopeCurrent(get, requestScope)) {
+            continue;
+          }
           const notificationState = get();
+          const wasFirst = consumeFirstGlobalTasksFetchFlag();
           processGlobalTaskNotifications({
             oldTasks,
             newTasks: tasks,
@@ -1499,6 +1579,9 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
             globalTasksError: null,
           });
         } catch (error) {
+          if (!isContextRequestScopeCurrent(get, requestScope)) {
+            continue;
+          }
           set({
             globalTasksLoading: false,
             globalTasksInitialized: true,
@@ -2024,6 +2107,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   },
 
   refreshTeamChangePresence: async (teamName: string) => {
+    const requestScope = captureTeamRequestScope(get, teamName);
     const currentTeamData = selectTeamDataForName(get(), teamName);
     if (!currentTeamData) {
       return;
@@ -2033,6 +2117,9 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       const presenceByTaskId = await unwrapIpc('team:getTaskChangePresence', () =>
         api.teams.getTaskChangePresence(teamName)
       );
+      if (!isTeamRequestScopeCurrent(get, teamName, requestScope)) {
+        return;
+      }
 
       set((state) => {
         const teamData = selectTeamDataForName(state, teamName);
@@ -2080,7 +2167,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   },
 
   selectTeam: async (teamName: string, opts) => {
-    const teamStateEpoch = captureTeamLocalStateEpoch(teamName);
+    const requestScope = captureTeamRequestScope(get, teamName);
     const allowReloadWhileProvisioning = opts?.allowReloadWhileProvisioning === true;
     // Guard: prevent duplicate in-flight fetches for the same team.
     // GlobalTaskDetailDialog + tab navigation can call selectTeam() in quick succession.
@@ -2113,7 +2200,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       const data = await fetchTeamDataDeduped(teamName, {
         includeMemberBranches: false,
       });
-      if (!isTeamLocalStateEpochCurrent(teamName, teamStateEpoch)) {
+      if (!isTeamRequestScopeCurrent(get, teamName, requestScope)) {
         queuedFullTeamDataRefreshesAfterThin.delete(teamName);
         return;
       }
@@ -2247,7 +2334,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         if (
           !opts?.skipProjectAutoSelect &&
           projectPath &&
-          isSelectedTeamLoadStillCurrent(get, teamName, requestNonce, teamStateEpoch)
+          isSelectedTeamLoadStillCurrent(get, teamName, requestNonce, requestScope)
         ) {
           const state = get();
           const normalizedTeamPath = normalizePath(projectPath);
@@ -2286,7 +2373,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         schedulePostPaintTeamEnrichments({
           teamName,
           requestNonce,
-          teamStateEpoch,
+          requestScope,
           get,
         });
       } catch (error) {
@@ -2297,7 +2384,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         );
       }
     } catch (error) {
-      if (!isTeamLocalStateEpochCurrent(teamName, teamStateEpoch)) {
+      if (!isTeamRequestScopeCurrent(get, teamName, requestScope)) {
         queuedFullTeamDataRefreshesAfterThin.delete(teamName);
         return;
       }
@@ -2379,7 +2466,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       return;
     }
 
-    const teamStateEpoch = captureTeamLocalStateEpoch(teamName);
+    const requestScope = captureTeamRequestScope(get, teamName);
     const refreshToken = beginInFlightTeamDataRefresh(teamName);
     // Silent refresh — update data without showing loading skeleton.
     // Only selectTeam() sets loading: true (for initial load).
@@ -2392,7 +2479,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       const data = opts?.withDedup
         ? await fetchTeamDataDeduped(teamName)
         : await fetchTeamDataFresh(teamName);
-      if (!isTeamLocalStateEpochCurrent(teamName, teamStateEpoch)) {
+      if (!isTeamRequestScopeCurrent(get, teamName, requestScope)) {
         return;
       }
       const projectedTeamData = previousData
@@ -2443,7 +2530,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         await api.review.invalidateTaskChangeSummaries(teamName, invalidationState.taskIds);
       }
     } catch (error) {
-      if (!isTeamLocalStateEpochCurrent(teamName, teamStateEpoch)) {
+      if (!isTeamRequestScopeCurrent(get, teamName, requestScope)) {
         return;
       }
       const msg =
@@ -2505,7 +2592,11 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       set({ selectedTeamError: msg });
     } finally {
       endInFlightTeamDataRefresh(teamName, refreshToken);
-      if (reusedInFlightRequest && pendingFreshTeamDataRefreshes.delete(teamName)) {
+      if (
+        reusedInFlightRequest &&
+        pendingFreshTeamDataRefreshes.delete(teamName) &&
+        isTeamRequestScopeCurrent(get, teamName, requestScope)
+      ) {
         void get().refreshTeamData(teamName);
       }
     }
@@ -2524,10 +2615,10 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
 
     const existingOlderRequest = inFlightTeamMessagesOlderRequests.get(teamName);
     if (existingOlderRequest) {
-      const queuedEpoch = captureTeamLocalStateEpoch(teamName);
+      const queuedScope = captureTeamRequestScope(get, teamName);
       const queuedRequest: Promise<RefreshTeamMessagesHeadResult> = existingOlderRequest
         .then(() => {
-          if (!isTeamLocalStateEpochCurrent(teamName, queuedEpoch)) {
+          if (!isTeamRequestScopeCurrent(get, teamName, queuedScope)) {
             return {
               feedChanged: false,
               headChanged: false,
@@ -2558,7 +2649,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       current: null,
     };
     requestRef.current = (async (): Promise<RefreshTeamMessagesHeadResult> => {
-      const teamStateEpoch = captureTeamLocalStateEpoch(teamName);
+      const requestScope = captureTeamRequestScope(get, teamName);
       set((state) => ({
         teamMessagesByName: {
           ...state.teamMessagesByName,
@@ -2573,7 +2664,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         const page = await unwrapIpc('team:getMessagesPage', () =>
           api.teams.getMessagesPage(teamName, { limit: 50 })
         );
-        if (!isTeamLocalStateEpochCurrent(teamName, teamStateEpoch)) {
+        if (!isTeamRequestScopeCurrent(get, teamName, requestScope)) {
           return {
             feedChanged: false,
             headChanged: false,
@@ -2629,7 +2720,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
           feedRevision: page.feedRevision,
         };
       } catch (error) {
-        if (!isTeamLocalStateEpochCurrent(teamName, teamStateEpoch)) {
+        if (!isTeamRequestScopeCurrent(get, teamName, requestScope)) {
           return {
             feedChanged: false,
             headChanged: false,
@@ -2649,7 +2740,10 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       } finally {
         if (inFlightTeamMessagesHeadRequests.get(teamName) === requestRef.current) {
           inFlightTeamMessagesHeadRequests.delete(teamName);
-          if (pendingFreshTeamMessagesHeadRefreshes.delete(teamName)) {
+          if (
+            pendingFreshTeamMessagesHeadRefreshes.delete(teamName) &&
+            isTeamRequestScopeCurrent(get, teamName, requestScope)
+          ) {
             void get().refreshTeamMessagesHead(teamName);
           }
         }
@@ -2662,7 +2756,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   },
 
   loadOlderTeamMessages: async (teamName: string) => {
-    const requestedEpoch = captureTeamLocalStateEpoch(teamName);
+    const requestedScope = captureTeamRequestScope(get, teamName);
     const existingRequest = inFlightTeamMessagesOlderRequests.get(teamName);
     if (existingRequest) {
       return existingRequest;
@@ -2671,7 +2765,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
     const existingHeadRequest = inFlightTeamMessagesHeadRequests.get(teamName);
     if (existingHeadRequest) {
       await existingHeadRequest;
-      if (!isTeamLocalStateEpochCurrent(teamName, requestedEpoch)) {
+      if (!isTeamRequestScopeCurrent(get, teamName, requestedScope)) {
         return;
       }
     }
@@ -2679,7 +2773,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
     let entry = getTeamMessagesCacheEntry(get(), teamName);
     if (!entry.headHydrated) {
       await get().refreshTeamMessagesHead(teamName);
-      if (!isTeamLocalStateEpochCurrent(teamName, requestedEpoch)) {
+      if (!isTeamRequestScopeCurrent(get, teamName, requestedScope)) {
         return;
       }
       entry = getTeamMessagesCacheEntry(get(), teamName);
@@ -2691,7 +2785,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
 
     const requestRef: { current: Promise<void> | null } = { current: null };
     requestRef.current = (async (): Promise<void> => {
-      const teamStateEpoch = captureTeamLocalStateEpoch(teamName);
+      const requestScope = captureTeamRequestScope(get, teamName);
       set((state) => ({
         teamMessagesByName: {
           ...state.teamMessagesByName,
@@ -2710,7 +2804,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
             limit: 50,
           })
         );
-        if (!isTeamLocalStateEpochCurrent(teamName, teamStateEpoch)) {
+        if (!isTeamRequestScopeCurrent(get, teamName, requestScope)) {
           return;
         }
 
@@ -2761,7 +2855,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
           };
         });
       } catch {
-        if (!isTeamLocalStateEpochCurrent(teamName, teamStateEpoch)) {
+        if (!isTeamRequestScopeCurrent(get, teamName, requestScope)) {
           return;
         }
         set((state) => ({
@@ -2799,12 +2893,12 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
 
     const requestRef: { current: Promise<void> | null } = { current: null };
     requestRef.current = (async (): Promise<void> => {
-      const teamStateEpoch = captureTeamLocalStateEpoch(teamName);
+      const requestScope = captureTeamRequestScope(get, teamName);
       try {
         const meta = await unwrapIpc('team:getMemberActivityMeta', () =>
           api.teams.getMemberActivityMeta(teamName)
         );
-        if (!isTeamLocalStateEpochCurrent(teamName, teamStateEpoch)) {
+        if (!isTeamRequestScopeCurrent(get, teamName, requestScope)) {
           return;
         }
 
@@ -2838,14 +2932,17 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
           };
         });
       } catch (error) {
-        if (!isTeamLocalStateEpochCurrent(teamName, teamStateEpoch)) {
+        if (!isTeamRequestScopeCurrent(get, teamName, requestScope)) {
           return;
         }
         throw error;
       } finally {
         if (inFlightTeamMemberActivityMetaRequests.get(teamName) === requestRef.current) {
           inFlightTeamMemberActivityMetaRequests.delete(teamName);
-          if (pendingFreshTeamMemberActivityMetaRefreshes.delete(teamName)) {
+          if (
+            pendingFreshTeamMemberActivityMetaRefreshes.delete(teamName) &&
+            isTeamRequestScopeCurrent(get, teamName, requestScope)
+          ) {
             void get().refreshMemberActivityMeta(teamName);
           }
         }
@@ -3036,11 +3133,18 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   },
 
   fetchCrossTeamTargets: async () => {
+    const requestScope = captureContextRequestScope(get);
     set({ crossTeamTargetsLoading: true });
     try {
       const targets = await api.crossTeam.listTargets();
+      if (!isContextRequestScopeCurrent(get, requestScope)) {
+        return;
+      }
       set({ crossTeamTargets: targets, crossTeamTargetsLoading: false });
     } catch (error) {
+      if (!isContextRequestScopeCurrent(get, requestScope)) {
+        return;
+      }
       logger.error('fetchCrossTeamTargets failed', error);
       set({ crossTeamTargets: [], crossTeamTargetsLoading: false });
     }
@@ -4013,6 +4117,27 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         operation: 'fetchTeams',
       });
       void get().fetchTeams();
+      const terminalRefreshState = get();
+      if (isVisibleInActiveTeamSurface(terminalRefreshState, progress.teamName)) {
+        noteTeamRefreshFanout({
+          teamName: progress.teamName,
+          surface: 'provisioning-progress',
+          phase: 'scheduled',
+          reason: terminalReason,
+          operation: 'fetchMemberSpawnStatuses',
+          visible: true,
+        });
+        void terminalRefreshState.fetchMemberSpawnStatuses(progress.teamName);
+        noteTeamRefreshFanout({
+          teamName: progress.teamName,
+          surface: 'provisioning-progress',
+          phase: 'scheduled',
+          reason: terminalReason,
+          operation: 'fetchTeamAgentRuntime',
+          visible: true,
+        });
+        void terminalRefreshState.fetchTeamAgentRuntime(progress.teamName);
+      }
       if (hydratedVisibleTeam) {
         noteTeamRefreshFanout({
           teamName: progress.teamName,

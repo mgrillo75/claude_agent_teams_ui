@@ -303,6 +303,70 @@ liveDescribe('Mixed provider team launch live e2e', () => {
           ([laneId, lane]) => lane.state === 'active' && laneId === 'secondary:opencode:oscar'
         )
       ).toBe(true);
+
+      await cleanupMixedProviderSmokeTeam(harness, teamName);
+
+      const relaunchProgressEvents: TeamProvisioningProgress[] = [];
+      await harness.svc.launchTeam(
+        {
+          teamName,
+          cwd: projectPath,
+          providerId: 'anthropic',
+          model: anthropicModel,
+          skipPermissions: true,
+          clearContext: true,
+        },
+        (progress) => {
+          relaunchProgressEvents.push(progress);
+        }
+      );
+
+      await waitUntil(async () => {
+        const last = relaunchProgressEvents.at(-1);
+        if (last?.state === 'failed') {
+          throw new Error(formatProgressDump(relaunchProgressEvents));
+        }
+        return last?.state === 'ready';
+      }, 360_000);
+
+      await waitUntilWithDiagnostics(async () => {
+        const status = await harness!.svc.getMemberSpawnStatuses(teamName!);
+        if (status.teamLaunchState === 'partial_failure') {
+          throw new Error(
+            await formatMixedLaunchDiagnostics(harness!, teamName!, relaunchProgressEvents)
+          );
+        }
+        for (const memberName of ['alice', 'cody', 'oscar'] as const) {
+          const member = status.statuses[memberName];
+          if (
+            member?.status !== 'online' ||
+            member.launchState !== 'confirmed_alive' ||
+            member.bootstrapConfirmed !== true
+          ) {
+            return false;
+          }
+        }
+        return true;
+      }, 180_000, () => formatMixedLaunchDiagnostics(harness!, teamName!, relaunchProgressEvents));
+
+      await waitUntilWithDiagnostics(async () => {
+        const snapshot = await harness!.svc.getTeamAgentRuntimeSnapshot(teamName!);
+        return (
+          snapshot.members.alice?.providerId === 'anthropic' &&
+          snapshot.members.alice.alive === true &&
+          snapshot.members.cody?.providerId === 'codex' &&
+          snapshot.members.cody.alive === true &&
+          snapshot.members.oscar?.providerId === 'opencode' &&
+          snapshot.members.oscar.alive === true
+        );
+      }, 180_000, () => formatMixedLaunchDiagnostics(harness!, teamName!, relaunchProgressEvents));
+
+      const relaunchedLaneIndex = await readOpenCodeRuntimeLaneIndex(getTeamsBasePath(), teamName);
+      expect(
+        Object.entries(relaunchedLaneIndex.lanes).some(
+          ([laneId, lane]) => lane.state === 'active' && laneId === 'secondary:opencode:oscar'
+        )
+      ).toBe(true);
     },
     480_000
   );

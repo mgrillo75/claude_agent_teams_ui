@@ -862,9 +862,6 @@ export const CliStatusSection = (): React.JSX.Element | null => {
             setProviderTerminal(null);
             recheckStatus();
           }}
-          onExit={() => {
-            recheckStatus();
-          }}
           autoCloseOnSuccessMs={3000}
           successMessage={
             providerTerminal.action === 'login'

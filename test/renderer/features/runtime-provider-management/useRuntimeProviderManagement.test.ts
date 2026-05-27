@@ -228,11 +228,11 @@ describe('useRuntimeProviderManagement', () => {
     const root = createRoot(host);
     await act(async () => {
       root.render(React.createElement(ConfigurableHarness, { enabled: true }));
-      await Promise.resolve();
-      await Promise.resolve();
     });
 
-    expect(state?.error).toContain('wrong runtime binary');
+    await vi.waitFor(() => {
+      expect(state?.error ?? '').toContain('wrong runtime binary');
+    });
     expect(state?.errorDiagnostics?.binaryPath).toBe('/opt/homebrew/bin/opencode');
 
     await act(async () => {

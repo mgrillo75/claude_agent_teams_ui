@@ -171,6 +171,34 @@ interface ChipInteractionLayerProps {
   onRemove: (chipId: string) => void;
 }
 
+function areChipsEquivalent(a: InlineChip, b: InlineChip): boolean {
+  return (
+    a.id === b.id &&
+    a.filePath === b.filePath &&
+    a.fileName === b.fileName &&
+    a.fromLine === b.fromLine &&
+    a.toLine === b.toLine &&
+    a.codeText === b.codeText &&
+    a.displayPath === b.displayPath &&
+    a.isFolder === b.isFolder
+  );
+}
+
+function areChipPositionsEquivalent(current: ChipPosition[], next: ChipPosition[]): boolean {
+  if (current.length !== next.length) return false;
+
+  return current.every((position, index) => {
+    const nextPosition = next[index];
+    return (
+      position.top === nextPosition.top &&
+      position.left === nextPosition.left &&
+      position.width === nextPosition.width &&
+      position.height === nextPosition.height &&
+      areChipsEquivalent(position.chip, nextPosition.chip)
+    );
+  });
+}
+
 export const ChipInteractionLayer = ({
   chips,
   value,
@@ -179,18 +207,25 @@ export const ChipInteractionLayer = ({
   onRemove,
 }: ChipInteractionLayerProps): React.JSX.Element | null => {
   const [positions, setPositions] = React.useState<ChipPosition[]>([]);
+  const positionsRef = React.useRef<ChipPosition[]>([]);
   const revealFileInEditor = useStore((s) => s.revealFileInEditor);
   const revealFolderInEditor = useStore((s) => s.revealFolderInEditor);
 
+  const commitPositions = React.useCallback((nextPositions: ChipPosition[]) => {
+    if (areChipPositionsEquivalent(positionsRef.current, nextPositions)) return;
+    positionsRef.current = nextPositions;
+    setPositions(nextPositions);
+  }, []);
+
   React.useLayoutEffect(() => {
     if (chips.length === 0) {
-      setPositions([]);
+      commitPositions([]);
       return;
     }
     const textarea = textareaRef.current;
     if (!textarea) return;
-    setPositions(calculateChipPositions(textarea, value, chips));
-  }, [chips, value, textareaRef]);
+    commitPositions(calculateChipPositions(textarea, value, chips));
+  }, [chips, commitPositions, value, textareaRef]);
 
   if (positions.length === 0) return null;
 
@@ -200,6 +235,14 @@ export const ChipInteractionLayer = ({
         {positions.map((pos) => {
           const isFileChip = pos.chip.fromLine == null;
           const isFolderChip = pos.chip.isFolder === true;
+          const openChipTarget = (): void => {
+            if (isFolderChip) {
+              revealFolderInEditor(pos.chip.filePath);
+            } else {
+              revealFileInEditor(pos.chip.filePath);
+            }
+          };
+
           return (
             <Tooltip key={pos.chip.id}>
               <TooltipTrigger asChild>
@@ -211,20 +254,19 @@ export const ChipInteractionLayer = ({
                     width: pos.width,
                     height: pos.height,
                   }}
-                  onClick={
-                    isFileChip
-                      ? (e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          if (isFolderChip) {
-                            revealFolderInEditor(pos.chip.filePath);
-                          } else {
-                            revealFileInEditor(pos.chip.filePath);
-                          }
-                        }
-                      : undefined
-                  }
                 >
+                  {isFileChip ? (
+                    <button
+                      type="button"
+                      className="absolute inset-0 cursor-pointer rounded-sm bg-transparent p-0"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openChipTarget();
+                      }}
+                      aria-label={`Open ${chipDisplayLabel(pos.chip)}`}
+                    />
+                  ) : null}
                   <button
                     type="button"
                     className="pointer-events-none absolute -right-1 -top-1.5 z-30 flex size-3.5 items-center justify-center rounded-full border border-[var(--color-border-emphasis)] bg-[var(--color-surface-raised)] opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100"

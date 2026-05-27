@@ -29,6 +29,36 @@ interface MentionInteractionLayerProps {
   scrollTop: number;
 }
 
+function areSuggestionsEquivalent(a: MentionSuggestion, b: MentionSuggestion): boolean {
+  return (
+    a.id === b.id &&
+    a.name === b.name &&
+    a.subtitle === b.subtitle &&
+    a.color === b.color &&
+    a.type === b.type &&
+    a.isOnline === b.isOnline &&
+    a.insertText === b.insertText
+  );
+}
+
+function areMentionPositionsEquivalent(
+  current: MentionPosition[],
+  next: MentionPosition[]
+): boolean {
+  if (current.length !== next.length) return false;
+
+  return current.every((position, index) => {
+    const nextPosition = next[index];
+    return (
+      position.top === nextPosition.top &&
+      position.left === nextPosition.left &&
+      position.width === nextPosition.width &&
+      position.height === nextPosition.height &&
+      areSuggestionsEquivalent(position.suggestion, nextPosition.suggestion)
+    );
+  });
+}
+
 export const MentionInteractionLayer = ({
   suggestions,
   value,
@@ -36,20 +66,27 @@ export const MentionInteractionLayer = ({
   scrollTop,
 }: MentionInteractionLayerProps): React.JSX.Element | null => {
   const [positions, setPositions] = React.useState<MentionPosition[]>([]);
+  const positionsRef = React.useRef<MentionPosition[]>([]);
   const { isLight } = useTheme();
+
+  const commitPositions = React.useCallback((nextPositions: MentionPosition[]) => {
+    if (areMentionPositionsEquivalent(positionsRef.current, nextPositions)) return;
+    positionsRef.current = nextPositions;
+    setPositions(nextPositions);
+  }, []);
 
   React.useLayoutEffect(() => {
     const filtered = suggestions.filter(
       (s) => s.type !== 'task' && s.type !== 'file' && s.type !== 'folder'
     );
     if (filtered.length === 0) {
-      setPositions([]);
+      commitPositions([]);
       return;
     }
     const textarea = textareaRef.current;
     if (!textarea) return;
-    setPositions(calculateMentionPositions(textarea, value, filtered));
-  }, [suggestions, value, textareaRef]);
+    commitPositions(calculateMentionPositions(textarea, value, filtered));
+  }, [commitPositions, suggestions, value, textareaRef]);
 
   if (positions.length === 0) return null;
 

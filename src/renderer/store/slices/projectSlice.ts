@@ -4,6 +4,10 @@
 
 import { api } from '@renderer/api';
 
+import {
+  captureContextScopedRequestEpoch,
+  isContextScopedRequestEpochCurrent,
+} from '../utils/contextScopedRequestEpoch';
 import { getSessionResetState } from '../utils/stateResetHelpers';
 
 import type { AppState } from '../types';
@@ -43,15 +47,29 @@ export const createProjectSlice: StateCreator<AppState, [], [], ProjectSlice> = 
   fetchProjects: async () => {
     // Guard: prevent concurrent fetches (component mount + centralized init chain)
     if (get().projectsLoading) return;
+    const requestContextId = get().activeContextId;
+    const requestContextEpoch = captureContextScopedRequestEpoch();
     set({ projectsLoading: true, projectsError: null });
     try {
       const projects = await api.getProjects();
+      if (
+        get().activeContextId !== requestContextId ||
+        !isContextScopedRequestEpochCurrent(requestContextEpoch)
+      ) {
+        return;
+      }
       // Sort by most recent session (descending)
       const sorted = [...projects].sort(
         (a, b) => (b.mostRecentSession ?? 0) - (a.mostRecentSession ?? 0)
       );
       set({ projects: sorted, projectsLoading: false, projectsInitialized: true });
     } catch (error) {
+      if (
+        get().activeContextId !== requestContextId ||
+        !isContextScopedRequestEpochCurrent(requestContextEpoch)
+      ) {
+        return;
+      }
       set({
         projectsError: error instanceof Error ? error.message : 'Failed to fetch projects',
         projectsLoading: false,

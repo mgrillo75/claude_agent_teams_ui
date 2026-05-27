@@ -1,11 +1,9 @@
+import { AGENT_BLOCK_CLOSE, AGENT_BLOCK_OPEN } from '@shared/constants/agentBlocks';
 import { EventEmitter } from 'events';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-import { AGENT_BLOCK_CLOSE, AGENT_BLOCK_OPEN } from '@shared/constants/agentBlocks';
 
 const hoisted = vi.hoisted(() => ({
   paths: {
@@ -109,12 +107,13 @@ vi.mock('@main/utils/pathDecoder', async (importOriginal) => {
   };
 });
 
+import { ClaudeBinaryResolver } from '@main/services/team/ClaudeBinaryResolver';
+import { TeamRuntimeAdapterRegistry } from '@main/services/team/runtime/TeamRuntimeAdapter';
 import {
   buildAddMemberSpawnMessage,
   buildRestartMemberSpawnMessage,
   TeamProvisioningService,
 } from '@main/services/team/TeamProvisioningService';
-import { ClaudeBinaryResolver } from '@main/services/team/ClaudeBinaryResolver';
 import { execCli, spawnCli } from '@main/utils/childProcess';
 import { setAppDataBasePath } from '@main/utils/pathDecoder';
 
@@ -164,6 +163,51 @@ function extractBootstrapSpec(callIndex = 0): {
     members?: Array<Record<string, unknown>>;
     launch?: { bootstrapTimeoutMs?: number; continueOnPartialFailure?: boolean };
   };
+}
+
+function readRuntimeSettingsFromLaunchArgs(callIndex = 0): Record<string, unknown> {
+  const args = vi.mocked(spawnCli).mock.calls[callIndex]?.[1] as string[] | undefined;
+  const settingsFlagIndex = args?.indexOf('--settings') ?? -1;
+  const settingsValue = settingsFlagIndex >= 0 ? args?.[settingsFlagIndex + 1] : null;
+  if (!settingsValue) {
+    throw new Error('Failed to extract runtime settings from spawn args');
+  }
+  if (settingsValue.trim().startsWith('{')) {
+    return JSON.parse(settingsValue) as Record<string, unknown>;
+  }
+  return JSON.parse(fs.readFileSync(settingsValue, 'utf8')) as Record<string, unknown>;
+}
+
+function readRuntimeSettingsPathFromLaunchArgs(callIndex = 0): string {
+  const args = vi.mocked(spawnCli).mock.calls[callIndex]?.[1] as string[] | undefined;
+  const settingsFlagIndex = args?.indexOf('--settings') ?? -1;
+  const settingsValue = settingsFlagIndex >= 0 ? args?.[settingsFlagIndex + 1] : null;
+  if (!settingsValue || settingsValue.trim().startsWith('{')) {
+    throw new Error('Failed to extract runtime settings path from spawn args');
+  }
+  return settingsValue;
+}
+
+function registerNoopOpenCodeRuntimeAdapter(svc: TeamProvisioningService): void {
+  svc.setRuntimeAdapterRegistry(
+    new TeamRuntimeAdapterRegistry([
+      {
+        providerId: 'opencode',
+        prepare: vi.fn(async (input: { model?: string }) => ({
+          ok: true,
+          providerId: 'opencode',
+          modelId: input.model ?? null,
+          diagnostics: [],
+          warnings: [],
+        })),
+        launch: vi.fn(async () => {
+          throw new Error('OpenCode side lane launch should not run in this test');
+        }),
+        reconcile: vi.fn(async () => ({ members: {}, warnings: [], diagnostics: [] })),
+        stop: vi.fn(async () => ({ stopped: true, members: {}, warnings: [], diagnostics: [] })),
+      } as any,
+    ])
+  );
 }
 
 describe('TeamProvisioningService prompt content (solo mode discipline)', () => {
@@ -473,6 +517,68 @@ describe('TeamProvisioningService prompt content (solo mode discipline)', () => 
     expect(launchArgs).toEqual(
       expect.arrayContaining(['--settings', '{"codex":{"forced_login_method":"chatgpt"}}'])
     );
+
+    await svc.cancelProvisioning(runId);
+  });
+
+  it('coalesces codex cross-provider launch overrides into createTeam Anthropic runtime settings', async () => {
+    vi.mocked(ClaudeBinaryResolver.resolve).mockResolvedValue('/fake/claude');
+    const { child } = createFakeChild();
+    vi.mocked(spawnCli).mockReturnValue(child as any);
+
+    const svc = new TeamProvisioningService();
+    registerNoopOpenCodeRuntimeAdapter(svc);
+    (svc as any).buildProvisioningEnv = vi.fn(async (providerId: string | undefined) =>
+      providerId === 'codex'
+        ? {
+            env: {
+              CLAUDE_CODE_CODEX_BACKEND: 'codex-native',
+              CLAUDE_CODE_CODEX_FORCED_LOGIN_METHOD: 'chatgpt',
+            },
+            authSource: 'codex_runtime',
+            geminiRuntimeAuth: null,
+            providerArgs: ['--settings', '{"codex":{"forced_login_method":"chatgpt"}}'],
+          }
+        : {
+            env: {},
+            authSource: 'none',
+            geminiRuntimeAuth: null,
+            providerArgs: [],
+          }
+    );
+    (svc as any).validateAgentTeamsMcpRuntime = vi.fn(async () => {});
+    (svc as any).startFilesystemMonitor = vi.fn();
+    (svc as any).pathExists = vi.fn(async () => false);
+
+    const { runId } = await svc.createTeam(
+      {
+        teamName: 'anthropic-codex-create-team',
+        cwd: process.cwd(),
+        members: [
+          { name: 'alice', role: 'developer', providerId: 'codex' },
+          {
+            name: 'bob',
+            role: 'reviewer',
+            providerId: 'opencode',
+            model: 'minimax-m2.5-free',
+          },
+        ],
+        providerId: 'anthropic',
+      },
+      () => {}
+    );
+
+    const launchArgs = vi.mocked(spawnCli).mock.calls[0]?.[1] as string[];
+    expect(launchArgs).not.toContain('{"codex":{"forced_login_method":"chatgpt"}}');
+    expect(launchArgs.join(' ')).not.toContain('minimax-m2.5-free');
+    expect(extractBootstrapSpec().members).toEqual([
+      expect.objectContaining({ name: 'alice', provider: 'codex' }),
+    ]);
+    const settingsPath = readRuntimeSettingsPathFromLaunchArgs();
+    const launchEnv = vi.mocked(spawnCli).mock.calls[0]?.[2]?.env as NodeJS.ProcessEnv;
+    expect(launchEnv.CLAUDE_TEAM_RUNTIME_SETTINGS_PATH).toBe(settingsPath);
+    const settings = readRuntimeSettingsFromLaunchArgs();
+    expect((settings.codex as Record<string, unknown>).forced_login_method).toBe('chatgpt');
 
     await svc.cancelProvisioning(runId);
   });
@@ -1062,6 +1168,116 @@ describe('TeamProvisioningService prompt content (solo mode discipline)', () => 
         provider: 'codex',
       })
     );
+
+    await svc.cancelProvisioning(runId);
+  });
+
+  it('coalesces codex cross-provider launch overrides into launchTeam Anthropic runtime settings', async () => {
+    const teamName = 'anthropic-codex-launch-team';
+    const teamDir = path.join(tempTeamsBase, teamName);
+    fs.mkdirSync(teamDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(teamDir, 'config.json'),
+      JSON.stringify({
+        name: teamName,
+        members: [
+          { name: 'team-lead', agentType: 'team-lead', providerId: 'anthropic' },
+          {
+            name: 'alice',
+            agentType: 'teammate',
+            role: 'developer',
+            providerId: 'codex',
+            model: 'gpt-5.4',
+          },
+          {
+            name: 'bob',
+            agentType: 'teammate',
+            role: 'reviewer',
+            providerId: 'opencode',
+            model: 'minimax-m2.5-free',
+          },
+        ],
+      }),
+      'utf8'
+    );
+
+    vi.mocked(ClaudeBinaryResolver.resolve).mockResolvedValue('/fake/claude');
+    const { child } = createFakeChild();
+    vi.mocked(spawnCli).mockReturnValue(child as any);
+
+    const svc = new TeamProvisioningService();
+    registerNoopOpenCodeRuntimeAdapter(svc);
+    (svc as any).buildProvisioningEnv = vi.fn(async (providerId: string | undefined) =>
+      providerId === 'codex'
+        ? {
+            env: {
+              CLAUDE_CODE_CODEX_BACKEND: 'codex-native',
+              CLAUDE_CODE_CODEX_FORCED_LOGIN_METHOD: 'chatgpt',
+            },
+            authSource: 'codex_runtime',
+            geminiRuntimeAuth: null,
+            providerArgs: ['--settings', '{"codex":{"forced_login_method":"chatgpt"}}'],
+          }
+        : {
+            env: {},
+            authSource: 'none',
+            geminiRuntimeAuth: null,
+            providerArgs: [],
+          }
+    );
+    (svc as any).resolveProviderDefaultModel = vi.fn(async (providerId: string | undefined) =>
+      providerId === 'codex' ? 'gpt-5.4' : 'opus'
+    );
+    (svc as any).normalizeTeamConfigForLaunch = vi.fn(async () => {});
+    (svc as any).updateConfigProjectPath = vi.fn(async () => {});
+    (svc as any).restorePrelaunchConfig = vi.fn(async () => {});
+    (svc as any).assertConfigLeadOnlyForLaunch = vi.fn(async () => {});
+    (svc as any).persistLaunchStateSnapshot = vi.fn(async () => {});
+    (svc as any).resolveLaunchExpectedMembers = vi.fn(async () => ({
+      members: [
+        {
+          name: 'alice',
+          role: 'developer',
+          providerId: 'codex',
+          model: 'gpt-5.4',
+          isolation: 'worktree',
+        },
+        {
+          name: 'bob',
+          role: 'reviewer',
+          providerId: 'opencode',
+          model: 'minimax-m2.5-free',
+          isolation: 'worktree',
+        },
+      ],
+      source: 'config-fallback',
+      warning: undefined,
+    }));
+    (svc as any).validateAgentTeamsMcpRuntime = vi.fn(async () => {});
+    (svc as any).pathExists = vi.fn(async () => false);
+    (svc as any).startFilesystemMonitor = vi.fn();
+
+    const { runId } = await svc.launchTeam(
+      {
+        teamName,
+        cwd: process.cwd(),
+        providerId: 'anthropic',
+        clearContext: true,
+      } as any,
+      () => {}
+    );
+
+    const launchArgs = vi.mocked(spawnCli).mock.calls[0]?.[1] as string[];
+    expect(launchArgs).not.toContain('{"codex":{"forced_login_method":"chatgpt"}}');
+    expect(launchArgs.join(' ')).not.toContain('minimax-m2.5-free');
+    expect(extractBootstrapSpec().members).toEqual([
+      expect.objectContaining({ name: 'alice', provider: 'codex' }),
+    ]);
+    const settingsPath = readRuntimeSettingsPathFromLaunchArgs();
+    const launchEnv = vi.mocked(spawnCli).mock.calls[0]?.[2]?.env as NodeJS.ProcessEnv;
+    expect(launchEnv.CLAUDE_TEAM_RUNTIME_SETTINGS_PATH).toBe(settingsPath);
+    const settings = readRuntimeSettingsFromLaunchArgs();
+    expect((settings.codex as Record<string, unknown>).forced_login_method).toBe('chatgpt');
 
     await svc.cancelProvisioning(runId);
   });

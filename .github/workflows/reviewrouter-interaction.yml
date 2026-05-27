@@ -30,6 +30,7 @@ jobs:
       REVIEW_ROUTER_REVIEW_WORKFLOW_FILE: "reviewrouter-codex.yml"
     steps:
       - name: Fetch ReviewRouter runtime config
+        if: ${{ github.event_name != 'merge_group' && (github.event_name == 'workflow_dispatch' || github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
         shell: bash
         run: |
           set -euo pipefail

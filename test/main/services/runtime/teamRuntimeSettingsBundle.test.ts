@@ -1,11 +1,12 @@
 // @vitest-environment node
+import {
+  materializeTeamRuntimeSettingsBundle,
+  splitSettingsJsonArgs,
+} from '@main/services/runtime/teamRuntimeSettingsBundle';
 import { mkdtemp, readFile, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import path from 'path';
-
 import { afterEach, describe, expect, it } from 'vitest';
-
-import { materializeTeamRuntimeSettingsBundle } from '@main/services/runtime/teamRuntimeSettingsBundle';
 
 describe('teamRuntimeSettingsBundle', () => {
   const tempRoots: string[] = [];
@@ -70,5 +71,18 @@ describe('teamRuntimeSettingsBundle', () => {
     expect(settings.env.ANTHROPIC_API_KEY).toBeUndefined();
     expect(settings.env.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
     expect(settings.hooks.Stop).toHaveLength(1);
+  });
+
+  it('splits equals-style JSON settings without dropping later args', () => {
+    expect(
+      splitSettingsJsonArgs([
+        '--settings={"codex":{"forced_login_method":"chatgpt"}}',
+        '--model',
+        'gpt-5.5',
+      ])
+    ).toEqual({
+      settingsFragments: [{ codex: { forced_login_method: 'chatgpt' } }],
+      passthroughArgs: ['--model', 'gpt-5.5'],
+    });
   });
 });

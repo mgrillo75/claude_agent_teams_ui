@@ -770,7 +770,7 @@
     "description": "Управляйте тем, как каждый провайдер подключается, и какой backend должен использовать multimodel runtime, если это поддерживается.",
     "fastMode": {
       "defaultOff": "По умолчанию выкл.",
-      "description": "Включать Claude Code Fast mode по умолчанию для новых запусков Anthropic-команд, когда выбранные модель и runtime это поддерживают.",
+      "description": "Включать Claude Code Fast mode по умолчанию для новых запусков Anthropic-команд, когда выбранные модель и runtime это поддерживают. Fast mode примерно в 2 раза дороже, но даёт скорость примерно в 1.5 раза выше.",
       "disabledHint": "Новые Anthropic-запуски остаются на обычной скорости, если команда явно не включает Fast mode.",
       "enabledHint": "Новые Anthropic-запуски будут запрашивать Fast mode по умолчанию, когда выбранная модель это поддерживает.",
       "notExposed": "Этот Anthropic runtime не предоставляет Fast mode.",
@@ -884,6 +884,7 @@
       },
       "status": {
         "checking": "Проверка...",
+        "modelsAvailable": "Модели доступны",
         "checked": "Проверено",
         "providerActivity": "Активность провайдеров",
         "notConnected": "Не подключено",

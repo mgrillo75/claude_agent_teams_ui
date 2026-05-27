@@ -36,13 +36,11 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
-        with:
-          version: 10.33.0
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version-file: .node-version
           cache: pnpm
 
       - name: Restore pnpm node-gyp executable bit
@@ -328,13 +326,11 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
-        with:
-          version: 10.33.0
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version-file: .node-version
           cache: pnpm
 
       - name: Setup Python for node-gyp
@@ -449,13 +445,11 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
-        with:
-          version: 10.33.0
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version-file: .node-version
           cache: pnpm
 
       - name: Setup Python for node-gyp
@@ -571,13 +565,11 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
-        with:
-          version: 10.33.0
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version-file: .node-version
           cache: pnpm
 
       - name: Setup Python for node-gyp
@@ -863,37 +855,6 @@ jobs:
           set -euo pipefail
           TAG="${RELEASE_TAG}"
           gh release edit "${TAG}" --repo "${GITHUB_REPOSITORY}" --draft=false --latest
-
-      - name: Update README version badge
-        if: ${{ inputs.publish_release }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          DEFAULT_BRANCH="$(gh repo view "${GITHUB_REPOSITORY}" --json defaultBranchRef --jq '.defaultBranchRef.name')"
-          git fetch origin "${DEFAULT_BRANCH}"
-          BADGE_WORKTREE="$(mktemp -d)"
-          git worktree add --detach "${BADGE_WORKTREE}" "origin/${DEFAULT_BRANCH}"
-          trap 'git worktree remove --force "${BADGE_WORKTREE}" >/dev/null 2>&1 || true' EXIT
-
-          BADGE_LABEL_WIDTH=51
-          BADGE_VALUE="${RELEASE_TAG}"
-          BADGE_VALUE_WIDTH=$(( ${#BADGE_VALUE} * 7 + 10 ))
-          BADGE_WIDTH=$(( BADGE_LABEL_WIDTH + BADGE_VALUE_WIDTH ))
-          BADGE_LABEL_X=$(( BADGE_LABEL_WIDTH / 2 ))
-          BADGE_VALUE_X=$(( BADGE_LABEL_WIDTH + BADGE_VALUE_WIDTH / 2 ))
-          mkdir -p "${BADGE_WORKTREE}/.github/badges"
-          cat > "${BADGE_WORKTREE}/.github/badges/version.svg" <<EOF
-          <svg xmlns="http://www.w3.org/2000/svg" width="${BADGE_WIDTH}" height="20" role="img" aria-label="version: ${BADGE_VALUE}"><title>version: ${BADGE_VALUE}</title><g shape-rendering="crispEdges"><rect width="${BADGE_LABEL_WIDTH}" height="20" fill="#555"/><rect x="${BADGE_LABEL_WIDTH}" width="${BADGE_VALUE_WIDTH}" height="20" fill="#007ec6"/></g><g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11"><text x="${BADGE_LABEL_X}" y="14">version</text><text x="${BADGE_VALUE_X}" y="14">${BADGE_VALUE}</text></g></svg>
-          EOF
-          if git -C "${BADGE_WORKTREE}" diff --quiet -- .github/badges/version.svg; then
-            exit 0
-          fi
-          git -C "${BADGE_WORKTREE}" config user.name "github-actions[bot]"
-          git -C "${BADGE_WORKTREE}" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git -C "${BADGE_WORKTREE}" add .github/badges/version.svg
-          git -C "${BADGE_WORKTREE}" commit -m "docs(readme): update release badge to ${BADGE_VALUE}"
-          git -C "${BADGE_WORKTREE}" push origin "HEAD:${DEFAULT_BRANCH}"
 
       - name: Keep release as draft
         if: ${{ github.event_name == 'workflow_dispatch' && !inputs.publish_release }}

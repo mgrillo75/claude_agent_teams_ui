@@ -58,19 +58,22 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
-        with:
-          version: 10.33.0
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version-file: .node-version
           cache: pnpm
 
       - name: Restore pnpm node-gyp executable bit
         run: |
           PNPM_STORE="$(pnpm store path)"
-          find "$PNPM_STORE" -path '*/node-gyp/gyp/gyp_main.py' -exec chmod +x {} \; 2>/dev/null || true
+          PNPM_BIN_DIR="$(dirname "$(command -v pnpm)")"
+          for path in "$PNPM_STORE" "${PNPM_HOME:-}" "$PNPM_BIN_DIR"; do
+            if [ -d "$path" ]; then
+              find "$path" -path '*/node-gyp/gyp/gyp_main.py' -exec chmod +x {} \; 2>/dev/null || true
+            fi
+          done
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -96,19 +99,22 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
-        with:
-          version: 10.33.0
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version-file: .node-version
           cache: pnpm
 
       - name: Restore pnpm node-gyp executable bit
         run: |
           PNPM_STORE="$(pnpm store path)"
-          find "$PNPM_STORE" -path '*/node-gyp/gyp/gyp_main.py' -exec chmod +x {} \; 2>/dev/null || true
+          PNPM_BIN_DIR="$(dirname "$(command -v pnpm)")"
+          for path in "$PNPM_STORE" "${PNPM_HOME:-}" "$PNPM_BIN_DIR"; do
+            if [ -d "$path" ]; then
+              find "$path" -path '*/node-gyp/gyp/gyp_main.py' -exec chmod +x {} \; 2>/dev/null || true
+            fi
+          done
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -130,13 +136,11 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
-        with:
-          version: 10.33.0
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version-file: .node-version
           cache: pnpm
 
       - name: Install dependencies

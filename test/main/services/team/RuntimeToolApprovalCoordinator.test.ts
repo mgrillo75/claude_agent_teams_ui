@@ -190,6 +190,48 @@ describe('RuntimeToolApprovalCoordinator', () => {
     });
   });
 
+  it('keeps other member approvals when runtime sync is scoped to one member', () => {
+    const alice = approvalEntry();
+    const bob = approvalEntry({
+      providerRequestId: 'perm-bob',
+      memberName: 'bob',
+      approval: {
+        requestId: 'opencode:run-1:perm-bob',
+        runId: 'run-1',
+        teamName: 'team-a',
+        providerId: 'opencode',
+        source: 'bob',
+        toolName: 'Bash',
+        toolInput: { command: 'pnpm test' },
+        receivedAt: '2026-05-22T10:00:00.000Z',
+        runtimePermission: {
+          providerId: 'opencode',
+          laneId: 'primary',
+          memberName: 'bob',
+          providerRequestId: 'perm-bob',
+          sessionId: 'ses-bob',
+        },
+      },
+    });
+    coordinator.sync({ teamName: 'team-a', runId: 'run-1', laneId: 'primary' }, [alice, bob]);
+
+    coordinator.sync(
+      { teamName: 'team-a', runId: 'run-1', laneId: 'primary', memberNames: ['alice'] },
+      [alice]
+    );
+
+    expect(coordinator.get('team-a', 'opencode:run-1:perm-bob')).toBe(bob);
+    expect(coordinator.size('team-a')).toBe(2);
+    expect(
+      events.some(
+        (event) =>
+          'autoResolved' in event &&
+          event.requestId === 'opencode:run-1:perm-bob' &&
+          event.reason === 'runtime_resolved'
+      )
+    ).toBe(false);
+  });
+
   it('rejects stale UI responses by run id', async () => {
     coordinator.sync({ teamName: 'team-a', runId: 'run-1', laneId: 'primary' }, [approvalEntry()]);
 

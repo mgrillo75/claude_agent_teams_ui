@@ -221,6 +221,46 @@ describe('cliInstaller IPC handlers', () => {
     expect(service.invalidateStatusCache).toHaveBeenCalledTimes(1);
   });
 
+  it('serializes explicit provider runtime status requests to avoid startup memory spikes', async () => {
+    const codexRequest = deferred<CliProviderStatus>();
+    const opencodeRequest = deferred<CliProviderStatus>();
+    const startedProviders: CliProviderId[] = [];
+    service.getProviderStatus.mockImplementation((providerId: CliProviderId) => {
+      startedProviders.push(providerId);
+      return providerId === 'codex' ? codexRequest.promise : opencodeRequest.promise;
+    });
+
+    const codexInvoke = ipcMain.invoke(
+      CLI_INSTALLER_GET_PROVIDER_STATUS,
+      'codex'
+    ) as Promise<IpcResult<CliProviderStatus | null>>;
+    await vi.waitFor(() => expect(service.getProviderStatus).toHaveBeenCalledTimes(1));
+
+    const opencodeInvoke = ipcMain.invoke(
+      CLI_INSTALLER_GET_PROVIDER_STATUS,
+      'opencode'
+    ) as Promise<IpcResult<CliProviderStatus | null>>;
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(startedProviders).toEqual(['codex']);
+    expect(service.getProviderStatus).toHaveBeenCalledTimes(1);
+
+    codexRequest.resolve(provider({ providerId: 'codex', authenticated: true }));
+    await expect(codexInvoke).resolves.toMatchObject({
+      success: true,
+      data: { providerId: 'codex' },
+    });
+    await vi.waitFor(() => expect(service.getProviderStatus).toHaveBeenCalledTimes(2));
+
+    expect(startedProviders).toEqual(['codex', 'opencode']);
+    opencodeRequest.resolve(provider({ providerId: 'opencode', authenticated: true }));
+    await expect(opencodeInvoke).resolves.toMatchObject({
+      success: true,
+      data: { providerId: 'opencode' },
+    });
+  });
+
   it('does not reuse or recache a status request that was in flight before invalidation', async () => {
     const staleStatus = status([
       provider({

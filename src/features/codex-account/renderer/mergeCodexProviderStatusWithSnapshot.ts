@@ -144,6 +144,21 @@ function mergeCodexNativeBackendOption(
   });
 }
 
+function mergeCodexCapabilitiesWithSnapshot(
+  provider: CliProviderStatus,
+  snapshot: CodexAccountSnapshotDto
+): CliProviderStatus['capabilities'] {
+  if (!snapshot.launchAllowed) {
+    return provider.capabilities;
+  }
+
+  return {
+    ...provider.capabilities,
+    teamLaunch: true,
+    oneShot: true,
+  };
+}
+
 export function mergeCodexProviderStatusWithSnapshot(
   provider: CliProviderStatus,
   snapshot: CodexAccountSnapshotDto | null
@@ -166,8 +181,10 @@ export function mergeCodexProviderStatusWithSnapshot(
 
   return {
     ...provider,
-    supported: provider.supported || isCodexBootstrapPlaceholder(provider),
+    supported:
+      provider.supported || isCodexBootstrapPlaceholder(provider) || snapshot.launchAllowed,
     authenticated: snapshot.launchAllowed,
+    capabilities: mergeCodexCapabilitiesWithSnapshot(provider, snapshot),
     authMethod:
       snapshot.effectiveAuthMode === 'chatgpt'
         ? 'chatgpt'

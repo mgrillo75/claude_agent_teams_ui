@@ -530,6 +530,8 @@ describe('TeamProvisioningService member MCP config safe e2e', () => {
             providerArgs: string[];
             settingsArgs: string[];
             extraArgs: string[];
+            inheritedProviderArgs: string[];
+            appManagedSettingsPath: string | null;
           }>;
         }
       ).buildTeamRuntimeLaunchArgsPlan = vi.fn(async () => ({
@@ -538,6 +540,8 @@ describe('TeamProvisioningService member MCP config safe e2e', () => {
         providerArgs: [],
         settingsArgs: [],
         extraArgs: [],
+        inheritedProviderArgs: [],
+        appManagedSettingsPath: null,
       }));
       (
         svc as unknown as { updateDirectTmuxRestartMemberConfig: () => Promise<void> }

@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
-import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 import { resolveLiveSmokeOrchestratorCliPath } from './lib/live-smoke-runtime.mjs';
+import { spawnSyncWithWindowsShell } from './lib/windows-shell-spawn.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, '..');
@@ -26,7 +26,7 @@ if (!env.CLAUDE_AGENT_TEAMS_ORCHESTRATOR_CLI_PATH?.trim()) {
 console.log('Running agent CLI launch live smoke');
 console.log(`Claude runtime: ${env.CLAUDE_AGENT_TEAMS_ORCHESTRATOR_CLI_PATH}`);
 
-const result = spawnSync(
+const result = spawnSyncWithWindowsShell(
   'pnpm',
   [
     'exec',
@@ -42,7 +42,6 @@ const result = spawnSync(
     cwd: repoRoot,
     env,
     stdio: 'inherit',
-    shell: process.platform === 'win32',
   }
 );
 

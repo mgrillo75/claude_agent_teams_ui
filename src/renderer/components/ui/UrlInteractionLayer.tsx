@@ -17,6 +17,29 @@ interface UrlInteractionLayerProps {
 
 type PositionedUrlReference = InlineMatchPosition<TextMatch>;
 
+function areUrlPositionsEquivalent(
+  current: PositionedUrlReference[],
+  next: PositionedUrlReference[]
+): boolean {
+  if (current.length !== next.length) return false;
+
+  return current.every((position, index) => {
+    const nextPosition = next[index];
+    return (
+      position.start === nextPosition.start &&
+      position.end === nextPosition.end &&
+      position.token === nextPosition.token &&
+      position.top === nextPosition.top &&
+      position.left === nextPosition.left &&
+      position.width === nextPosition.width &&
+      position.height === nextPosition.height &&
+      position.item.start === nextPosition.item.start &&
+      position.item.end === nextPosition.item.end &&
+      position.item.value === nextPosition.item.value
+    );
+  });
+}
+
 export const UrlInteractionLayer = ({
   value,
   textareaRef,
@@ -24,10 +47,17 @@ export const UrlInteractionLayer = ({
   onRemove,
 }: UrlInteractionLayerProps): React.JSX.Element | null => {
   const [positions, setPositions] = React.useState<PositionedUrlReference[]>([]);
+  const positionsRef = React.useRef<PositionedUrlReference[]>([]);
+
+  const commitPositions = React.useCallback((nextPositions: PositionedUrlReference[]) => {
+    if (areUrlPositionsEquivalent(positionsRef.current, nextPositions)) return;
+    positionsRef.current = nextPositions;
+    setPositions(nextPositions);
+  }, []);
 
   React.useLayoutEffect(() => {
     if (!value.includes('http://') && !value.includes('https://')) {
-      setPositions([]);
+      commitPositions([]);
       return;
     }
 
@@ -41,8 +71,8 @@ export const UrlInteractionLayer = ({
       token: match.value,
     }));
 
-    setPositions(calculateInlineMatchPositions(textarea, value, matches));
-  }, [textareaRef, value]);
+    commitPositions(calculateInlineMatchPositions(textarea, value, matches));
+  }, [commitPositions, textareaRef, value]);
 
   if (positions.length === 0) return null;
 

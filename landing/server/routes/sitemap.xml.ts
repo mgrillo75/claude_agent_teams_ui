@@ -15,8 +15,9 @@ export default defineEventHandler((event) => {
   const config = useRuntimeConfig();
   const siteUrl = ((config.public.siteUrl as string) || "https://777genius.github.io/agent-teams-ai").replace(/\/+$/, "");
   const toSiteUrl = (path: string) => `${siteUrl}${path === "/" ? "/" : `/${path.replace(/^\/+/, "")}`}`;
-  const homeImagePaths = ["og-image.png", ...screenshots.map((screenshot) => screenshot.path)];
-  const downloadImagePaths = ["og-image.png", "logo-192.png"];
+  const ogImagePath = "og-image-agent-teams-v6.png";
+  const homeImagePaths = [ogImagePath, ...screenshots.map((screenshot) => screenshot.path)];
+  const downloadImagePaths = [ogImagePath, "logo-192.png"];
 
   setHeader(event, "content-type", "application/xml; charset=utf-8");
 

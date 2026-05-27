@@ -202,6 +202,46 @@ describe('OpenCodeReadinessBridge', () => {
     );
   });
 
+  it('preserves diagnostics when runtime permission listing bridge fails', async () => {
+    const executor = fakeExecutor(
+      bridgeCommandFailure({
+        command: 'opencode.listRuntimePermissions',
+        requestId: 'permission-list-req-1',
+        kind: 'timeout',
+        message: 'permission list timed out',
+      })
+    );
+    const bridge = new OpenCodeReadinessBridge(executor);
+
+    await expect(
+      bridge.listOpenCodeRuntimePermissions({
+        teamId: 'team-a',
+        teamName: 'team-a',
+        laneId: 'primary',
+        projectPath: '/repo',
+      })
+    ).resolves.toEqual({
+      permissions: [],
+      diagnostics: [
+        'OpenCode runtime permission list bridge failed: timeout: permission list timed out',
+      ],
+    });
+
+    expect(executor.execute).toHaveBeenCalledWith(
+      'opencode.listRuntimePermissions',
+      {
+        teamId: 'team-a',
+        teamName: 'team-a',
+        laneId: 'primary',
+        projectPath: '/repo',
+      },
+      {
+        cwd: '/repo',
+        timeoutMs: 30_000,
+      }
+    );
+  });
+
   it('gives observeMessageDelivery enough time for OpenCode plain-text fallback reconciliation', async () => {
     const executor = fakeExecutor(
       bridgeCommandSuccess({

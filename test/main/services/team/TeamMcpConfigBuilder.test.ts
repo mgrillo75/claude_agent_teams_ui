@@ -22,7 +22,7 @@ const hoisted = vi.hoisted(() => ({
     version: '9.9.9-test',
   },
   execCliMock: vi.fn<ExecCliMock>(async () => ({
-    stdout: JSON.stringify({ execPath: '/mock/node', version: '20.11.0' }),
+    stdout: JSON.stringify({ execPath: '/mock/node', version: '24.16.0' }),
     stderr: '',
   })),
   cachedShellEnv: null as NodeJS.ProcessEnv | null,
@@ -68,7 +68,7 @@ import {
 } from '@main/services/team/TeamMcpConfigBuilder';
 import { setAppDataBasePath, setClaudeBasePathOverride } from '@main/utils/pathDecoder';
 
-function nodeRuntimeProbeStdout(execPath: string, version = '20.11.0'): string {
+function nodeRuntimeProbeStdout(execPath: string, version = '24.16.0'): string {
   return JSON.stringify({ execPath, version });
 }
 
@@ -385,7 +385,7 @@ describe('TeamMcpConfigBuilder', () => {
       createPackagedServerBundle(resourcesDir, '// packaged server');
       setResourcesPath(resourcesDir);
       hoisted.execCliMock.mockResolvedValue({
-        stdout: 'agent-teams-electron-node-ok',
+        stdout: nodeRuntimeProbeStdout(electronBinary, '24.15.0'),
         stderr: '',
       });
 
@@ -418,7 +418,7 @@ describe('TeamMcpConfigBuilder', () => {
         expect(hoisted.execCliMock).toHaveBeenCalledTimes(1);
         expect(hoisted.execCliMock).toHaveBeenCalledWith(
           electronBinary,
-          ['-e', 'process.stdout.write("agent-teams-electron-node-ok")'],
+          ['-e', expect.stringContaining('process.versions.node')],
           expect.objectContaining({
             env: expect.objectContaining({ ELECTRON_RUN_AS_NODE: '1' }),
           })
@@ -528,11 +528,11 @@ describe('TeamMcpConfigBuilder', () => {
       if (env?.PATH?.split(path.delimiter)[0] === '/strict-shell-node-bin') {
         expect(command).toBe('node');
         return {
-          stdout: nodeRuntimeProbeStdout('/strict-shell-node-bin/node', '20.11.0'),
+          stdout: nodeRuntimeProbeStdout('/strict-shell-node-bin/node', '24.16.0'),
           stderr: '',
         };
       }
-      return { stdout: nodeRuntimeProbeStdout('/usr/bin/node', '18.19.0'), stderr: '' };
+      return { stdout: nodeRuntimeProbeStdout('/usr/bin/node', '22.21.1'), stderr: '' };
     });
 
     try {

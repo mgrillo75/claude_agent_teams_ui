@@ -64,6 +64,7 @@ export interface RuntimeToolApprovalSyncScope {
   teamName: string;
   runId: string;
   laneId?: string;
+  memberNames?: readonly string[];
   providerId?: RuntimeApprovalProviderId;
 }
 
@@ -403,6 +404,9 @@ export class RuntimeToolApprovalCoordinator {
       return false;
     }
     if (scope.laneId && entry.laneId !== scope.laneId) {
+      return false;
+    }
+    if (scope.memberNames?.length && !scope.memberNames.includes(entry.memberName)) {
       return false;
     }
     if (scope.providerId && entry.providerId !== scope.providerId) {

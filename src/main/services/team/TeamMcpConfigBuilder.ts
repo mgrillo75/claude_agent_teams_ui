@@ -47,7 +47,10 @@ const MCP_CONFIG_PREFIX = 'agent-teams-mcp-';
 const MCP_CONFIG_REMOVE_RETRY_DELAYS_MS = [25, 75, 150] as const;
 const NODE_RUNTIME_PROBE_TIMEOUT_MS = 5_000;
 const ELECTRON_NODE_RUNTIME_PROBE_TIMEOUT_MS = 5_000;
-const MIN_MCP_NODE_MAJOR_VERSION = 20;
+// The packaged Electron runtime can lag the source toolchain patch version,
+// so MCP launch validation pins the Node 24 runtime line, not .node-version.
+const MIN_MCP_NODE_MAJOR_VERSION = 24;
+const MAX_MCP_NODE_MAJOR_VERSION = 25;
 const NODE_RUNTIME_PROBE_SCRIPT =
   'process.stdout.write(JSON.stringify({execPath:process.execPath,version:process.versions.node}))';
 /**
@@ -335,9 +338,9 @@ function parseNodeRuntimeProbeMetadata(stdout: string, command: string): NodeRun
 
 function assertSupportedMcpNodeRuntime(command: string, metadata: NodeRuntimeProbeMetadata): void {
   const major = parseNodeMajorVersion(metadata.version);
-  if (major === null || major < MIN_MCP_NODE_MAJOR_VERSION) {
+  if (major === null || major < MIN_MCP_NODE_MAJOR_VERSION || major >= MAX_MCP_NODE_MAJOR_VERSION) {
     throw new Error(
-      `${command} resolved ${metadata.path} with Node.js ${metadata.version}; Agent Teams MCP requires Node.js ${MIN_MCP_NODE_MAJOR_VERSION}+`
+      `${command} resolved ${metadata.path} with Node.js ${metadata.version}; Agent Teams MCP requires Node.js 24.x`
     );
   }
 }
@@ -392,21 +395,16 @@ async function probePackagedElectronNodeRuntime(
 
   emitProgress(options, 'electron-node-runtime', 'Checking bundled Electron Node runtime...');
   try {
-    const { stdout } = await execCli(
-      process.execPath.trim(),
-      ['-e', 'process.stdout.write("agent-teams-electron-node-ok")'],
-      {
-        encoding: 'utf-8',
-        timeout: ELECTRON_NODE_RUNTIME_PROBE_TIMEOUT_MS,
-        env: {
-          ...process.env,
-          ...getPackagedElectronNodeEnv(),
-        },
-      }
-    );
-    if (stdout.trim() !== 'agent-teams-electron-node-ok') {
-      throw new Error('Electron Node runtime probe did not return the expected marker');
-    }
+    const { stdout } = await execCli(process.execPath.trim(), ['-e', NODE_RUNTIME_PROBE_SCRIPT], {
+      encoding: 'utf-8',
+      timeout: ELECTRON_NODE_RUNTIME_PROBE_TIMEOUT_MS,
+      env: {
+        ...process.env,
+        ...getPackagedElectronNodeEnv(),
+      },
+    });
+    const metadata = parseNodeRuntimeProbeMetadata(stdout, process.execPath.trim());
+    assertSupportedMcpNodeRuntime(process.execPath.trim(), metadata);
     _packagedElectronNodeRuntimeProbe = { ok: true };
   } catch (error) {
     _packagedElectronNodeRuntimeProbe = { ok: false, error };

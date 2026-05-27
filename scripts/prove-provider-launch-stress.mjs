@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 import { resolveLiveSmokeOrchestratorCliPath } from './lib/live-smoke-runtime.mjs';
 import { preflightOpenCodeLiveEnvironment } from './lib/opencode-live-preflight.mjs';
+import { spawnSyncWithWindowsShell } from './lib/windows-shell-spawn.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, '..');
@@ -69,7 +70,7 @@ if (preflight.skipped.length > 0 && process.env.PROVIDER_LAUNCH_STRESS_STRICT ==
 env.PROVIDER_LAUNCH_STRESS_ORDER = preflight.order.join(',');
 console.log(`Runnable order: ${env.PROVIDER_LAUNCH_STRESS_ORDER}`);
 
-const result = spawnSync(
+const result = spawnSyncWithWindowsShell(
   'pnpm',
   [
     'exec',
@@ -85,7 +86,6 @@ const result = spawnSync(
     cwd: repoRoot,
     env,
     stdio: 'inherit',
-    shell: process.platform === 'win32',
   }
 );
 

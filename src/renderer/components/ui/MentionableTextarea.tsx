@@ -701,16 +701,6 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
       return () => resizeObserver.disconnect();
     }, [surfaceDecoration]);
 
-    // --- Overlay activation ---
-    const hasOverlay =
-      value.includes('http://') ||
-      value.includes('https://') ||
-      parseStandaloneSlashCommand(value) !== null ||
-      suggestions.length > 0 ||
-      teamSuggestions.length > 0 ||
-      taskSuggestions.length > 0 ||
-      chips.length > 0;
-
     // Combine member + team suggestions for overlay parsing
     const mentionOverlaySuggestions = React.useMemo(
       () => (teamSuggestions.length > 0 ? [...suggestions, ...teamSuggestions] : suggestions),
@@ -721,6 +711,17 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
       () => (slashCommand ? getKnownSlashCommand(slashCommand.name) : null),
       [slashCommand]
     );
+    const hasUrlOverlay = value.includes('http://') || value.includes('https://');
+    const hasMentionOverlay = mentionOverlaySuggestions.length > 0 && value.includes('@');
+    const hasTaskOverlay = taskSuggestions.length > 0 && value.includes('#');
+
+    // --- Overlay activation ---
+    const hasOverlay =
+      hasUrlOverlay ||
+      slashCommand !== null ||
+      hasMentionOverlay ||
+      hasTaskOverlay ||
+      chips.length > 0;
 
     const segments = React.useMemo(
       () =>
@@ -951,7 +952,6 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
         handleChipKeyDown,
         mentionHandleKeyDown,
         isOpen,
-        effectiveSuggestions.length,
         effectiveSuggestions,
         handleActiveSelect,
         dismiss,
@@ -1289,7 +1289,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
             </div>
           ) : null}
 
-          {taskSuggestions.length > 0 ? (
+          {hasTaskOverlay ? (
             <TaskReferenceInteractionLayer
               taskSuggestions={taskSuggestions}
               value={value}
@@ -1298,7 +1298,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
             />
           ) : null}
 
-          {value.includes('http://') || value.includes('https://') ? (
+          {hasUrlOverlay ? (
             <UrlInteractionLayer
               value={value}
               textareaRef={internalRef}
@@ -1313,7 +1313,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
             />
           ) : null}
 
-          {mentionOverlaySuggestions.length > 0 ? (
+          {hasMentionOverlay ? (
             <MentionInteractionLayer
               suggestions={mentionOverlaySuggestions}
               value={value}
