@@ -1759,9 +1759,6 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
                 setProviderTerminal(null);
                 recheckAuthState();
               }}
-              onExit={() => {
-                recheckAuthState();
-              }}
               autoCloseOnSuccessMs={3000}
               successMessage={
                 providerTerminal.action === 'login'
@@ -2353,21 +2350,6 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
               args={['auth', 'login']}
               onClose={() => {
                 setShowLoginTerminal(false);
-                setIsVerifyingAuth(true);
-                void (async () => {
-                  try {
-                    await invalidateCliStatus();
-                    if (multimodelEnabled) {
-                      await bootstrapCliStatus({ multimodelEnabled: true });
-                    } else {
-                      await fetchCliStatus();
-                    }
-                  } finally {
-                    setIsVerifyingAuth(false);
-                  }
-                })();
-              }}
-              onExit={() => {
                 setIsVerifyingAuth(true);
                 void (async () => {
                   try {

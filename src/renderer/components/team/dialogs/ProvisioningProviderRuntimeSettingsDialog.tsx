@@ -180,10 +180,6 @@ export const ProvisioningProviderRuntimeSettingsDialog = ({
             onProviderRuntimeChanged?.(providerTerminal.providerId);
             refreshRuntimeAfterTerminal();
           }}
-          onExit={() => {
-            onProviderRuntimeChanged?.(providerTerminal.providerId);
-            refreshRuntimeAfterTerminal();
-          }}
           autoCloseOnSuccessMs={3000}
           successMessage={
             providerTerminal.action === 'login' ? 'Authentication updated' : 'Provider logged out'
