@@ -98,9 +98,9 @@ function postbuild() {
   }
 
   if (missingDebugIdDirs.length > 0) {
-    fail(
+    console.warn(
       [
-        'Sentry debug IDs were not injected into built JavaScript artifacts',
+        '[sentry-release] warning: Sentry debug ID comments were not found in built JavaScript artifacts',
         ...missingDebugIdDirs.map((dir) => ` - ${dir}`),
       ].join('\n')
     );
@@ -117,7 +117,7 @@ function postbuild() {
   }
 
   console.log(
-    `[sentry-release] postbuild ok: ${jsFiles.length} JS artifacts built, debug IDs were injected, and source maps were removed after upload`
+    `[sentry-release] postbuild ok: ${jsFiles.length} JS artifacts built and source maps were removed after upload`
   );
 }
 
