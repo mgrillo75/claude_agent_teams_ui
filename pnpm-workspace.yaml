@@ -4,6 +4,8 @@ packages:
   - landing
   - packages/agent-graph
 minimumReleaseAge: 4320
+minimumReleaseAgeExclude:
+  - tmp@0.2.6
 strictPeerDependencies: true
 peerDependencyRules:
   allowedVersions:
