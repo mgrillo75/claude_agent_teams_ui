@@ -15538,6 +15538,7 @@ describe('TeamProvisioningService', () => {
         settingsArgs: [],
         extraArgs: [],
         inheritedProviderArgs: [],
+        appManagedSettingsPath: null,
       }));
       (svc as any).materializeDirectProcessNativeBootstrapContext = vi.fn(async () => ({}));
       (svc as any).updateDirectTmuxRestartMemberConfig = vi.fn(async () => {});
@@ -15637,6 +15638,7 @@ describe('TeamProvisioningService', () => {
         settingsArgs: [],
         extraArgs: [],
         inheritedProviderArgs: [],
+        appManagedSettingsPath: null,
       }));
       (svc as any).materializeDirectProcessNativeBootstrapContext = vi.fn(async () => ({}));
       (svc as any).updateDirectTmuxRestartMemberConfig = vi.fn(async () => {});

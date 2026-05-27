@@ -62,6 +62,7 @@ describe('TeamProvisioningDirectRestart', () => {
         CLAUDE_CODE_ENTRY_PROVIDER: 'gemini',
         CLAUDE_CODE_CODEX_BACKEND: 'codex-native',
         CLAUDE_CODE_CODEX_FORCED_LOGIN_METHOD: 'chatgpt',
+        CLAUDE_TEAM_RUNTIME_SETTINGS_PATH: '/tmp/runtime-settings.json',
       },
       'codex'
     );
@@ -74,6 +75,7 @@ describe('TeamProvisioningDirectRestart', () => {
     expect(assignments).toContain("CLAUDE_CODE_ENTRY_PROVIDER='codex'");
     expect(assignments).toContain("CLAUDE_CODE_CODEX_BACKEND='codex-native'");
     expect(assignments).toContain("CLAUDE_CODE_CODEX_FORCED_LOGIN_METHOD='chatgpt'");
+    expect(assignments).toContain("CLAUDE_TEAM_RUNTIME_SETTINGS_PATH='/tmp/runtime-settings.json'");
     expect(assignments).toContain("CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST='1'");
   });
 

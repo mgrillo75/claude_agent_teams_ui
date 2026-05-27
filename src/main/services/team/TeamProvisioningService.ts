@@ -1252,6 +1252,7 @@ const STALL_CHECK_INTERVAL_MS = 10_000;
 const STALL_WARNING_THRESHOLD_MS = 20_000;
 const APP_TEAM_RUNTIME_DISALLOWED_TOOLS =
   'TeamDelete,TodoWrite,TaskCreate,TaskUpdate,mcp__agent-teams__team_launch,mcp__agent-teams__team_stop';
+const CLAUDE_TEAM_RUNTIME_SETTINGS_PATH_ENV = 'CLAUDE_TEAM_RUNTIME_SETTINGS_PATH';
 const TEAM_JSON_READ_TIMEOUT_MS = 5_000;
 const TEAM_CONFIG_MAX_BYTES = 10 * 1024 * 1024;
 const TEAM_INBOX_MAX_BYTES = 2 * 1024 * 1024;
@@ -2216,6 +2217,17 @@ function buildCodexCrossProviderSafeEnvPatch(env: NodeJS.ProcessEnv): NodeJS.Pro
   return envPatch;
 }
 
+function applyAppManagedRuntimeSettingsPathEnv(
+  env: NodeJS.ProcessEnv,
+  settingsPath: string | null
+): void {
+  if (settingsPath) {
+    env[CLAUDE_TEAM_RUNTIME_SETTINGS_PATH_ENV] = settingsPath;
+  } else {
+    delete env[CLAUDE_TEAM_RUNTIME_SETTINGS_PATH_ENV];
+  }
+}
+
 interface TeamRuntimeAuthContext {
   teamName?: string;
   authMaterialId?: string;
@@ -2238,6 +2250,7 @@ interface TeamRuntimeLaunchArgsPlan {
   providerArgs: string[];
   extraArgs: string[];
   inheritedProviderArgs: string[];
+  appManagedSettingsPath: string | null;
 }
 
 type WorkspaceTrustProviderArgsResolver = (input: {
@@ -4259,6 +4272,7 @@ export class TeamProvisioningService {
         providerArgs: rawProviderArgs,
         extraArgs: rawExtraArgs,
         inheritedProviderArgs: rawInheritedProviderArgs,
+        appManagedSettingsPath: null,
       };
     }
 
@@ -4313,6 +4327,7 @@ export class TeamProvisioningService {
       providerArgs: splitProviderArgs.passthroughArgs,
       extraArgs: splitExtraArgs.passthroughArgs,
       inheritedProviderArgs: splitInheritedArgs.passthroughArgs,
+      appManagedSettingsPath: settingsBundle?.settingsPath ?? null,
     };
   }
 
@@ -14819,6 +14834,10 @@ export class TeamProvisioningService {
       includeAnthropicHelper: providerId === 'anthropic',
       contextLabel: `Direct teammate restart (${input.configuredMember.name})`,
     });
+    applyAppManagedRuntimeSettingsPathEnv(
+      provisioningEnv.env,
+      runtimeArgsPlan.appManagedSettingsPath
+    );
 
     const runtimeArgs = mergeJsonSettingsArgs([
       '--agent-id',
@@ -15010,6 +15029,10 @@ export class TeamProvisioningService {
       includeAnthropicHelper: providerId === 'anthropic',
       contextLabel: `Direct process teammate restart (${input.configuredMember.name})`,
     });
+    applyAppManagedRuntimeSettingsPathEnv(
+      provisioningEnv.env,
+      runtimeArgsPlan.appManagedSettingsPath
+    );
 
     const runtimeArgs = mergeJsonSettingsArgs([
       '--teammate-runtime',
@@ -20257,6 +20280,7 @@ export class TeamProvisioningService {
         ...runtimeArgsPlan.settingsArgs,
         ...runtimeArgsPlan.inheritedProviderArgs,
       ]);
+      applyAppManagedRuntimeSettingsPathEnv(shellEnv, runtimeArgsPlan.appManagedSettingsPath);
       const runtimeWarning = buildRuntimeLaunchWarning(request, shellEnv, {
         geminiRuntimeAuth,
         promptSize,
@@ -21575,6 +21599,7 @@ export class TeamProvisioningService {
       emitProvisioningCheckpoint(run, 'Resolving cross-provider member launch args');
       launchArgs.push(...runtimeArgsPlan.inheritedProviderArgs);
       const finalLaunchArgs = mergeJsonSettingsArgs(launchArgs);
+      applyAppManagedRuntimeSettingsPathEnv(shellEnv, runtimeArgsPlan.appManagedSettingsPath);
       const runtimeWarning = buildRuntimeLaunchWarning(request, shellEnv, {
         geminiRuntimeAuth,
         promptSize,

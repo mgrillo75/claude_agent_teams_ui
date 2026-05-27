@@ -3566,6 +3566,7 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
 
     expect(result.settingsArgs[0]).toBe('--settings');
     expect(result.inheritedProviderArgs).toEqual([]);
+    expect(result.appManagedSettingsPath).toBe(result.settingsArgs[1]);
     const settings = JSON.parse(fs.readFileSync(result.settingsArgs[1], 'utf8'));
     expect(settings.codex.forced_login_method).toBe('chatgpt');
   });
@@ -3651,6 +3652,7 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
 
     expect(result.settingsArgs).toEqual([]);
     expect(result.inheritedProviderArgs).toEqual(inheritedProviderArgs);
+    expect(result.appManagedSettingsPath).toBeNull();
   });
 
   it('coalesces inherited JSON settings into Anthropic helper settings without keeping helper path args', async () => {
@@ -3685,6 +3687,7 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
     expect(result.settingsArgs[0]).toBe('--settings');
     expect(result.settingsArgs[1]).toContain(helperDir);
     expect(result.settingsArgs[1]).not.toBe(helperSettingsPath);
+    expect(result.appManagedSettingsPath).toBe(result.settingsArgs[1]);
     const settings = JSON.parse(fs.readFileSync(result.settingsArgs[1], 'utf8'));
     expect(settings.apiKeyHelper).toBe(`'${path.join(helperDir, 'helper.sh')}'`);
     expect(settings.codex.forced_login_method).toBe('chatgpt');

@@ -178,6 +178,16 @@ function readRuntimeSettingsFromLaunchArgs(callIndex = 0): Record<string, unknow
   return JSON.parse(fs.readFileSync(settingsValue, 'utf8')) as Record<string, unknown>;
 }
 
+function readRuntimeSettingsPathFromLaunchArgs(callIndex = 0): string {
+  const args = vi.mocked(spawnCli).mock.calls[callIndex]?.[1] as string[] | undefined;
+  const settingsFlagIndex = args?.indexOf('--settings') ?? -1;
+  const settingsValue = settingsFlagIndex >= 0 ? args?.[settingsFlagIndex + 1] : null;
+  if (!settingsValue || settingsValue.trim().startsWith('{')) {
+    throw new Error('Failed to extract runtime settings path from spawn args');
+  }
+  return settingsValue;
+}
+
 function registerNoopOpenCodeRuntimeAdapter(svc: TeamProvisioningService): void {
   svc.setRuntimeAdapterRegistry(
     new TeamRuntimeAdapterRegistry([
@@ -564,6 +574,9 @@ describe('TeamProvisioningService prompt content (solo mode discipline)', () => 
     expect(extractBootstrapSpec().members).toEqual([
       expect.objectContaining({ name: 'alice', provider: 'codex' }),
     ]);
+    const settingsPath = readRuntimeSettingsPathFromLaunchArgs();
+    const launchEnv = vi.mocked(spawnCli).mock.calls[0]?.[2]?.env as NodeJS.ProcessEnv;
+    expect(launchEnv.CLAUDE_TEAM_RUNTIME_SETTINGS_PATH).toBe(settingsPath);
     const settings = readRuntimeSettingsFromLaunchArgs();
     expect((settings.codex as Record<string, unknown>).forced_login_method).toBe('chatgpt');
 
@@ -1260,6 +1273,9 @@ describe('TeamProvisioningService prompt content (solo mode discipline)', () => 
     expect(extractBootstrapSpec().members).toEqual([
       expect.objectContaining({ name: 'alice', provider: 'codex' }),
     ]);
+    const settingsPath = readRuntimeSettingsPathFromLaunchArgs();
+    const launchEnv = vi.mocked(spawnCli).mock.calls[0]?.[2]?.env as NodeJS.ProcessEnv;
+    expect(launchEnv.CLAUDE_TEAM_RUNTIME_SETTINGS_PATH).toBe(settingsPath);
     const settings = readRuntimeSettingsFromLaunchArgs();
     expect((settings.codex as Record<string, unknown>).forced_login_method).toBe('chatgpt');
 
