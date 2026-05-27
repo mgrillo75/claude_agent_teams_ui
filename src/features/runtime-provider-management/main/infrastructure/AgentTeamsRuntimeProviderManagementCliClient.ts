@@ -6,6 +6,12 @@ import { ClaudeBinaryResolver } from '@main/services/team/ClaudeBinaryResolver';
 import { execCli, killProcessTree, spawnCli } from '@main/utils/childProcess';
 import { resolveInteractiveShellEnvBestEffort } from '@main/utils/shellEnv';
 
+import {
+  ensureOpenCodeProfileNodeModulesJunction,
+  extractProfileIdFromSymlinkError,
+  isOpenCodeNodeModulesSymlinkError,
+} from './openCodeWindowsNodeModulesJunction';
+
 import type {
   RuntimeProviderManagementApi,
   RuntimeProviderManagementConnectApiKeyInput,
@@ -215,6 +221,39 @@ function sanitizeRuntimeProviderDiagnostics(
 
 function sanitizeNullableRuntimeProviderText(value: unknown): string | null {
   return typeof value === 'string' ? sanitizeRuntimeProviderText(value) : null;
+}
+
+function buildOpenCodeProfileNodeModulesLinkDiagnostics(
+  message: string
+): RuntimeProviderManagementErrorDto['diagnostics'] {
+  const normalized = message.toLowerCase();
+  const isAccessDeniedLinkFailure =
+    (normalized.includes('eperm') || normalized.includes('eacces')) &&
+    normalized.includes('symlink') &&
+    normalized.includes('opencode') &&
+    normalized.includes('node_modules');
+  if (!isAccessDeniedLinkFailure) {
+    return null;
+  }
+
+  const summary = 'OpenCode managed profile node_modules link was blocked.';
+  const likelyCause =
+    'Windows denied creating the managed OpenCode profile node_modules link. The runtime does not yet fall back to a junction or local profile directory on Windows — this is a known limitation.';
+  return {
+    summary,
+    likelyCause,
+    binaryPath: null,
+    command: null,
+    projectPath: null,
+    exitCode: null,
+    stderrPreview: message,
+    stdoutPreview: null,
+    hints: [
+      'The next runtime update will include automatic junction fallback for Windows.',
+      'As a temporary workaround, enable Windows Developer Mode or run Agent Teams AI as Administrator.',
+      'After enabling Developer Mode, refresh the OpenCode provider catalog.',
+    ],
+  };
 }
 
 function extractJsonObject<T>(raw: string): T {
@@ -1048,13 +1087,36 @@ export class AgentTeamsRuntimeProviderManagementCliClient implements RuntimeProv
         stderr
       );
     } catch (error) {
-      const response = extractJsonObjectFromError<RuntimeProviderManagementViewResponse>(error);
-      if (response) {
-        return response;
+      const failure = normalizeCommandFailure(error, context);
+
+      if (process.platform === 'win32' && isOpenCodeNodeModulesSymlinkError(failure.message)) {
+        const profileId = extractProfileIdFromSymlinkError(failure.message);
+        if (profileId) {
+          ensureOpenCodeProfileNodeModulesJunction(profileId);
+          try {
+            const retryResult = await execCli(
+              binaryPath,
+              args,
+              runtimeProviderCommandOptions({ env, timeout: COMMAND_TIMEOUT_MS }, projectPath)
+            );
+            return extractJsonObjectWithContext<RuntimeProviderManagementViewResponse>(
+              retryResult.stdout,
+              context,
+              retryResult.stderr
+            );
+          } catch {
+            // Retry also failed; fall through to return the original error.
+          }
+        }
+      }
+
+      const retryResponse = extractJsonObjectFromError<RuntimeProviderManagementViewResponse>(error);
+      if (retryResponse) {
+        return retryResponse;
       }
       return commandFailureResponse<RuntimeProviderManagementViewResponse>(
         input.runtimeId,
-        normalizeCommandFailure(error, context)
+        failure
       );
     }
   }
@@ -1103,14 +1165,37 @@ export class AgentTeamsRuntimeProviderManagementCliClient implements RuntimeProv
         stderr
       );
     } catch (error) {
-      const response =
+      const failure = normalizeCommandFailure(error, context);
+
+      if (process.platform === 'win32' && isOpenCodeNodeModulesSymlinkError(failure.message)) {
+        const profileId = extractProfileIdFromSymlinkError(failure.message);
+        if (profileId) {
+          ensureOpenCodeProfileNodeModulesJunction(profileId);
+          try {
+            const retryResult = await execCli(
+              binaryPath,
+              args,
+              runtimeProviderCommandOptions({ env, timeout: COMMAND_TIMEOUT_MS }, projectPath)
+            );
+            return extractJsonObjectWithContext<RuntimeProviderManagementDirectoryResponse>(
+              retryResult.stdout,
+              context,
+              retryResult.stderr
+            );
+          } catch {
+            // Retry also failed; fall through to return the original error.
+          }
+        }
+      }
+
+      const retryResponse =
         extractJsonObjectFromError<RuntimeProviderManagementDirectoryResponse>(error);
-      if (response) {
-        return response;
+      if (retryResponse) {
+        return retryResponse;
       }
       return commandFailureResponse<RuntimeProviderManagementDirectoryResponse>(
         input.runtimeId,
-        normalizeCommandFailure(error, context)
+        failure
       );
     }
   }
