@@ -8540,14 +8540,23 @@ export class TeamProvisioningService {
     }
     if (active && active.inboxMessageId !== messageId) {
       const activeDueMs = active.nextAttemptAt ? Date.parse(active.nextAttemptAt) : NaN;
+      const activeRetryDelayMs = Number.isFinite(activeDueMs)
+        ? Math.max(500, activeDueMs - Date.now())
+        : OPENCODE_PROMPT_DELIVERY_OBSERVE_DELAY_MS;
       this.scheduleOpenCodePromptDeliveryWatchdog({
         teamName,
         memberName: canonicalMemberName,
         messageId: active.inboxMessageId,
-        delayMs: Number.isFinite(activeDueMs)
-          ? Math.max(500, activeDueMs - Date.now())
-          : OPENCODE_PROMPT_DELIVERY_OBSERVE_DELAY_MS,
+        delayMs: activeRetryDelayMs,
       });
+      if (messageId) {
+        this.scheduleOpenCodeMemberInboxDeliveryWake({
+          teamName,
+          memberName: canonicalMemberName,
+          messageId,
+          delayMs: activeRetryDelayMs + 500,
+        });
+      }
       return {
         delivered: true,
         accepted: false,
@@ -22892,6 +22901,18 @@ export class TeamProvisioningService {
           break;
         }
         if (delivery.responsePending) {
+          if (
+            typeof delivery.queuedBehindMessageId === 'string' &&
+            delivery.queuedBehindMessageId.trim() &&
+            delivery.queuedBehindMessageId !== message.messageId
+          ) {
+            this.scheduleOpenCodeMemberInboxDeliveryWake({
+              teamName,
+              memberName,
+              messageId: message.messageId,
+              delayMs: OPENCODE_PROMPT_DELIVERY_OBSERVE_DELAY_MS,
+            });
+          }
           result.diagnostics = [
             ...(result.diagnostics ?? []),
             ...(delivery.diagnostics ?? [delivery.reason ?? 'opencode_delivery_response_pending']),

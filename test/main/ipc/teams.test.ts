@@ -12,6 +12,7 @@ import type {
   BoardTaskLogStreamResponse,
   InboxMessage,
   MessagesPage,
+  OpenCodeRuntimeDeliveryStatus,
   SendMessageResult,
   TeamCreateRequest,
   TeamLaunchRequest,
@@ -318,6 +319,7 @@ describe('ipc teams handlers', () => {
           }
         | undefined,
     })),
+    getOpenCodeRuntimeDeliveryStatus: vi.fn(async () => null as OpenCodeRuntimeDeliveryStatus | null),
     buildOpenCodeRuntimeDeliveryUserVisibleImpact: vi.fn(() => ({ state: 'none' })),
     getLiveLeadProcessMessages: vi.fn(() => [] as InboxMessage[]),
     getCurrentLeadSessionId: vi.fn(() => null as string | null),
@@ -868,6 +870,7 @@ describe('ipc teams handlers', () => {
       attempted: true,
       delivered: true,
     });
+    expect(provisioningService.getOpenCodeRuntimeDeliveryStatus).not.toHaveBeenCalled();
   });
 
   it('returns runtimeDelivery failure without hiding the persisted OpenCode message', async () => {
@@ -950,6 +953,7 @@ describe('ipc teams handlers', () => {
       provisioningService.relayOpenCodeMemberInboxMessages.mockReturnValueOnce(
         new Promise(() => undefined)
       );
+      provisioningService.getOpenCodeRuntimeDeliveryStatus.mockResolvedValueOnce(null);
       const sendHandler = handlers.get(TEAM_SEND_MESSAGE);
       expect(sendHandler).toBeDefined();
 
@@ -958,7 +962,7 @@ describe('ipc teams handlers', () => {
         text: 'Ping bob',
       }) as Promise<{ success: boolean; data?: SendMessageResult }>;
 
-      await vi.advanceTimersByTimeAsync(12_000);
+      await vi.advanceTimersByTimeAsync(6_000);
       const result = await resultPromise;
 
       expect(result.success).toBe(true);
@@ -971,6 +975,281 @@ describe('ipc teams handlers', () => {
         responseState: 'not_observed',
         reason: 'opencode_runtime_delivery_ui_timeout_pending',
       });
+      expect(provisioningService.getOpenCodeRuntimeDeliveryStatus).toHaveBeenCalledWith(
+        'my-team',
+        result.data?.messageId
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('uses durable OpenCode delivery status when UI relay timeout fires after prompt acceptance', async () => {
+    vi.useFakeTimers();
+    try {
+      provisioningService.resolveRuntimeRecipientProviderId.mockResolvedValueOnce('opencode');
+      provisioningService.relayOpenCodeMemberInboxMessages.mockReturnValueOnce(
+        new Promise(() => undefined)
+      );
+      provisioningService.getOpenCodeRuntimeDeliveryStatus.mockResolvedValueOnce({
+        messageId: 'msg-123',
+        providerId: 'opencode',
+        attempted: true,
+        delivered: true,
+        responsePending: true,
+        responseState: 'not_observed',
+        ledgerStatus: 'pending',
+        reason: 'opencode_delivery_response_pending',
+        diagnostics: ['prompt accepted'],
+        userVisibleImpact: { state: 'none' },
+      });
+      provisioningService.buildOpenCodeRuntimeDeliveryUserVisibleImpact.mockReturnValueOnce({
+        state: 'checking',
+      });
+      const sendHandler = handlers.get(TEAM_SEND_MESSAGE);
+      expect(sendHandler).toBeDefined();
+
+      const resultPromise = sendHandler!({} as never, 'my-team', {
+        member: 'bob',
+        text: 'Ping bob',
+      }) as Promise<{ success: boolean; data?: SendMessageResult }>;
+
+      await vi.advanceTimersByTimeAsync(6_000);
+      const result = await resultPromise;
+
+      expect(result.success).toBe(true);
+      expect(result.data?.runtimeDelivery).toMatchObject({
+        providerId: 'opencode',
+        attempted: true,
+        delivered: true,
+        responsePending: true,
+        responseState: 'not_observed',
+        ledgerStatus: 'pending',
+        reason: 'opencode_delivery_response_pending',
+        diagnostics: ['prompt accepted'],
+        userVisibleImpact: { state: 'checking' },
+      });
+      expect(result.data?.runtimeDelivery?.acceptanceUnknown).toBeUndefined();
+      const impactCalls = provisioningService.buildOpenCodeRuntimeDeliveryUserVisibleImpact.mock
+        .calls as unknown as Array<[Partial<NonNullable<SendMessageResult['runtimeDelivery']>>]>;
+      const impactInput = impactCalls.at(-1)?.[0];
+      expect(impactInput).toMatchObject({
+        delivered: true,
+        responsePending: true,
+      });
+      expect(impactInput).not.toHaveProperty('userVisibleImpact');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('preserves terminal durable OpenCode delivery status after UI relay timeout', async () => {
+    vi.useFakeTimers();
+    try {
+      provisioningService.resolveRuntimeRecipientProviderId.mockResolvedValueOnce('opencode');
+      provisioningService.relayOpenCodeMemberInboxMessages.mockReturnValueOnce(
+        new Promise(() => undefined)
+      );
+      provisioningService.getOpenCodeRuntimeDeliveryStatus.mockResolvedValueOnce({
+        messageId: 'msg-responded',
+        providerId: 'opencode',
+        attempted: true,
+        delivered: true,
+        responsePending: false,
+        responseState: 'responded_visible_message',
+        ledgerStatus: 'responded',
+        visibleReplyMessageId: 'reply-1',
+        visibleReplyCorrelation: 'relayOfMessageId',
+        acceptanceUnknown: false,
+        diagnostics: [],
+        userVisibleImpact: { state: 'none' },
+      });
+      const sendHandler = handlers.get(TEAM_SEND_MESSAGE);
+      expect(sendHandler).toBeDefined();
+
+      const resultPromise = sendHandler!({} as never, 'my-team', {
+        member: 'bob',
+        text: 'Ping bob',
+      }) as Promise<{ success: boolean; data?: SendMessageResult }>;
+
+      await vi.advanceTimersByTimeAsync(6_000);
+      const result = await resultPromise;
+
+      expect(result.success).toBe(true);
+      expect(result.data?.runtimeDelivery).toMatchObject({
+        providerId: 'opencode',
+        attempted: true,
+        delivered: true,
+        responsePending: false,
+        responseState: 'responded_visible_message',
+        ledgerStatus: 'responded',
+        visibleReplyMessageId: 'reply-1',
+        visibleReplyCorrelation: 'relayOfMessageId',
+        acceptanceUnknown: false,
+        userVisibleImpact: { state: 'none' },
+      });
+      expect(provisioningService.buildOpenCodeRuntimeDeliveryUserVisibleImpact).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not let a slow OpenCode delivery status lookup extend the UI timeout indefinitely', async () => {
+    vi.useFakeTimers();
+    try {
+      provisioningService.resolveRuntimeRecipientProviderId.mockResolvedValueOnce('opencode');
+      provisioningService.relayOpenCodeMemberInboxMessages.mockReturnValueOnce(
+        new Promise(() => undefined)
+      );
+      provisioningService.getOpenCodeRuntimeDeliveryStatus.mockReturnValueOnce(
+        new Promise(() => undefined)
+      );
+      const sendHandler = handlers.get(TEAM_SEND_MESSAGE);
+      expect(sendHandler).toBeDefined();
+
+      const resultPromise = sendHandler!({} as never, 'my-team', {
+        member: 'bob',
+        text: 'Ping bob',
+      }) as Promise<{ success: boolean; data?: SendMessageResult }>;
+
+      await vi.advanceTimersByTimeAsync(6_000);
+      await flushMicrotasks();
+      let settled = false;
+      void resultPromise.then(() => {
+        settled = true;
+      });
+      await flushMicrotasks();
+      expect(settled).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      const result = await resultPromise;
+
+      expect(result.success).toBe(true);
+      expect(result.data?.runtimeDelivery).toMatchObject({
+        providerId: 'opencode',
+        attempted: true,
+        delivered: true,
+        responsePending: true,
+        acceptanceUnknown: true,
+        reason: 'opencode_runtime_delivery_ui_timeout_pending',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('falls back to acceptance-unknown when OpenCode delivery status lookup rejects after UI timeout', async () => {
+    vi.useFakeTimers();
+    try {
+      provisioningService.resolveRuntimeRecipientProviderId.mockResolvedValueOnce('opencode');
+      provisioningService.relayOpenCodeMemberInboxMessages.mockReturnValueOnce(
+        new Promise(() => undefined)
+      );
+      provisioningService.getOpenCodeRuntimeDeliveryStatus.mockRejectedValueOnce(
+        new Error('status read failed')
+      );
+      const sendHandler = handlers.get(TEAM_SEND_MESSAGE);
+      expect(sendHandler).toBeDefined();
+
+      const resultPromise = sendHandler!({} as never, 'my-team', {
+        member: 'bob',
+        text: 'Ping bob',
+      }) as Promise<{ success: boolean; data?: SendMessageResult }>;
+
+      await vi.advanceTimersByTimeAsync(6_000);
+      const result = await resultPromise;
+
+      expect(result.success).toBe(true);
+      expect(result.data?.runtimeDelivery).toMatchObject({
+        providerId: 'opencode',
+        attempted: true,
+        delivered: true,
+        responsePending: true,
+        acceptanceUnknown: true,
+        reason: 'opencode_runtime_delivery_ui_timeout_pending',
+        diagnostics: [
+          'opencode_runtime_delivery_ui_timeout_pending',
+          'opencode_runtime_delivery_ui_timeout_pending: status lookup failed: status read failed',
+        ],
+      });
+      expect(vi.mocked(console.warn).mock.calls.some((call) =>
+        call.join(' ').includes('status after UI timeout failed')
+      )).toBe(true);
+      vi.mocked(console.warn).mockClear();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('logs OpenCode relay rejection that happens after the UI timeout fallback', async () => {
+    vi.useFakeTimers();
+    try {
+      const deferredRelay = createDeferred<Awaited<
+        ReturnType<typeof provisioningService.relayOpenCodeMemberInboxMessages>
+      >>();
+      provisioningService.resolveRuntimeRecipientProviderId.mockResolvedValueOnce('opencode');
+      provisioningService.relayOpenCodeMemberInboxMessages.mockReturnValueOnce(deferredRelay.promise);
+      provisioningService.getOpenCodeRuntimeDeliveryStatus.mockResolvedValueOnce(null);
+      const sendHandler = handlers.get(TEAM_SEND_MESSAGE);
+      expect(sendHandler).toBeDefined();
+
+      const resultPromise = sendHandler!({} as never, 'my-team', {
+        member: 'bob',
+        text: 'Ping bob',
+      }) as Promise<{ success: boolean; data?: SendMessageResult }>;
+
+      await vi.advanceTimersByTimeAsync(6_000);
+      await expect(resultPromise).resolves.toMatchObject({ success: true });
+
+      deferredRelay.reject(new Error('late bridge failure'));
+      await flushMicrotasks();
+
+      expect(vi.mocked(console.warn).mock.calls.some((call) =>
+        call.join(' ').includes('rejected after UI timeout')
+      )).toBe(true);
+      vi.mocked(console.warn).mockClear();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('logs OpenCode relay failure result that resolves after the UI timeout fallback', async () => {
+    vi.useFakeTimers();
+    try {
+      const deferredRelay = createDeferred<Awaited<
+        ReturnType<typeof provisioningService.relayOpenCodeMemberInboxMessages>
+      >>();
+      provisioningService.resolveRuntimeRecipientProviderId.mockResolvedValueOnce('opencode');
+      provisioningService.relayOpenCodeMemberInboxMessages.mockReturnValueOnce(deferredRelay.promise);
+      provisioningService.getOpenCodeRuntimeDeliveryStatus.mockResolvedValueOnce(null);
+      const sendHandler = handlers.get(TEAM_SEND_MESSAGE);
+      expect(sendHandler).toBeDefined();
+
+      const resultPromise = sendHandler!({} as never, 'my-team', {
+        member: 'bob',
+        text: 'Ping bob',
+      }) as Promise<{ success: boolean; data?: SendMessageResult }>;
+
+      await vi.advanceTimersByTimeAsync(6_000);
+      await expect(resultPromise).resolves.toMatchObject({ success: true });
+
+      deferredRelay.resolve({
+        relayed: 0,
+        attempted: 1,
+        delivered: 0,
+        failed: 1,
+        lastDelivery: {
+          delivered: false,
+          reason: 'late_runtime_failure',
+          diagnostics: ['late_runtime_failure'],
+        },
+      });
+      await flushMicrotasks();
+
+      expect(vi.mocked(console.warn).mock.calls.some((call) =>
+        call.join(' ').includes('completed after UI timeout')
+      )).toBe(true);
+      vi.mocked(console.warn).mockClear();
     } finally {
       vi.useRealTimers();
     }

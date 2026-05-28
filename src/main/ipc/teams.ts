@@ -242,7 +242,17 @@ import type {
 import type { CliArgsValidationResult } from '@shared/utils/cliArgsParser';
 
 const logger = createLogger('IPC:teams');
-const OPENCODE_RUNTIME_DELIVERY_UI_TIMEOUT_MS = 12_000;
+// Runtime relay continues in the background after this race; keep sendMessage IPC off the
+// 25s OpenCode turn-settled guard while still giving prompt acceptance/reconcile time.
+const OPENCODE_RUNTIME_DELIVERY_UI_TIMEOUT_MS = 6_000;
+const OPENCODE_RUNTIME_DELIVERY_STATUS_AFTER_UI_TIMEOUT_MS = 1_000;
+const OPENCODE_RUNTIME_DELIVERY_UI_TIMEOUT_PENDING_REASON =
+  'opencode_runtime_delivery_ui_timeout_pending';
+
+type OpenCodeMemberInboxRelayResult = Awaited<
+  ReturnType<TeamProvisioningService['relayOpenCodeMemberInboxMessages']>
+>;
+type OpenCodeMemberInboxDelivery = NonNullable<OpenCodeMemberInboxRelayResult['lastDelivery']>;
 
 type VisibleDirectReplyProtocol = 'send_message' | 'agent_teams_message_send';
 
@@ -318,6 +328,158 @@ async function withTimeoutValue<T>(
       clearTimeout(timer);
     }
   }
+}
+
+async function waitForOpenCodeRuntimeRelayForUi(input: {
+  provisioning: TeamProvisioningService;
+  teamName: string;
+  memberName: string;
+  messageId: string;
+  relayPromise: Promise<OpenCodeMemberInboxRelayResult>;
+  timeoutMs?: number;
+}): Promise<OpenCodeMemberInboxRelayResult> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let timedOut = false;
+
+  void input.relayPromise.then(
+    (relay) => {
+      if (!timedOut) return;
+      const delivery = relay.lastDelivery;
+      if (delivery && !delivery.delivered && delivery.reason !== 'recipient_is_not_opencode') {
+        logger.warn(
+          `OpenCode runtime delivery after sendMessage completed after UI timeout for teammate "${input.memberName}" with failure: ${
+            delivery.reason ?? 'unknown error'
+          }`
+        );
+      }
+    },
+    (error: unknown) => {
+      if (!timedOut) return;
+      logger.warn(
+        `OpenCode runtime delivery after sendMessage rejected after UI timeout for teammate "${input.memberName}": ${getErrorMessage(error)}`
+      );
+    }
+  );
+
+  try {
+    const outcome = await Promise.race<
+      { kind: 'relay'; relay: OpenCodeMemberInboxRelayResult } | { kind: 'timeout' }
+    >([
+      input.relayPromise.then((relay) => ({ kind: 'relay' as const, relay })),
+      new Promise<{ kind: 'timeout' }>((resolve) => {
+        timer = setTimeout(() => {
+          timedOut = true;
+          resolve({ kind: 'timeout' });
+        }, input.timeoutMs ?? OPENCODE_RUNTIME_DELIVERY_UI_TIMEOUT_MS);
+        timer.unref?.();
+      }),
+    ]);
+
+    if (outcome.kind === 'relay') {
+      return outcome.relay;
+    }
+
+    try {
+      const status = await withTimeoutValue(
+        input.provisioning.getOpenCodeRuntimeDeliveryStatus(input.teamName, input.messageId),
+        OPENCODE_RUNTIME_DELIVERY_STATUS_AFTER_UI_TIMEOUT_MS,
+        null
+      );
+      if (status) {
+        return openCodeRuntimeDeliveryStatusToRelayResult(status);
+      }
+    } catch (error) {
+      const reason = getErrorMessage(error);
+      logger.warn(
+        `OpenCode runtime delivery status after UI timeout failed for teammate "${input.memberName}": ${reason}`
+      );
+      return buildOpenCodeRuntimeDeliveryUiTimeoutRelayResult([
+        `${OPENCODE_RUNTIME_DELIVERY_UI_TIMEOUT_PENDING_REASON}: status lookup failed: ${reason}`,
+      ]);
+    }
+
+    return buildOpenCodeRuntimeDeliveryUiTimeoutRelayResult();
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
+function openCodeRuntimeDeliveryStatusToRelayResult(
+  status: OpenCodeRuntimeDeliveryStatus
+): OpenCodeMemberInboxRelayResult {
+  const lastDelivery: OpenCodeMemberInboxDelivery = {
+    delivered: status.delivered,
+    ...(typeof status.responsePending === 'boolean'
+      ? { responsePending: status.responsePending }
+      : {}),
+    ...(typeof status.acceptanceUnknown === 'boolean'
+      ? { acceptanceUnknown: status.acceptanceUnknown }
+      : {}),
+    ...(status.responseState ? { responseState: status.responseState } : {}),
+    ...(status.ledgerStatus ? { ledgerStatus: status.ledgerStatus } : {}),
+    ...(status.visibleReplyMessageId
+      ? { visibleReplyMessageId: status.visibleReplyMessageId }
+      : {}),
+    ...(status.visibleReplyCorrelation
+      ? { visibleReplyCorrelation: status.visibleReplyCorrelation }
+      : {}),
+    ...(status.queuedBehindMessageId
+      ? { queuedBehindMessageId: status.queuedBehindMessageId }
+      : {}),
+    ...(status.reason ? { reason: status.reason } : {}),
+    ...(status.diagnostics ? { diagnostics: status.diagnostics } : {}),
+    ...(shouldPreserveOpenCodeRuntimeDeliveryStatusImpact(status)
+      ? { userVisibleImpact: status.userVisibleImpact }
+      : {}),
+  };
+  return {
+    relayed: 0,
+    attempted: 1,
+    delivered: status.delivered && status.responsePending !== true ? 1 : 0,
+    failed: status.delivered ? 0 : 1,
+    lastDelivery,
+    diagnostics: status.diagnostics,
+  };
+}
+
+function shouldPreserveOpenCodeRuntimeDeliveryStatusImpact(
+  status: OpenCodeRuntimeDeliveryStatus
+): boolean {
+  if (!status.userVisibleImpact) {
+    return false;
+  }
+  if (
+    status.userVisibleImpact.state === 'none' &&
+    (status.responsePending === true ||
+      status.acceptanceUnknown === true ||
+      Boolean(status.queuedBehindMessageId))
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function buildOpenCodeRuntimeDeliveryUiTimeoutRelayResult(
+  extraDiagnostics: string[] = []
+): OpenCodeMemberInboxRelayResult {
+  const diagnostics = [OPENCODE_RUNTIME_DELIVERY_UI_TIMEOUT_PENDING_REASON, ...extraDiagnostics];
+  return {
+    relayed: 0,
+    attempted: 1,
+    delivered: 0,
+    failed: 1,
+    lastDelivery: {
+      delivered: true,
+      accepted: false,
+      responsePending: true,
+      acceptanceUnknown: true,
+      responseState: 'not_observed',
+      reason: OPENCODE_RUNTIME_DELIVERY_UI_TIMEOUT_PENDING_REASON,
+      diagnostics,
+    },
+  };
 }
 
 function noteHeavyTeamDataWorkerFallback(operation: string): void {
@@ -3077,8 +3239,12 @@ async function handleSendMessage(
     // }
     if (isOpenCodeRecipient) {
       try {
-        const relay = await withTimeoutValue(
-          provisioning.relayOpenCodeMemberInboxMessages(tn, memberName, {
+        const relay = await waitForOpenCodeRuntimeRelayForUi({
+          provisioning,
+          teamName: tn,
+          memberName,
+          messageId: result.messageId,
+          relayPromise: provisioning.relayOpenCodeMemberInboxMessages(tn, memberName, {
             onlyMessageId: result.messageId,
             source: 'ui-send',
             deliveryMetadata: {
@@ -3087,23 +3253,7 @@ async function handleSendMessage(
               taskRefs: validatedTaskRefs.value,
             },
           }),
-          OPENCODE_RUNTIME_DELIVERY_UI_TIMEOUT_MS,
-          {
-            relayed: 0,
-            attempted: 1,
-            delivered: 0,
-            failed: 1,
-            lastDelivery: {
-              delivered: true,
-              accepted: false,
-              responsePending: true,
-              acceptanceUnknown: true,
-              responseState: 'not_observed',
-              reason: 'opencode_runtime_delivery_ui_timeout_pending',
-              diagnostics: ['opencode_runtime_delivery_ui_timeout_pending'],
-            },
-          }
-        );
+        });
         const delivery = relay.lastDelivery ?? {
           delivered: relay.relayed > 0,
           reason: relay.relayed > 0 ? undefined : 'opencode_message_delivery_not_attempted',

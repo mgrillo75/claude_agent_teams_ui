@@ -48,6 +48,11 @@ const MANAGED_ENV_IDENTITY_MARKERS = [
   'CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ENTRY=',
   'CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_URL=',
 ] as const;
+const MANAGED_INLINE_OPENCODE_CONFIG_PATTERNS = [
+  /OPENCODE_CONFIG_CONTENT=[\s\S]*"mcp"\s*:\s*\{[\s\S]*"agent-teams(?:-runtime-\d+)?"/i,
+  /OPENCODE_CONFIG_CONTENT=[\s\S]*"claude-multimodel runtime orchestration"/i,
+  /OPENCODE_CONFIG_CONTENT=[\s\S]*"(?:agent-teams|agent_teams|mcp__agent-teams|mcp__agent_teams)_\*"/i,
+] as const;
 
 export async function cleanupManagedOpenCodeServeProcesses(
   options: OpenCodeManagedHostProcessCleanupOptions
@@ -202,7 +207,8 @@ export function isAppManagedWindowsOpenCodeServeCommand(command: string): boolea
 export function isManagedOpenCodeServeProcessDetails(details: string): boolean {
   return (
     processDetailsIncludeMarkers(details, MANAGED_ENV_MARKERS) &&
-    MANAGED_ENV_IDENTITY_MARKERS.some((marker) => processDetailsIncludeMarker(details, marker))
+    (MANAGED_ENV_IDENTITY_MARKERS.some((marker) => processDetailsIncludeMarker(details, marker)) ||
+      MANAGED_INLINE_OPENCODE_CONFIG_PATTERNS.some((pattern) => pattern.test(details)))
   );
 }
 

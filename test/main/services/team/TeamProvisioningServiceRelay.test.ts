@@ -3721,6 +3721,68 @@ Messages:
     }
   });
 
+  it('reschedules a queued OpenCode inbox row when delivery is blocked behind an active prompt', async () => {
+    const service = new TeamProvisioningService();
+    const teamName = 'my-team';
+    hoisted.files.set(
+      `/mock/teams/${teamName}/config.json`,
+      JSON.stringify({
+        name: teamName,
+        projectPath: '/mock/my-team',
+        members: [
+          { name: 'team-lead', agentType: 'team-lead' },
+          { name: 'jack', role: 'developer', providerId: 'opencode', model: 'openrouter/test' },
+        ],
+      })
+    );
+    seedMemberInbox(teamName, 'jack', [
+      {
+        from: 'user',
+        to: 'jack',
+        text: 'Queued UI message.',
+        timestamp: '2026-02-23T17:00:01.000Z',
+        read: false,
+        messageId: 'opencode-queued-current',
+      },
+    ]);
+    const wakeSpy = vi
+      .spyOn(service, 'scheduleOpenCodeMemberInboxDeliveryWake')
+      .mockImplementation(() => undefined);
+    vi.spyOn(service, 'deliverOpenCodeMemberMessage').mockResolvedValue({
+      delivered: true,
+      accepted: false,
+      responsePending: true,
+      queuedBehindMessageId: 'opencode-active-blocker',
+      reason: 'opencode_delivery_response_pending',
+      diagnostics: ['OpenCode delivery is queued behind opencode-active-blocker.'],
+    });
+
+    const relay = await service.relayOpenCodeMemberInboxMessages(teamName, 'jack', {
+      onlyMessageId: 'opencode-queued-current',
+      source: 'watchdog',
+      deliveryMetadata: { replyRecipient: 'user' },
+    });
+
+    expect(relay).toMatchObject({
+      attempted: 1,
+      delivered: 0,
+      failed: 0,
+      lastDelivery: {
+        delivered: true,
+        responsePending: true,
+        queuedBehindMessageId: 'opencode-active-blocker',
+      },
+    });
+    expect(wakeSpy).toHaveBeenCalledWith({
+      teamName,
+      memberName: 'jack',
+      messageId: 'opencode-queued-current',
+      delayMs: 3_000,
+    });
+    const rows = JSON.parse(hoisted.files.get(`/mock/teams/${teamName}/inboxes/jack.json`) ?? '[]');
+    expect(rows[0]).toMatchObject({ messageId: 'opencode-queued-current', read: false });
+  });
+
   it('treats an already-read specific OpenCode inbox row as delivered for UI-send relay', async () => {
     const service = new TeamProvisioningService();
     const teamName = 'my-team';
