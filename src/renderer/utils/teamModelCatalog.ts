@@ -19,6 +19,8 @@ type RuntimeAwareProviderStatus = Pick<
   CliProviderStatus,
   'providerId' | 'authMethod' | 'backend' | 'modelCatalog'
 >;
+type RuntimeAwareModelCatalog = NonNullable<RuntimeAwareProviderStatus['modelCatalog']>;
+type RuntimeAwareCatalogModel = RuntimeAwareModelCatalog['models'][number];
 
 export interface TeamProviderModelOption {
   value: string;
@@ -216,6 +218,34 @@ const SUPPORTED_ANTHROPIC_TEAM_MODELS = new Set<string>([
   'claude-haiku-4-5-20251001',
 ]);
 
+const runtimeCatalogModelIndexCache = new WeakMap<
+  RuntimeAwareModelCatalog,
+  Map<string, RuntimeAwareCatalogModel>
+>();
+
+function getRuntimeCatalogModelIndex(
+  modelCatalog: RuntimeAwareModelCatalog
+): Map<string, RuntimeAwareCatalogModel> {
+  const cached = runtimeCatalogModelIndexCache.get(modelCatalog);
+  if (cached) {
+    return cached;
+  }
+
+  const index = new Map<string, RuntimeAwareCatalogModel>();
+  for (const model of modelCatalog.models) {
+    const launchModel = model.launchModel.trim();
+    if (launchModel) {
+      index.set(launchModel, model);
+    }
+    const id = model.id.trim();
+    if (id) {
+      index.set(id, model);
+    }
+  }
+  runtimeCatalogModelIndexCache.set(modelCatalog, index);
+  return index;
+}
+
 export function isSupportedAnthropicTeamModel(model: string | undefined): boolean {
   const trimmed = model?.trim();
   if (!trimmed) {
@@ -294,17 +324,13 @@ function getRuntimeCatalogModel(
   providerId: SupportedProviderId | undefined,
   model: string | undefined,
   providerStatus?: RuntimeAwareProviderStatus | null
-): NonNullable<RuntimeAwareProviderStatus['modelCatalog']>['models'][number] | null {
+): RuntimeAwareCatalogModel | null {
   const trimmed = model?.trim();
   if (!providerId || !trimmed || providerStatus?.modelCatalog?.providerId !== providerId) {
     return null;
   }
 
-  return (
-    providerStatus.modelCatalog.models.find(
-      (item) => item.launchModel === trimmed || item.id === trimmed
-    ) ?? null
-  );
+  return getRuntimeCatalogModelIndex(providerStatus.modelCatalog).get(trimmed) ?? null;
 }
 
 export function getTeamModelBadgeLabel(
@@ -456,11 +482,18 @@ export function sortTeamProviderModels(
     return sorted;
   }
 
+  const freeByModel = new Map(
+    sorted.map((model) => [
+      model,
+      isFreeOpenCodeModelForOrdering(providerId, model, providerStatus),
+    ])
+  );
+
   return sorted
     .map((model, index) => ({ model, index }))
     .sort((left, right) => {
-      const leftFree = isFreeOpenCodeModelForOrdering(providerId, left.model, providerStatus);
-      const rightFree = isFreeOpenCodeModelForOrdering(providerId, right.model, providerStatus);
+      const leftFree = freeByModel.get(left.model) ?? false;
+      const rightFree = freeByModel.get(right.model) ?? false;
       if (leftFree !== rightFree) {
         return leftFree ? -1 : 1;
       }
