@@ -45,6 +45,11 @@ export interface ResolvedTeamMemberRuntimeLiveness {
 const SHELL_COMMAND_NAMES = new Set(['sh', 'bash', 'zsh', 'fish', 'dash', 'login', 'tmux']);
 const SECRET_FLAG_PATTERN =
   /(--(?:api-key|token|password|secret|authorization|auth-token)(?:=|\s+))("[^"]*"|'[^']*'|\S+)/gi;
+const MAX_CLI_ARG_CACHE_ENTRIES = 2_000;
+const CLI_ARG_CACHE_KEY_SEPARATOR = '\u0000';
+
+const cliArgValuesCache = new Map<string, string[]>();
+const commandArgEqualsCache = new Map<string, boolean>();
 
 function basenameCommand(command: string | undefined): string {
   const firstToken = command?.trim().split(/\s+/, 1)[0] ?? '';
@@ -68,7 +73,37 @@ function escapeRegexLiteral(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function buildCliArgCacheKey(...parts: readonly string[]): string {
+  return parts.join(CLI_ARG_CACHE_KEY_SEPARATOR);
+}
+
+function getCachedValue<T>(cache: Map<string, T>, key: string): T | undefined {
+  if (!cache.has(key)) {
+    return undefined;
+  }
+  const value = cache.get(key) as T;
+  cache.delete(key);
+  cache.set(key, value);
+  return value;
+}
+
+function setCachedValue<T>(cache: Map<string, T>, key: string, value: T): void {
+  if (!cache.has(key) && cache.size >= MAX_CLI_ARG_CACHE_ENTRIES) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey !== undefined) {
+      cache.delete(oldestKey);
+    }
+  }
+  cache.set(key, value);
+}
+
 export function extractCliArgValues(command: string, argName: string): string[] {
+  const cacheKey = buildCliArgCacheKey(command, argName);
+  const cached = getCachedValue(cliArgValuesCache, cacheKey);
+  if (cached) {
+    return cached.slice();
+  }
+
   const escapedArg = escapeRegexLiteral(argName);
   const pattern = new RegExp(
     `(?:^|\\s)${escapedArg}(?:=|\\s+)("([^"]*)"|'([^']*)'|([^\\s]+))`,
@@ -80,7 +115,8 @@ export function extractCliArgValues(command: string, argName: string): string[] 
     const value = (match[2] ?? match[3] ?? match[4] ?? '').trim();
     if (value) values.push(value);
   }
-  return values;
+  setCachedValue(cliArgValuesCache, cacheKey, values);
+  return values.slice();
 }
 
 export function commandArgEquals(
@@ -90,7 +126,16 @@ export function commandArgEquals(
 ): boolean {
   const normalizedExpected = expected?.trim();
   if (!normalizedExpected) return false;
-  return extractCliArgValues(command, argName).some((value) => value === normalizedExpected);
+  const cacheKey = buildCliArgCacheKey(command, argName, normalizedExpected);
+  const cached = getCachedValue(commandArgEqualsCache, cacheKey);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const result = extractCliArgValues(command, argName).some(
+    (value) => value === normalizedExpected
+  );
+  setCachedValue(commandArgEqualsCache, cacheKey, result);
+  return result;
 }
 
 function collectDescendants(
