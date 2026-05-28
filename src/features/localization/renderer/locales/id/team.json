@@ -28,7 +28,9 @@
       "session": "sesi",
       "stallNudge": "nudge kios",
       "start": "awal",
-      "workSync": "sinkronisasi kerja"
+      "workSync": "sinkronisasi kerja",
+      "agentError": "Kesalahan agen",
+      "apiError": "Kesalahan API"
     },
     "bootstrap": {
       "acknowledged": "Bootstrap diakui",
@@ -77,7 +79,11 @@
       "action": "Balas"
     },
     "activeTasks": {
-      "inProgress": "Dalam proses"
+      "inProgress": "Dalam proses",
+      "expandInProgress": "Buka yang berlangsung",
+      "collapseInProgress": "Tutup yang berlangsung",
+      "reviewing": "meninjau",
+      "workingOn": "mengerjakan"
     },
     "expandDialog": {
       "description": "Tampilan pesan yang diperluas"
@@ -349,7 +355,12 @@
     },
     "waitingForProvisioning": "Data tim akan muncul setelah pemberian selesai",
     "context": {
-      "title": "Konteks"
+      "title": "Konteks",
+      "loading": "Memuat...",
+      "noSessionLoaded": "Sesi belum dimuat",
+      "closePanel": "Tutup panel konteks {{team}}",
+      "loadingContext": "Memuat konteks...",
+      "openLeadSession": "Buka sesi lead tim untuk melihat konteks."
     }
   },
   "review": {
@@ -1571,7 +1582,10 @@
       "emptyMessage": "Tidak ditemukan sumber log.",
       "ariaLabel": "Sumber log",
       "leadLabel": "Lead",
-      "selectSourceEmpty": "Pilih sumber log."
+      "selectSourceEmpty": "Pilih sumber log.",
+      "leadDescription": "Lead tim",
+      "removedLabel": "dihapus",
+      "removedDescription": "Dihapus"
     }
   },
   "agentGraph": {
@@ -1620,14 +1634,39 @@
       "more_one": "+{{count}} lagi",
       "more_other": "+{{count}} lagi",
       "more_few": "+{{count}} lagi",
-      "more_many": "+{{count}} lagi"
+      "more_many": "+{{count}} lagi",
+      "unsupportedProvider": "Penyedia tidak didukung",
+      "openCodeLogsDelayed": "Log OpenCode tertunda",
+      "logsUnavailable": "Log tidak tersedia",
+      "noRecentLogs": "Tidak ada log terbaru",
+      "toolError": "Kesalahan alat",
+      "toolResult": "Hasil alat",
+      "toolUse": "Penggunaan alat",
+      "thinking": "Berpikir",
+      "error": "Kesalahan",
+      "logEvent": "Peristiwa log",
+      "noErrorOutput": "Tidak ada output error",
+      "noOutput": "Tidak ada output",
+      "noInput": "Tidak ada input"
     },
     "blockingEdge": {
       "title": "Blocking Dependensi",
       "blocks": "blok",
       "close": "Tutup",
       "blockingHiddenTasks": "Memblokir tugas tersembunyi",
-      "blockedHiddenTasks": "Diblokir tugas tersembunyi"
+      "blockedHiddenTasks": "Diblokir tugas tersembunyi",
+      "links_one": "{{count}} tautan",
+      "links_other": "{{count}} tautan",
+      "hiddenBlockingLinks_one": "{{count}} tautan pemblokir tersembunyi",
+      "hiddenBlockingLinks_other": "{{count}} tautan pemblokir tersembunyi",
+      "hiddenTaskStack": "Tumpukan tugas tersembunyi",
+      "hiddenTasks_one": "{{count}} tugas tersembunyi",
+      "hiddenTasks_other": "{{count}} tugas tersembunyi",
+      "task": "Tugas",
+      "openBlockerStack": "Buka tumpukan pemblokir",
+      "openBlockedStack": "Buka tumpukan terblokir",
+      "openBlockerTask": "Buka tugas pemblokir",
+      "openBlockedTask": "Buka tugas terblokir"
     },
     "activityHud": {
       "activity": "Aktivitas",
@@ -1778,7 +1817,11 @@
       "autoRefresh": "Segarkan otomatis",
       "wrapLines": "Lipat baris",
       "loadingTail": "Memuat proses log tail...",
-      "empty": "Belum ada berkas log proses yang ditangkap untuk anggota ini."
+      "empty": "Belum ada berkas log proses yang ditangkap untuk anggota ini.",
+      "copy": "Salin",
+      "fileEmpty": "File log proses kosong.",
+      "showingLast": "Menampilkan {{bytes}} terakhir.",
+      "showing": "Menampilkan {{bytes}}."
     },
     "tasks": {
       "empty": "Tidak ada tugas yang ditugaskan ke anggota ini"
@@ -2029,7 +2072,8 @@
         "openCodeRuntimeMissing": "Pasang atau coba ulang waktu berjalan OpenCode dari kartu status penyedia, kemudian buka kembali dialog ini.",
         "openCodeAppMcpUnreachable": "Coba lagi meluncurkan untuk menyegarkan aplikasi OpenCode MCP bridge. Jika berulang, restart aplikasi dan waktu berjalan OpenCode.",
         "cliBinaryMissing": "Pastikan Claude lokal CLI biner ada dan dapat dimulai, kemudian membuka kembali dialog ini.",
-        "default": "Selesaikan masalah di atas, lalu buka kembali dialog ini."
+        "default": "Selesaikan masalah di atas, lalu buka kembali dialog ini.",
+        "openCodeNodeModulesSymlinkPermission": "Jalankan Agent Teams AI sebagai Administrator, lalu coba launch lagi."
       }
     },
     "presentation": {
@@ -2404,14 +2448,23 @@
     }
   },
   "runningTeams": {
-    "title": "Menjalankan Tim"
+    "title": "Menjalankan Tim",
+    "status": {
+      "active": "Aktif",
+      "provisioning": "Meluncurkan",
+      "idle": "Berjalan"
+    },
+    "noProject": "Tanpa proyek"
   },
   "layout": {
     "maxPanesReached": "Maksimum {{count}} panel dicapai"
   },
   "codexReconnect": {
     "description": "Sesi Codex Anda tampak basi. Reconnect untuk melanjutkan.",
-    "useCode": "Gunakan kode"
+    "useCode": "Gunakan kode",
+    "generating": "Membuat...",
+    "openLogin": "Buka login",
+    "generateLink": "Buat tautan"
   },
   "effortLevel": {
     "label": "Tingkat benteng (opsional)",
@@ -2428,6 +2481,7 @@
     "customRole": "Peran kustom...",
     "searchPlaceholder": "Cari peran...",
     "empty": "Tidak ditemukan peran.",
-    "reservedRole": "Peran ini dipesan"
+    "reservedRole": "Peran ini dipesan",
+    "emptyCustomRole": "Peran tidak boleh kosong"
   }
 }

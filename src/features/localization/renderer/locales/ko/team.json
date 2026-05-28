@@ -28,7 +28,9 @@
       "session": "이름 *",
       "stallNudge": "연락처",
       "start": "시작하기",
-      "workSync": "작업 동기화"
+      "workSync": "작업 동기화",
+      "agentError": "에이전트 오류",
+      "apiError": "API 오류"
     },
     "bootstrap": {
       "acknowledged": "부트 스트랩 승인",
@@ -77,7 +79,11 @@
       "action": "이름 *"
     },
     "activeTasks": {
-      "inProgress": "진행 중"
+      "inProgress": "진행 중",
+      "expandInProgress": "진행 중 펼치기",
+      "collapseInProgress": "진행 중 접기",
+      "reviewing": "검토 중",
+      "workingOn": "작업 중"
     },
     "expandDialog": {
       "description": "확장된 메시지 보기"
@@ -349,7 +355,12 @@
     },
     "waitingForProvisioning": "팀 데이터는 일단 완료되면 나타납니다",
     "context": {
-      "title": "설정하기"
+      "title": "설정하기",
+      "loading": "로딩 중...",
+      "noSessionLoaded": "세션이 로드되지 않음",
+      "closePanel": "{{team}} 컨텍스트 패널 닫기",
+      "loadingContext": "컨텍스트 로딩 중...",
+      "openLeadSession": "컨텍스트를 보려면 팀 리드 세션을 여세요."
     }
   },
   "review": {
@@ -1571,7 +1582,10 @@
       "emptyMessage": "로그 소스가 없습니다.",
       "ariaLabel": "로그 소스",
       "leadLabel": "제품정보",
-      "selectSourceEmpty": "로그 소스를 선택합니다."
+      "selectSourceEmpty": "로그 소스를 선택합니다.",
+      "leadDescription": "팀 리드",
+      "removedLabel": "제거됨",
+      "removedDescription": "제거됨"
     }
   },
   "agentGraph": {
@@ -1620,14 +1634,39 @@
       "more_one": "+{{count}} 더보기",
       "more_other": "+{{count}} 더보기",
       "more_few": "+{{count}} 더보기",
-      "more_many": "+{{count}} 더보기"
+      "more_many": "+{{count}} 더보기",
+      "unsupportedProvider": "지원되지 않는 제공자",
+      "openCodeLogsDelayed": "OpenCode 로그 지연됨",
+      "logsUnavailable": "로그를 사용할 수 없음",
+      "noRecentLogs": "최근 로그 없음",
+      "toolError": "도구 오류",
+      "toolResult": "도구 결과",
+      "toolUse": "도구 사용",
+      "thinking": "생각 중",
+      "error": "오류",
+      "logEvent": "로그 이벤트",
+      "noErrorOutput": "오류 출력 없음",
+      "noOutput": "출력 없음",
+      "noInput": "입력 없음"
     },
     "blockingEdge": {
       "title": "블록 의존성",
       "blocks": "제품정보",
       "close": "이름 *",
       "blockingHiddenTasks": "숨겨진 작업을 차단",
-      "blockedHiddenTasks": "숨겨진 작업을 차단"
+      "blockedHiddenTasks": "숨겨진 작업을 차단",
+      "links_one": "{{count}}개 링크",
+      "links_other": "{{count}}개 링크",
+      "hiddenBlockingLinks_one": "{{count}}개의 숨겨진 차단 링크",
+      "hiddenBlockingLinks_other": "{{count}}개의 숨겨진 차단 링크",
+      "hiddenTaskStack": "숨겨진 작업 스택",
+      "hiddenTasks_one": "{{count}}개 숨겨진 작업",
+      "hiddenTasks_other": "{{count}}개 숨겨진 작업",
+      "task": "작업",
+      "openBlockerStack": "차단 작업 스택 열기",
+      "openBlockedStack": "차단된 작업 스택 열기",
+      "openBlockerTask": "차단 작업 열기",
+      "openBlockedTask": "차단된 작업 열기"
     },
     "activityHud": {
       "activity": "- 연혁",
@@ -1778,7 +1817,11 @@
       "autoRefresh": "자동차 수리",
       "wrapLines": "포장 라인",
       "loadingTail": "적재 공정 로그 꼬리...",
-      "empty": "아직이 회원을 위해 캡처 된 프로세스 로그 파일 없음."
+      "empty": "아직이 회원을 위해 캡처 된 프로세스 로그 파일 없음.",
+      "copy": "복사",
+      "fileEmpty": "프로세스 로그 파일이 비어 있습니다.",
+      "showingLast": "마지막 {{bytes}} 표시 중.",
+      "showing": "{{bytes}} 표시 중."
     },
     "tasks": {
       "empty": "이 회원에게 할당된 작업 없음"
@@ -2029,7 +2072,8 @@
         "openCodeRuntimeMissing": "공급자 상태 카드에서 OpenCode 런타임을 설치하거나 재시작하면 이 대화 상자를 다시 엽니다.",
         "openCodeAppMcpUnreachable": "OpenCode 앱 MCP 브리지를 새로 고침합니다. 반복하면 앱과 OpenCode runtime을 다시 시작합니다.",
         "cliBinaryMissing": "로컬 클로드 CLI 바이너리가 존재하고 시작할 수 있는지 확인하고, 이 대화 상자를 다시 엽니다.",
-        "default": "위의 문제를 해결 한 다음이 대화 상자를 다시 엽니다."
+        "default": "위의 문제를 해결 한 다음이 대화 상자를 다시 엽니다.",
+        "openCodeNodeModulesSymlinkPermission": "Agent Teams AI를 관리자 권한으로 실행한 다음 launch를 다시 시도하세요."
       }
     },
     "presentation": {
@@ -2404,14 +2448,23 @@
     }
   },
   "runningTeams": {
-    "title": "팀 실행"
+    "title": "팀 실행",
+    "status": {
+      "active": "활성",
+      "provisioning": "시작 중",
+      "idle": "실행 중"
+    },
+    "noProject": "프로젝트 없음"
   },
   "layout": {
     "maxPanesReached": "{{count}} 팬의 최대 도달"
   },
   "codexReconnect": {
     "description": "Codex 세션은 stale이 나타납니다. 계속 연결.",
-    "useCode": "사용 코드"
+    "useCode": "사용 코드",
+    "generating": "생성 중...",
+    "openLogin": "로그인 열기",
+    "generateLink": "링크 생성"
   },
   "effortLevel": {
     "label": "(선택) Effort 수준",
@@ -2428,6 +2481,7 @@
     "customRole": "사용자 정의 역할...",
     "searchPlaceholder": "검색 역할...",
     "empty": "찾을 수 없음.",
-    "reservedRole": "이 역할은"
+    "reservedRole": "이 역할은",
+    "emptyCustomRole": "역할은 비워 둘 수 없습니다"
   }
 }

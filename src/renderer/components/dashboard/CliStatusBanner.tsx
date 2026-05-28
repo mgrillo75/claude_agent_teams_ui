@@ -42,7 +42,10 @@ import {
   shouldShowProviderStatusSkeleton,
 } from '@renderer/components/runtime/providerConnectionUi';
 import { ProviderModelBadges } from '@renderer/components/runtime/ProviderModelBadges';
-import { getProviderRuntimeBackendSummary } from '@renderer/components/runtime/ProviderRuntimeBackendSelector';
+import {
+  buildProviderRuntimeBackendSummaryText,
+  getProviderRuntimeBackendSummary,
+} from '@renderer/components/runtime/ProviderRuntimeBackendSelector';
 import {
   getProviderTerminalCommand,
   getProviderTerminalLogoutCommand,
@@ -839,6 +842,11 @@ const InstalledBanner = ({
 }: InstalledBannerProps): React.JSX.Element => {
   const { t } = useAppTranslation('dashboard');
   const { t: settingsT } = useAppTranslation('settings');
+  const { t: commonT } = useAppTranslation('common');
+  const runtimeBackendSummaryText = useMemo(
+    () => buildProviderRuntimeBackendSummaryText(commonT),
+    [commonT]
+  );
   const openExtensionsTab = useStore((s) => s.openExtensionsTab);
   const styles = VARIANT_STYLES[variant];
   const visibleProviders = useMemo(
@@ -966,7 +974,7 @@ const InstalledBanner = ({
             const actionDisabled = isBusy || !cliStatus.binaryPath;
             const runtimeSummary = isConnectionManagedRuntimeProvider(provider)
               ? getProviderCurrentRuntimeSummary(provider, settingsT)
-              : getProviderRuntimeBackendSummary(provider);
+              : getProviderRuntimeBackendSummary(provider, runtimeBackendSummaryText);
             const connectionModeSummary = getProviderConnectionModeSummary(provider, settingsT);
             const credentialSummary = getProviderCredentialSummary(provider, settingsT);
             const dashboardRateLimits = getDashboardRateLimitsForProvider(provider);

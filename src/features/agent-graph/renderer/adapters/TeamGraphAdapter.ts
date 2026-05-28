@@ -85,6 +85,10 @@ export interface TeamGraphData extends TeamViewSnapshot {
   runtimeEntriesByMember?: Record<string, TeamAgentRuntimeEntry>;
 }
 
+export interface TeamGraphAdapterText {
+  hiddenBlockingLinks(count: number): string;
+}
+
 function toGraphLaunchVisualState(
   visualState: ReturnType<typeof buildMemberLaunchPresentation>['launchVisualState'] | undefined
 ): GraphNode['launchVisualState'] {
@@ -141,7 +145,8 @@ export class TeamGraphAdapter {
     slotAssignments?: Record<string, GraphOwnerSlotAssignment>,
     layoutMode: GraphLayoutMode = DEFAULT_TEAM_GRAPH_LAYOUT_MODE,
     gridOwnerOrder?: readonly string[],
-    activeTaskLogActivity?: Record<string, true>
+    activeTaskLogActivity?: Record<string, true>,
+    text?: TeamGraphAdapterText
   ): GraphDataPort {
     if (teamData?.teamName !== teamName) {
       return TeamGraphAdapter.#emptyResult(teamName);
@@ -227,7 +232,8 @@ export class TeamGraphAdapter {
       memberNodeIdByAlias,
       leadId,
       leadName,
-      activeTaskLogActivity
+      activeTaskLogActivity,
+      text
     );
     this.#buildProcessNodes(nodes, edges, teamData, teamName, memberNodeIdByAlias);
     this.#attachActivityFeeds(nodes, teamData, teamName, leadId, leadName);
@@ -673,7 +679,8 @@ export class TeamGraphAdapter {
     memberNodeIdByAlias?: ReadonlyMap<string, string>,
     leadId?: string,
     leadName?: string,
-    activeTaskLogActivity?: Record<string, true>
+    activeTaskLogActivity?: Record<string, true>,
+    text?: TeamGraphAdapterText
   ): void {
     const taskStateById = new Map<
       string,
@@ -869,9 +876,10 @@ export class TeamGraphAdapter {
         sourceTaskIds: Array.from(edge.sourceTaskIds),
         targetTaskIds: Array.from(edge.targetTaskIds),
         label:
-          edge.aggregateCount > 1 &&
-          (edge.source.includes(':overflow:') || edge.target.includes(':overflow:'))
-            ? `${edge.aggregateCount} hidden blocking links`
+            edge.aggregateCount > 1 &&
+            (edge.source.includes(':overflow:') || edge.target.includes(':overflow:'))
+            ? (text?.hiddenBlockingLinks(edge.aggregateCount) ??
+              `${edge.aggregateCount} hidden blocking links`)
             : undefined,
       }))
     );

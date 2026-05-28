@@ -28,7 +28,9 @@
       "session": "セッション",
       "stallNudge": "ステルナッジ",
       "start": "スタート",
-      "workSync": "作業同期"
+      "workSync": "作業同期",
+      "agentError": "エージェントエラー",
+      "apiError": "API エラー"
     },
     "bootstrap": {
       "acknowledged": "ブーツストラップが認めた",
@@ -77,7 +79,11 @@
       "action": "スタッフ"
     },
     "activeTasks": {
-      "inProgress": "進行状況"
+      "inProgress": "進行状況",
+      "expandInProgress": "進行中を展開",
+      "collapseInProgress": "進行中を折りたたむ",
+      "reviewing": "レビュー中",
+      "workingOn": "作業中"
     },
     "expandDialog": {
       "description": "メッセージビューを拡大"
@@ -349,7 +355,12 @@
     },
     "waitingForProvisioning": "チームデータが完成したら表示されます。",
     "context": {
-      "title": "コンテンツ"
+      "title": "コンテンツ",
+      "loading": "読み込み中...",
+      "noSessionLoaded": "セッションが読み込まれていません",
+      "closePanel": "{{team}} のコンテキストパネルを閉じる",
+      "loadingContext": "コンテキストを読み込み中...",
+      "openLeadSession": "コンテキストを表示するにはチームリードのセッションを開いてください。"
     }
   },
   "review": {
@@ -1571,7 +1582,10 @@
       "emptyMessage": "ログソースが見つかりません。",
       "ariaLabel": "ログソース",
       "leadLabel": "リード",
-      "selectSourceEmpty": "ログソースを選択します。"
+      "selectSourceEmpty": "ログソースを選択します。",
+      "leadDescription": "チームリード",
+      "removedLabel": "削除済み",
+      "removedDescription": "削除済み"
     }
   },
   "agentGraph": {
@@ -1620,14 +1634,39 @@
       "more_one": "+{{count}} より",
       "more_other": "+{{count}} より",
       "more_few": "+{{count}} より",
-      "more_many": "+{{count}} より"
+      "more_many": "+{{count}} より",
+      "unsupportedProvider": "未対応のプロバイダー",
+      "openCodeLogsDelayed": "OpenCode ログが遅延しています",
+      "logsUnavailable": "ログを利用できません",
+      "noRecentLogs": "最近のログはありません",
+      "toolError": "ツールエラー",
+      "toolResult": "ツール結果",
+      "toolUse": "ツール使用",
+      "thinking": "思考中",
+      "error": "エラー",
+      "logEvent": "ログイベント",
+      "noErrorOutput": "エラー出力なし",
+      "noOutput": "出力なし",
+      "noInput": "入力なし"
     },
     "blockingEdge": {
       "title": "依存症のブロック",
       "blocks": "ブロック",
       "close": "ふりがな",
       "blockingHiddenTasks": "隠しタスクのブロック",
-      "blockedHiddenTasks": "隠しタスクをブロック"
+      "blockedHiddenTasks": "隠しタスクをブロック",
+      "links_one": "{{count}} 件のリンク",
+      "links_other": "{{count}} 件のリンク",
+      "hiddenBlockingLinks_one": "{{count}} 件の非表示ブロックリンク",
+      "hiddenBlockingLinks_other": "{{count}} 件の非表示ブロックリンク",
+      "hiddenTaskStack": "非表示タスクスタック",
+      "hiddenTasks_one": "{{count}} 件の非表示タスク",
+      "hiddenTasks_other": "{{count}} 件の非表示タスク",
+      "task": "タスク",
+      "openBlockerStack": "ブロッカースタックを開く",
+      "openBlockedStack": "ブロック済みスタックを開く",
+      "openBlockerTask": "ブロッカータスクを開く",
+      "openBlockedTask": "ブロック済みタスクを開く"
     },
     "activityHud": {
       "activity": "活動内容",
@@ -1778,7 +1817,11 @@
       "autoRefresh": "オートリフレッシュ",
       "wrapLines": "ラップライン",
       "loadingTail": "ローディングプロセスログテール...",
-      "empty": "まだこのメンバーの処理ログファイルはありません。"
+      "empty": "まだこのメンバーの処理ログファイルはありません。",
+      "copy": "コピー",
+      "fileEmpty": "プロセスログファイルは空です。",
+      "showingLast": "最後の {{bytes}} を表示しています。",
+      "showing": "{{bytes}} を表示しています。"
     },
     "tasks": {
       "empty": "このメンバーに割り当てられたタスクはありません"
@@ -2029,7 +2072,8 @@
         "openCodeRuntimeMissing": "プロバイダーのステータスカードからOpenCodeのランタイムをインストールまたは再試行し、このダイアログを再起動します。",
         "openCodeAppMcpUnreachable": "OpenCodeアプリのMCPブリッジをリフレッシュするためのリトリー起動。 繰り返すと、アプリとOpenCodeのランタイムを再起動します。",
         "cliBinaryMissing": "ローカルClaude CLIバイナリが存在し、起動できることを確認してください。その後、このダイアログが開きます。",
-        "default": "上記の問題を解決し、このダイアログを再オープンします。"
+        "default": "上記の問題を解決し、このダイアログを再オープンします。",
+        "openCodeNodeModulesSymlinkPermission": "Agent Teams AI を管理者として実行してから、launch を再試行してください。"
       }
     },
     "presentation": {
@@ -2404,14 +2448,23 @@
     }
   },
   "runningTeams": {
-    "title": "ランニングチーム"
+    "title": "ランニングチーム",
+    "status": {
+      "active": "アクティブ",
+      "provisioning": "起動中",
+      "idle": "実行中"
+    },
+    "noProject": "プロジェクトなし"
   },
   "layout": {
     "maxPanesReached": "{{count}}のパンが到達する最大"
   },
   "codexReconnect": {
     "description": "Codex のセッションはストール表示されます。 続行する再接続。",
-    "useCode": "コードを使用する"
+    "useCode": "コードを使用する",
+    "generating": "生成中...",
+    "openLogin": "ログインを開く",
+    "generateLink": "リンクを生成"
   },
   "effortLevel": {
     "label": "努力レベル(任意)",
@@ -2428,6 +2481,7 @@
     "customRole": "カスタムロール...",
     "searchPlaceholder": "役割を検索...",
     "empty": "役割が見つかりません。",
-    "reservedRole": "この役割は、"
+    "reservedRole": "この役割は、",
+    "emptyCustomRole": "ロールを空にすることはできません"
   }
 }

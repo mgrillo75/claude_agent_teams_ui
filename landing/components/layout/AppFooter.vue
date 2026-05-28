@@ -5,7 +5,7 @@ const { t, locale } = useI18n();
 const { repoUrl } = useGithubRepo();
 const { baseURL } = useRuntimeConfig().app;
 const year = new Date().getFullYear();
-const authorLabel = computed(() => locale.value === 'ru' ? 'Автор' : 'Author');
+const authorLabel = computed(() => t('footer.links.author'));
 const docsHref = computed(() => {
   const base = baseURL.replace(/\/?$/, '/');
   return `${base}${locale.value === 'ru' ? 'docs/ru/' : 'docs/'}`;

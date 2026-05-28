@@ -28,7 +28,9 @@
       "session": "session",
       "stallNudge": "stall nudge",
       "start": "start",
-      "workSync": "work sync"
+      "workSync": "work sync",
+      "agentError": "Agent Error",
+      "apiError": "API Error"
     },
     "bootstrap": {
       "acknowledged": "Bootstrap acknowledged",
@@ -77,7 +79,11 @@
       "action": "Reply"
     },
     "activeTasks": {
-      "inProgress": "In progress"
+      "inProgress": "In progress",
+      "expandInProgress": "Expand in progress",
+      "collapseInProgress": "Collapse in progress",
+      "reviewing": "reviewing",
+      "workingOn": "working on"
     },
     "expandDialog": {
       "description": "Expanded message view"
@@ -349,7 +355,12 @@
     },
     "waitingForProvisioning": "Team data will appear once provisioning completes",
     "context": {
-      "title": "Context"
+      "title": "Context",
+      "loading": "Loading...",
+      "noSessionLoaded": "No session loaded",
+      "closePanel": "Close {{team}} context panel",
+      "loadingContext": "Loading context...",
+      "openLeadSession": "Open the team lead session to view context."
     }
   },
   "review": {
@@ -1571,7 +1582,10 @@
       "emptyMessage": "No log sources found.",
       "ariaLabel": "Log source",
       "leadLabel": "Lead",
-      "selectSourceEmpty": "Select a log source."
+      "selectSourceEmpty": "Select a log source.",
+      "leadDescription": "Team Lead",
+      "removedLabel": "removed",
+      "removedDescription": "Removed"
     }
   },
   "agentGraph": {
@@ -1620,14 +1634,39 @@
       "more_one": "+{{count}} more",
       "more_other": "+{{count}} more",
       "more_few": "+{{count}} more",
-      "more_many": "+{{count}} more"
+      "more_many": "+{{count}} more",
+      "unsupportedProvider": "Unsupported provider",
+      "openCodeLogsDelayed": "OpenCode logs delayed",
+      "logsUnavailable": "Logs unavailable",
+      "noRecentLogs": "No recent logs",
+      "toolError": "Tool error",
+      "toolResult": "Tool result",
+      "toolUse": "Tool use",
+      "thinking": "Thinking",
+      "error": "Error",
+      "logEvent": "Log event",
+      "noErrorOutput": "No error output",
+      "noOutput": "No output",
+      "noInput": "No input"
     },
     "blockingEdge": {
       "title": "Blocking Dependency",
       "blocks": "blocks",
       "close": "Close",
       "blockingHiddenTasks": "Blocking hidden tasks",
-      "blockedHiddenTasks": "Blocked hidden tasks"
+      "blockedHiddenTasks": "Blocked hidden tasks",
+      "links_one": "{{count}} link",
+      "links_other": "{{count}} links",
+      "hiddenBlockingLinks_one": "{{count}} hidden blocking link",
+      "hiddenBlockingLinks_other": "{{count}} hidden blocking links",
+      "hiddenTaskStack": "Hidden task stack",
+      "hiddenTasks_one": "{{count}} hidden task",
+      "hiddenTasks_other": "{{count}} hidden tasks",
+      "task": "Task",
+      "openBlockerStack": "Open blocker stack",
+      "openBlockedStack": "Open blocked stack",
+      "openBlockerTask": "Open blocker task",
+      "openBlockedTask": "Open blocked task"
     },
     "activityHud": {
       "activity": "Activity",
@@ -1778,7 +1817,11 @@
       "autoRefresh": "Auto-refresh",
       "wrapLines": "Wrap lines",
       "loadingTail": "Loading process log tail...",
-      "empty": "No process log file captured for this member yet."
+      "empty": "No process log file captured for this member yet.",
+      "copy": "Copy",
+      "fileEmpty": "Process log file is empty.",
+      "showingLast": "Showing last {{bytes}}.",
+      "showing": "Showing {{bytes}}."
     },
     "tasks": {
       "empty": "No tasks assigned to this member"
@@ -2029,7 +2072,8 @@
         "openCodeRuntimeMissing": "Install or retry OpenCode runtime from the provider status card, then reopen this dialog.",
         "openCodeAppMcpUnreachable": "Retry launch to refresh the OpenCode app MCP bridge. If it repeats, restart the app and OpenCode runtime.",
         "cliBinaryMissing": "Make sure the local Claude CLI binary exists and can be started, then reopen this dialog.",
-        "default": "Resolve the issue above, then reopen this dialog."
+        "default": "Resolve the issue above, then reopen this dialog.",
+        "openCodeNodeModulesSymlinkPermission": "Run Agent Teams AI as Administrator, then retry launch."
       }
     },
     "presentation": {
@@ -2404,14 +2448,23 @@
     }
   },
   "runningTeams": {
-    "title": "Running Teams"
+    "title": "Running Teams",
+    "status": {
+      "active": "Active",
+      "provisioning": "Launching",
+      "idle": "Running"
+    },
+    "noProject": "No project"
   },
   "layout": {
     "maxPanesReached": "Maximum of {{count}} panes reached"
   },
   "codexReconnect": {
     "description": "Your Codex session appears stale. Reconnect to continue.",
-    "useCode": "Use code"
+    "useCode": "Use code",
+    "generating": "Generating...",
+    "openLogin": "Open login",
+    "generateLink": "Generate link"
   },
   "effortLevel": {
     "label": "Effort level (optional)",
@@ -2428,6 +2481,7 @@
     "customRole": "Custom role...",
     "searchPlaceholder": "Search roles...",
     "empty": "No roles found.",
-    "reservedRole": "This role is reserved"
+    "reservedRole": "This role is reserved",
+    "emptyCustomRole": "Role cannot be empty"
   }
 }

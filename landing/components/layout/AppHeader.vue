@@ -8,16 +8,15 @@ const menuOpen = ref(false);
 
 const withBase = (path: string) => `${baseURL.replace(/\/?$/, '/')}${path.replace(/^\/+/, '')}`;
 const docsHref = computed(() => withBase(locale.value === 'ru' ? 'docs/ru/' : 'docs/'));
-const isRu = computed(() => locale.value === 'ru');
-const openMenuLabel = computed(() => (isRu.value ? 'Открыть меню' : 'Open menu'));
-const closeMenuLabel = computed(() => (isRu.value ? 'Закрыть меню' : 'Close menu'));
+const openMenuLabel = computed(() => t('nav.openMenu'));
+const closeMenuLabel = computed(() => t('nav.closeMenu'));
 
 const navItems = computed(() => [
-  { href: '#screenshots', label: t('nav.screenshots'), shortLabel: isRu.value ? 'Скрины' : 'Shots' },
-  { href: docsHref.value, label: t('nav.docs'), shortLabel: isRu.value ? 'Док' : 'Docs' },
-  { href: '#download', label: t('nav.download'), shortLabel: isRu.value ? 'Скачать' : 'Get' },
-  { href: '#comparison', label: t('nav.comparison'), shortLabel: isRu.value ? 'Сравн.' : 'Compare' },
-  { href: '#pricing', label: t('nav.pricing'), shortLabel: isRu.value ? 'Беспл.' : 'Free' },
+  { href: '#screenshots', label: t('nav.screenshots'), shortLabel: t('nav.short.screenshots') },
+  { href: docsHref.value, label: t('nav.docs'), shortLabel: t('nav.short.docs') },
+  { href: '#download', label: t('nav.download'), shortLabel: t('nav.short.download') },
+  { href: '#comparison', label: t('nav.comparison'), shortLabel: t('nav.short.comparison') },
+  { href: '#pricing', label: t('nav.pricing'), shortLabel: t('nav.short.pricing') },
   { href: '#faq', label: t('nav.faq'), shortLabel: 'FAQ' },
 ]);
 </script>

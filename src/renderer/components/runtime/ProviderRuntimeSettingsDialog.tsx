@@ -60,6 +60,7 @@ import {
   isConnectionManagedRuntimeProvider,
 } from './providerConnectionUi';
 import {
+  buildProviderRuntimeBackendSummaryText,
   getProviderRuntimeBackendSummary,
   getVisibleProviderRuntimeBackendOptions,
   ProviderRuntimeBackendSelector,
@@ -792,6 +793,11 @@ export const ProviderRuntimeSettingsDialog = ({
   onRequestLogin,
 }: Props): React.JSX.Element => {
   const { t } = useAppTranslation('settings');
+  const { t: commonT } = useAppTranslation('common');
+  const runtimeBackendSummaryText = useMemo(
+    () => buildProviderRuntimeBackendSummaryText(commonT),
+    [commonT]
+  );
   const [selectedProviderId, setSelectedProviderId] = useState<CliProviderId>(initialProviderId);
   const [activeApiKeyFormProviderId, setActiveApiKeyFormProviderId] =
     useState<ApiKeyProviderId | null>(null);
@@ -987,7 +993,7 @@ export const ProviderRuntimeSettingsDialog = ({
     ? providerStatusLoading[selectedProvider.providerId] === true
     : false;
   const runtimeSummary = selectedProvider
-    ? getProviderRuntimeBackendSummary(selectedProvider)
+    ? getProviderRuntimeBackendSummary(selectedProvider, runtimeBackendSummaryText)
     : null;
   const codexConnection =
     selectedProvider?.providerId === 'codex' ? (selectedProvider.connection?.codex ?? null) : null;

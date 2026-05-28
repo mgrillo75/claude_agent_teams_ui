@@ -29,7 +29,10 @@ import {
   shouldShowProviderStatusSkeleton,
 } from '@renderer/components/runtime/providerConnectionUi';
 import { ProviderModelBadges } from '@renderer/components/runtime/ProviderModelBadges';
-import { getProviderRuntimeBackendSummary } from '@renderer/components/runtime/ProviderRuntimeBackendSelector';
+import {
+  buildProviderRuntimeBackendSummaryText,
+  getProviderRuntimeBackendSummary,
+} from '@renderer/components/runtime/ProviderRuntimeBackendSelector';
 import { ProviderRuntimeSettingsDialog } from '@renderer/components/runtime/ProviderRuntimeSettingsDialog';
 import {
   getProviderTerminalCommand,
@@ -129,6 +132,11 @@ function getProviderLabel(providerId: CliProviderId): string {
 
 export const CliStatusSection = (): React.JSX.Element | null => {
   const { t } = useAppTranslation('settings');
+  const { t: commonT } = useAppTranslation('common');
+  const runtimeBackendSummaryText = useMemo(
+    () => buildProviderRuntimeBackendSummaryText(commonT),
+    [commonT]
+  );
   const isElectron = useMemo(() => isElectronMode(), []);
   const appConfig = useStore((s) => s.appConfig);
   const selectedProjectId = useStore((s) => s.selectedProjectId);
@@ -493,7 +501,7 @@ export const CliStatusSection = (): React.JSX.Element | null => {
                             isCodexSnapshotPending(provider, codexSnapshotPending);
                           const runtimeSummary = isConnectionManagedRuntimeProvider(provider)
                             ? getProviderCurrentRuntimeSummary(provider, t)
-                            : getProviderRuntimeBackendSummary(provider);
+                            : getProviderRuntimeBackendSummary(provider, runtimeBackendSummaryText);
                           const sourceProvider =
                             loadingCliProviderMap.get(provider.providerId) ?? null;
                           const maskNegativeBootstrapState = shouldMaskCodexNegativeBootstrapState(

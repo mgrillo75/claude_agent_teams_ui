@@ -1225,12 +1225,14 @@ export const ActivityItem = memo(
         <AlertTriangle size={10} />
         {t('activity.badges.rateLimited')}
       </span>
-    ) : isApiError ? (
-      <span className="inline-flex items-center gap-1 rounded-full bg-red-500/20 px-1.5 py-0.5 text-[10px] font-medium text-red-400">
-        <AlertTriangle size={10} />
-        {message.messageKind === 'agent_error' ? 'Agent Error' : 'API Error'}
-      </span>
-    ) : null;
+	    ) : isApiError ? (
+	      <span className="inline-flex items-center gap-1 rounded-full bg-red-500/20 px-1.5 py-0.5 text-[10px] font-medium text-red-400">
+	        <AlertTriangle size={10} />
+	        {message.messageKind === 'agent_error'
+	          ? t('activity.badges.agentError')
+	          : t('activity.badges.apiError')}
+	      </span>
+	    ) : null;
 
     const recipientBadge =
       commentTaskRef && commentTaskDisplayId ? (

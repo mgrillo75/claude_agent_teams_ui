@@ -28,7 +28,9 @@
       "session": "届会",
       "stallNudge": "缓冲",
       "start": "开始",
-      "workSync": "工作同步"
+      "workSync": "工作同步",
+      "agentError": "代理错误",
+      "apiError": "API 错误"
     },
     "bootstrap": {
       "acknowledged": "靴子已经确认",
@@ -77,7 +79,11 @@
       "action": "答复"
     },
     "activeTasks": {
-      "inProgress": "进行中"
+      "inProgress": "进行中",
+      "expandInProgress": "展开进行中任务",
+      "collapseInProgress": "折叠进行中任务",
+      "reviewing": "正在审查",
+      "workingOn": "正在处理"
     },
     "expandDialog": {
       "description": "扩展信件视图"
@@ -349,7 +355,12 @@
     },
     "waitingForProvisioning": "一旦提供完毕,小组数据就会出现",
     "context": {
-      "title": "背景情况"
+      "title": "背景情况",
+      "loading": "正在加载...",
+      "noSessionLoaded": "未加载会话",
+      "closePanel": "关闭 {{team}} 上下文面板",
+      "loadingContext": "正在加载上下文...",
+      "openLeadSession": "打开团队负责人会话以查看上下文。"
     }
   },
   "review": {
@@ -1571,7 +1582,10 @@
       "emptyMessage": "未找到日志来源 。",
       "ariaLabel": "日志来源",
       "leadLabel": "铅",
-      "selectSourceEmpty": "选择日志源 。"
+      "selectSourceEmpty": "选择日志源 。",
+      "leadDescription": "团队负责人",
+      "removedLabel": "已移除",
+      "removedDescription": "已移除"
     }
   },
   "agentGraph": {
@@ -1620,14 +1634,39 @@
       "more_one": "+ 键{{count}}更多",
       "more_other": "+ 键{{count}}更多",
       "more_few": "+ 键{{count}}更多",
-      "more_many": "+ 键{{count}}更多"
+      "more_many": "+ 键{{count}}更多",
+      "unsupportedProvider": "不支持的提供商",
+      "openCodeLogsDelayed": "OpenCode 日志延迟",
+      "logsUnavailable": "日志不可用",
+      "noRecentLogs": "没有最近日志",
+      "toolError": "工具错误",
+      "toolResult": "工具结果",
+      "toolUse": "工具使用",
+      "thinking": "思考中",
+      "error": "错误",
+      "logEvent": "日志事件",
+      "noErrorOutput": "没有错误输出",
+      "noOutput": "没有输出",
+      "noInput": "没有输入"
     },
     "blockingEdge": {
       "title": "封锁依赖性",
       "blocks": "块",
       "close": "关闭",
       "blockingHiddenTasks": "屏蔽隐藏任务",
-      "blockedHiddenTasks": "已屏蔽隐藏任务"
+      "blockedHiddenTasks": "已屏蔽隐藏任务",
+      "links_one": "{{count}} 个链接",
+      "links_other": "{{count}} 个链接",
+      "hiddenBlockingLinks_one": "{{count}} 个隐藏阻塞链接",
+      "hiddenBlockingLinks_other": "{{count}} 个隐藏阻塞链接",
+      "hiddenTaskStack": "隐藏任务堆栈",
+      "hiddenTasks_one": "{{count}} 个隐藏任务",
+      "hiddenTasks_other": "{{count}} 个隐藏任务",
+      "task": "任务",
+      "openBlockerStack": "打开阻塞方堆栈",
+      "openBlockedStack": "打开被阻塞方堆栈",
+      "openBlockerTask": "打开阻塞任务",
+      "openBlockedTask": "打开被阻塞任务"
     },
     "activityHud": {
       "activity": "活动",
@@ -1778,7 +1817,11 @@
       "autoRefresh": "自动更新",
       "wrapLines": "环行",
       "loadingTail": "正在装入进程日志尾巴...",
-      "empty": "尚未为这个成员捕获进程日志文件 。"
+      "empty": "尚未为这个成员捕获进程日志文件 。",
+      "copy": "复制",
+      "fileEmpty": "进程日志文件为空。",
+      "showingLast": "显示最后 {{bytes}}。",
+      "showing": "显示 {{bytes}}。"
     },
     "tasks": {
       "empty": "没有指派给该成员的任务"
@@ -2029,7 +2072,8 @@
         "openCodeRuntimeMissing": "从提供者状态卡安装或重试 OpenCode 运行时间, 然后重新打开此对话框 。",
         "openCodeAppMcpUnreachable": "重试发射刷新OpenCodeapp MCP桥. 如果重复,请重新启动应用程序和 OpenCode 运行时间 。",
         "cliBinaryMissing": "确保本地的 Claude CLI 二进制存在并可以启动,然后重新打开此对话框 。",
-        "default": "解决上面的问题, 然后重开这个对话框 。"
+        "default": "解决上面的问题, 然后重开这个对话框 。",
+        "openCodeNodeModulesSymlinkPermission": "以管理员身份运行 Agent Teams AI, 然后重试启动。"
       }
     },
     "presentation": {
@@ -2404,14 +2448,23 @@
     }
   },
   "runningTeams": {
-    "title": "运行团队"
+    "title": "运行团队",
+    "status": {
+      "active": "活跃",
+      "provisioning": "启动中",
+      "idle": "运行中"
+    },
+    "noProject": "无项目"
   },
   "layout": {
     "maxPanesReached": "达到的最大 {{count}} 面板"
   },
   "codexReconnect": {
     "description": "您的编码会话似乎已停滞 。 重新连接继续 。",
-    "useCode": "使用代码"
+    "useCode": "使用代码",
+    "generating": "正在生成...",
+    "openLogin": "打开登录",
+    "generateLink": "生成链接"
   },
   "effortLevel": {
     "label": "努力级别( 可选)",
@@ -2428,6 +2481,7 @@
     "customRole": "自定义角色...",
     "searchPlaceholder": "搜索角色...",
     "empty": "没有找到角色 。",
-    "reservedRole": "这个角色是保留下来的"
+    "reservedRole": "这个角色是保留下来的",
+    "emptyCustomRole": "角色不能为空"
   }
 }

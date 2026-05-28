@@ -28,7 +28,9 @@
       "session": "الدورة",
       "stallNudge": "كشك",
       "start": "البدء",
-      "workSync": "تزامن العمل"
+      "workSync": "تزامن العمل",
+      "agentError": "خطأ الوكيل",
+      "apiError": "خطأ API"
     },
     "bootstrap": {
       "acknowledged": "بوتستراب اعترف",
@@ -77,7 +79,11 @@
       "action": "الرد"
     },
     "activeTasks": {
-      "inProgress": "قيد التنفيذ"
+      "inProgress": "قيد التنفيذ",
+      "expandInProgress": "توسيع قيد التنفيذ",
+      "collapseInProgress": "طي قيد التنفيذ",
+      "reviewing": "يراجع",
+      "workingOn": "يعمل على"
     },
     "expandDialog": {
       "description": "رؤية موسعة للرسالة"
@@ -349,7 +355,12 @@
     },
     "waitingForProvisioning": "ستظهر بيانات الفريق بمجرد الانتهاء من توفيرها",
     "context": {
-      "title": "السياق"
+      "title": "السياق",
+      "loading": "جار التحميل...",
+      "noSessionLoaded": "لم يتم تحميل أي جلسة",
+      "closePanel": "إغلاق لوحة سياق {{team}}",
+      "loadingContext": "جار تحميل السياق...",
+      "openLeadSession": "افتح جلسة قائد الفريق لعرض السياق."
     }
   },
   "review": {
@@ -1571,7 +1582,10 @@
       "emptyMessage": "لا توجد مصادر للسجلات",
       "ariaLabel": "المصدر",
       "leadLabel": "الرصاص",
-      "selectSourceEmpty": "اختيار مصدر سجل."
+      "selectSourceEmpty": "اختيار مصدر سجل.",
+      "leadDescription": "قائد الفريق",
+      "removedLabel": "تمت الإزالة",
+      "removedDescription": "تمت الإزالة"
     }
   },
   "agentGraph": {
@@ -1620,14 +1634,39 @@
       "more_one": "+{{count}} أكثر",
       "more_other": "+{{count}} أكثر",
       "more_few": "+{{count}} أكثر",
-      "more_many": "+{{count}} أكثر"
+      "more_many": "+{{count}} أكثر",
+      "unsupportedProvider": "المزود غير مدعوم",
+      "openCodeLogsDelayed": "سجلات OpenCode متأخرة",
+      "logsUnavailable": "السجلات غير متاحة",
+      "noRecentLogs": "لا توجد سجلات حديثة",
+      "toolError": "خطأ الأداة",
+      "toolResult": "نتيجة الأداة",
+      "toolUse": "استخدام الأداة",
+      "thinking": "تفكير",
+      "error": "خطأ",
+      "logEvent": "حدث سجل",
+      "noErrorOutput": "لا يوجد خرج خطأ",
+      "noOutput": "لا يوجد خرج",
+      "noInput": "لا يوجد إدخال"
     },
     "blockingEdge": {
       "title": "الإعالة",
       "blocks": "اللبنات",
       "close": "اقترب",
       "blockingHiddenTasks": "حجب المهام الخفية",
-      "blockedHiddenTasks": "مهام خفية مقفلة"
+      "blockedHiddenTasks": "مهام خفية مقفلة",
+      "links_one": "{{count}} رابط",
+      "links_other": "{{count}} روابط",
+      "hiddenBlockingLinks_one": "{{count}} رابط حظر مخفي",
+      "hiddenBlockingLinks_other": "{{count}} روابط حظر مخفية",
+      "hiddenTaskStack": "مجموعة مهام مخفية",
+      "hiddenTasks_one": "{{count}} مهمة مخفية",
+      "hiddenTasks_other": "{{count}} مهام مخفية",
+      "task": "مهمة",
+      "openBlockerStack": "فتح مجموعة المهام الحاجزة",
+      "openBlockedStack": "فتح مجموعة المهام المحجوبة",
+      "openBlockerTask": "فتح المهمة الحاجزة",
+      "openBlockedTask": "فتح المهمة المحجوبة"
     },
     "activityHud": {
       "activity": "النشاط",
@@ -1778,7 +1817,11 @@
       "autoRefresh": "تطهير السيارات",
       "wrapLines": "خطوط الغضب",
       "loadingTail": "عملية تحديد الموقع",
-      "empty": "لم يتم القبض على ملف سجل العمليات لهذا العضو بعد"
+      "empty": "لم يتم القبض على ملف سجل العمليات لهذا العضو بعد",
+      "copy": "نسخ",
+      "fileEmpty": "ملف سجل العملية فارغ.",
+      "showingLast": "عرض آخر {{bytes}}.",
+      "showing": "عرض {{bytes}}."
     },
     "tasks": {
       "empty": "No tasks assigned to this member"
@@ -2029,7 +2072,8 @@
         "openCodeRuntimeMissing": "اثبت او اعيد تشغيل الكود المفتوح من بطاقة مركز المزود ثم اعيد فتح هذا الرقم",
         "openCodeAppMcpUnreachable": "البدء من جديد لتنشيط طلب الموافقة المفتوحة MCP الجسر إذا كرر، إعادة تشغيل التطبيق وفتح الوقت.",
         "cliBinaryMissing": "تأكد من كلود المحلي CLI وجود ثنائي ويمكن البدء به، ثم إعادة فتح هذا الهاتف.",
-        "default": "حل المسألة أعلاه، ثم إعادة فتح هذا الهاتف."
+        "default": "حل المسألة أعلاه، ثم إعادة فتح هذا الهاتف.",
+        "openCodeNodeModulesSymlinkPermission": "شغّل Agent Teams AI كمسؤول، ثم أعد محاولة launch."
       }
     },
     "presentation": {
@@ -2404,14 +2448,23 @@
     }
   },
   "runningTeams": {
-    "title": "الأفرقة العاملة"
+    "title": "الأفرقة العاملة",
+    "status": {
+      "active": "نشط",
+      "provisioning": "قيد التشغيل",
+      "idle": "يعمل"
+    },
+    "noProject": "بدون مشروع"
   },
   "layout": {
     "maxPanesReached": "الحد الأقصى {{count}} لقد وصلت"
   },
   "codexReconnect": {
     "description": "جلسة كودوكس تبدو ثابتة أعيد الاتصال",
-    "useCode": "رمز الاستخدام"
+    "useCode": "رمز الاستخدام",
+    "generating": "جار الإنشاء...",
+    "openLogin": "فتح تسجيل الدخول",
+    "generateLink": "إنشاء رابط"
   },
   "effortLevel": {
     "label": "مستوى الإنفاق (اختياري)",
@@ -2428,6 +2481,7 @@
     "customRole": "دور الجمارك...",
     "searchPlaceholder": "أدوار البحث...",
     "empty": "لا توجد أدوار",
-    "reservedRole": "هذا الدور محجوز"
+    "reservedRole": "هذا الدور محجوز",
+    "emptyCustomRole": "لا يمكن أن يكون الدور فارغا"
   }
 }

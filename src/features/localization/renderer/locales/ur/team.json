@@ -28,7 +28,9 @@
       "session": "سیشن",
       "stallNudge": "غیر متصل",
       "start": "شروع کریں",
-      "workSync": "کامک"
+      "workSync": "کامک",
+      "agentError": "Agent Error",
+      "apiError": "API Error"
     },
     "bootstrap": {
       "acknowledged": "بوٹسٹرپ نے اعتراف کیا",
@@ -77,7 +79,11 @@
       "action": "انکار کرو"
     },
     "activeTasks": {
-      "inProgress": "ترقی"
+      "inProgress": "ترقی",
+      "expandInProgress": "In progress پھیلائیں",
+      "collapseInProgress": "In progress سمیٹیں",
+      "reviewing": "review کر رہا ہے",
+      "workingOn": "کام کر رہا ہے"
     },
     "expandDialog": {
       "description": "پیغام کا نقطۂ‌نظر"
@@ -349,7 +355,12 @@
     },
     "waitingForProvisioning": "ٹیم کے اعداد و شمار ایک مرتبہ مکمل ہونے والی فراہمی نظر آئیں گے۔",
     "context": {
-      "title": "پرنٹ"
+      "title": "پرنٹ",
+      "loading": "لوڈ ہو رہا ہے...",
+      "noSessionLoaded": "Session loaded نہیں",
+      "closePanel": "{{team}} context panel بند کریں",
+      "loadingContext": "Context لوڈ ہو رہا ہے...",
+      "openLeadSession": "Context دیکھنے کے لیے team lead session کھولیں."
     }
   },
   "review": {
@@ -1571,7 +1582,10 @@
       "emptyMessage": "کوئی لاگ چشمہ دریافت نہیں کیا گیا.",
       "ariaLabel": "لاگ سرسید",
       "leadLabel": "پیشوائی",
-      "selectSourceEmpty": "لاگ ماخوذ منتخب کريں"
+      "selectSourceEmpty": "لاگ ماخوذ منتخب کريں",
+      "leadDescription": "Team Lead",
+      "removedLabel": "ہٹا دیا گیا",
+      "removedDescription": "ہٹا دیا گیا"
     }
   },
   "agentGraph": {
@@ -1620,14 +1634,39 @@
       "more_one": "+{{count}} مزید",
       "more_other": "+{{count}} مزید",
       "more_few": "+{{count}} مزید",
-      "more_many": "+{{count}} مزید"
+      "more_many": "+{{count}} مزید",
+      "unsupportedProvider": "Provider supported نہیں",
+      "openCodeLogsDelayed": "OpenCode logs delayed ہیں",
+      "logsUnavailable": "Logs available نہیں",
+      "noRecentLogs": "کوئی حالیہ logs نہیں",
+      "toolError": "Tool error",
+      "toolResult": "Tool result",
+      "toolUse": "Tool use",
+      "thinking": "Thinking",
+      "error": "Error",
+      "logEvent": "Log event",
+      "noErrorOutput": "کوئی error output نہیں",
+      "noOutput": "کوئی output نہیں",
+      "noInput": "کوئی input نہیں"
     },
     "blockingEdge": {
       "title": "حد بندی",
       "blocks": "بلاک",
       "close": "بندکرو",
       "blockingHiddenTasks": "خفیہ کام بند کرنا",
-      "blockedHiddenTasks": "خفیہ کام بند کیا گیا"
+      "blockedHiddenTasks": "خفیہ کام بند کیا گیا",
+      "links_one": "{{count}} لنک",
+      "links_other": "{{count}} لنکس",
+      "hiddenBlockingLinks_one": "{{count}} پوشیدہ blocking link",
+      "hiddenBlockingLinks_other": "{{count}} پوشیدہ blocking links",
+      "hiddenTaskStack": "پوشیدہ کاموں کا stack",
+      "hiddenTasks_one": "{{count}} پوشیدہ کام",
+      "hiddenTasks_other": "{{count}} پوشیدہ کام",
+      "task": "کام",
+      "openBlockerStack": "Blocker stack کھولیں",
+      "openBlockedStack": "Blocked stack کھولیں",
+      "openBlockerTask": "Blocker task کھولیں",
+      "openBlockedTask": "Blocked task کھولیں"
     },
     "activityHud": {
       "activity": "غیر متصل",
@@ -1778,7 +1817,11 @@
       "autoRefresh": "خود کار محفوظ",
       "wrapLines": "لائنیں",
       "loadingTail": "عمل log ob...",
-      "empty": "اس ممبر کے لیے ابھی تک کوئی عمل دخل log فائل نہیں لی گئی۔"
+      "empty": "اس ممبر کے لیے ابھی تک کوئی عمل دخل log فائل نہیں لی گئی۔",
+      "copy": "Copy",
+      "fileEmpty": "Process log file خالی ہے.",
+      "showingLast": "آخری {{bytes}} دکھا رہے ہیں.",
+      "showing": "{{bytes}} دکھا رہے ہیں."
     },
     "tasks": {
       "empty": "اس ممبر کو کوئی کام نہیں سونپا گیا"
@@ -2029,7 +2072,8 @@
         "openCodeRuntimeMissing": "فراہم کُنندہ اسٹیٹ کارڈ سے وقتاً فوقتاً انسٹال کریں یا پھر اس پلگ ان انسٹال کریں۔",
         "openCodeAppMcpUnreachable": "اوپن کووڈ ایپ کو تازگی بخشنے کے لئے دوبارہ آغاز MCP بریگیڈ. اگر اسے دوبارہ بحال کیا جائے تو ایپ اور اوپنCode وقت کو دوبارہ شروع کریں۔",
         "cliBinaryMissing": "مقامی پلگ ان کو یقینی بنائیں CLI binary موجود ہے اور شروع کیا جا سکتا ہے، پھر اسے دوبارہ کھول.",
-        "default": "اوپر کے شمارے پر غور کریں، پھر اس کو دوبارہ کھول دیں۔"
+        "default": "اوپر کے شمارے پر غور کریں، پھر اس کو دوبارہ کھول دیں۔",
+        "openCodeNodeModulesSymlinkPermission": "Agent Teams AI کو Administrator کے طور پر چلائیں، پھر launch دوبارہ آزمائیں."
       }
     },
     "presentation": {
@@ -2404,14 +2448,23 @@
     }
   },
   "runningTeams": {
-    "title": "ٹیمیں"
+    "title": "ٹیمیں",
+    "status": {
+      "active": "فعال",
+      "provisioning": "شروع ہو رہی ہے",
+      "idle": "چل رہی ہے"
+    },
+    "noProject": "کوئی project نہیں"
   },
   "layout": {
     "maxPanesReached": "جواب {{count}} جلدیں پہنچ گئیں"
   },
   "codexReconnect": {
     "description": "آپ کا تقرر سیشن غیر متصل ہوتا ہے. جاری رہنے کے لئے دوبارہ کوشش کریں.",
-    "useCode": "کوڈ استعمال کریں"
+    "useCode": "کوڈ استعمال کریں",
+    "generating": "بن رہا ہے...",
+    "openLogin": "Login کھولیں",
+    "generateLink": "Link بنائیں"
   },
   "effortLevel": {
     "label": "فعال سطح (اختیاری)",
@@ -2428,6 +2481,7 @@
     "customRole": "دوبارہ کردار",
     "searchPlaceholder": "تلاش کردار...",
     "empty": "کوئی کردار نہیں ملا.",
-    "reservedRole": "یہ کردار محفوظ ہے۔"
+    "reservedRole": "یہ کردار محفوظ ہے۔",
+    "emptyCustomRole": "Role خالی نہیں ہو سکتی"
   }
 }

@@ -1117,6 +1117,10 @@ export default interface Resources {
       actions: {
         add: 'Add API Key';
         addFirst: 'Add your first key';
+        confirmDelete: 'Click again to confirm';
+        copied: 'Copied!';
+        copyEnvVarName: 'Copy env var name';
+        delete: 'Delete';
         edit: 'Edit';
       };
       description: 'Securely store API keys for auto-filling when installing MCP servers.';
@@ -2886,6 +2890,7 @@ export default interface Resources {
         copy: 'Copy diagnostics';
         hints: 'Hints';
         likelyCause: 'Likely cause:';
+        windowsSymlinkAdminHint: 'Windows: run Agent Teams AI as Administrator';
       };
       modelRoutes: {
         searchPlaceholder: 'Search model routes';
@@ -3016,7 +3021,11 @@ export default interface Resources {
         restartTeam: 'Restart team';
       };
       activeTasks: {
+        collapseInProgress: 'Collapse in progress';
+        expandInProgress: 'Expand in progress';
         inProgress: 'In progress';
+        reviewing: 'reviewing';
+        workingOn: 'working on';
       };
       authError: {
         description: 'Authentication failed. Restarting the team will refresh the session and may resolve this issue. If the problem persists, check your API credentials or try again later.';
@@ -3027,6 +3036,8 @@ export default interface Resources {
         workSyncBody: 'Asked teammate to sync current work';
       };
       badges: {
+        agentError: 'Agent Error';
+        apiError: 'API Error';
         automation: 'automation';
         bootstrap: 'bootstrap';
         command: 'command';
@@ -3123,16 +3134,41 @@ export default interface Resources {
         blockingHiddenTasks: 'Blocking hidden tasks';
         blocks: 'blocks';
         close: 'Close';
+        hiddenBlockingLinks_one: '{{count}} hidden blocking link';
+        hiddenBlockingLinks_other: '{{count}} hidden blocking links';
+        hiddenTasks_one: '{{count}} hidden task';
+        hiddenTasks_other: '{{count}} hidden tasks';
+        hiddenTaskStack: 'Hidden task stack';
+        links_one: '{{count}} link';
+        links_other: '{{count}} links';
+        openBlockedStack: 'Open blocked stack';
+        openBlockedTask: 'Open blocked task';
+        openBlockerStack: 'Open blocker stack';
+        openBlockerTask: 'Open blocker task';
+        task: 'Task';
         title: 'Blocking Dependency';
       };
       logPreview: {
+        error: 'Error';
+        logEvent: 'Log event';
         loading: 'Loading logs';
         logs: 'Logs';
+        logsUnavailable: 'Logs unavailable';
         more: '+{{count}} more';
         more_few: '+{{count}} more';
         more_many: '+{{count}} more';
         more_one: '+{{count}} more';
         more_other: '+{{count}} more';
+        noErrorOutput: 'No error output';
+        noInput: 'No input';
+        noOutput: 'No output';
+        noRecentLogs: 'No recent logs';
+        openCodeLogsDelayed: 'OpenCode logs delayed';
+        thinking: 'Thinking';
+        toolError: 'Tool error';
+        toolResult: 'Tool result';
+        toolUse: 'Tool use';
+        unsupportedProvider: 'Unsupported provider';
       };
       popover: {
         externalTeam: 'External team';
@@ -3220,8 +3256,11 @@ export default interface Resources {
       sourceSelect: {
         ariaLabel: 'Log source';
         emptyMessage: 'No log sources found.';
+        leadDescription: 'Team Lead';
         leadLabel: 'Lead';
         placeholder: 'Select log source...';
+        removedDescription: 'Removed';
+        removedLabel: 'removed';
         searchPlaceholder: 'Search log sources...';
         selectSourceEmpty: 'Select a log source.';
       };
@@ -3230,6 +3269,9 @@ export default interface Resources {
     };
     codexReconnect: {
       description: 'Your Codex session appears stale. Reconnect to continue.';
+      generateLink: 'Generate link';
+      generating: 'Generating...';
+      openLogin: 'Open login';
       useCode: 'Use code';
     };
     contextLimit: {
@@ -3330,6 +3372,11 @@ export default interface Resources {
         visualize: 'Visualize';
       };
       context: {
+        closePanel: 'Close {{team}} context panel';
+        loading: 'Loading...';
+        loadingContext: 'Loading context...';
+        noSessionLoaded: 'No session loaded';
+        openLeadSession: 'Open the team lead session to view context.';
         title: 'Context';
       };
       deleteTeam: {
@@ -4144,8 +4191,12 @@ export default interface Resources {
       };
       runtimeLogs: {
         autoRefresh: 'Auto-refresh';
+        copy: 'Copy';
         empty: 'No process log file captured for this member yet.';
+        fileEmpty: 'Process log file is empty.';
         loadingTail: 'Loading process log tail...';
+        showing: 'Showing {{bytes}}.';
+        showingLast: 'Showing last {{bytes}}.';
         wrapLines: 'Wrap lines';
       };
       runtimeTelemetry: {
@@ -4617,6 +4668,7 @@ export default interface Resources {
           openCodeAccessDenied: 'Fix folder permissions or move the project to a user-writable folder. Running as administrator is only a temporary workaround.';
           openCodeAppMcpUnreachable: 'Retry launch to refresh the OpenCode app MCP bridge. If it repeats, restart the app and OpenCode runtime.';
           openCodeBridgeNoOutput: 'Restart the app and OpenCode runtime, then retry. If it repeats, copy diagnostics.';
+          openCodeNodeModulesSymlinkPermission: 'Run Agent Teams AI as Administrator, then retry launch.';
           openCodeRuntimeMissing: 'Install or retry OpenCode runtime from the provider status card, then reopen this dialog.';
           runtimeProviderNotConfigured: 'Configure the selected provider runtime, then reopen this dialog.';
           workingDirectoryMissing: 'Choose an existing working directory, then reopen this dialog.';
@@ -4993,11 +5045,18 @@ export default interface Resources {
     roleSelect: {
       customRole: 'Custom role...';
       empty: 'No roles found.';
+      emptyCustomRole: 'Role cannot be empty';
       noRole: 'No role';
       reservedRole: 'This role is reserved';
       searchPlaceholder: 'Search roles...';
     };
     runningTeams: {
+      noProject: 'No project';
+      status: {
+        active: 'Active';
+        idle: 'Running';
+        provisioning: 'Launching';
+      };
       title: 'Running Teams';
     };
     schedule: {

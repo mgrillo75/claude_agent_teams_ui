@@ -28,7 +28,9 @@
       "session": "período de sesiones",
       "stallNudge": "¡No!",
       "start": "Empieza",
-      "workSync": "sincronización de trabajo"
+      "workSync": "sincronización de trabajo",
+      "agentError": "Error del agente",
+      "apiError": "Error de API"
     },
     "bootstrap": {
       "acknowledged": "Bootstrap acknowledged",
@@ -77,7 +79,11 @@
       "action": "Respuesta"
     },
     "activeTasks": {
-      "inProgress": "En curso"
+      "inProgress": "En curso",
+      "expandInProgress": "Expandir en progreso",
+      "collapseInProgress": "Contraer en progreso",
+      "reviewing": "revisando",
+      "workingOn": "trabajando en"
     },
     "expandDialog": {
       "description": "Ampliación de la vista del mensaje"
@@ -349,7 +355,12 @@
     },
     "waitingForProvisioning": "Los datos del equipo aparecerán una vez que se complete el suministro",
     "context": {
-      "title": "Contexto"
+      "title": "Contexto",
+      "loading": "Cargando...",
+      "noSessionLoaded": "Sesión no cargada",
+      "closePanel": "Cerrar panel de contexto de {{team}}",
+      "loadingContext": "Cargando contexto...",
+      "openLeadSession": "Abra la sesión del líder del equipo para ver el contexto."
     }
   },
   "review": {
@@ -1571,7 +1582,10 @@
       "emptyMessage": "No hay fuentes de registro encontradas.",
       "ariaLabel": "Fuente de registro",
       "leadLabel": "Lead",
-      "selectSourceEmpty": "Seleccione una fuente de registro."
+      "selectSourceEmpty": "Seleccione una fuente de registro.",
+      "leadDescription": "Líder del equipo",
+      "removedLabel": "eliminado",
+      "removedDescription": "Eliminado"
     }
   },
   "agentGraph": {
@@ -1620,14 +1634,39 @@
       "more_one": "+{{count}} más",
       "more_other": "+{{count}} más",
       "more_few": "+{{count}} más",
-      "more_many": "+{{count}} más"
+      "more_many": "+{{count}} más",
+      "unsupportedProvider": "Proveedor no compatible",
+      "openCodeLogsDelayed": "Logs de OpenCode retrasados",
+      "logsUnavailable": "Logs no disponibles",
+      "noRecentLogs": "No hay logs recientes",
+      "toolError": "Error de herramienta",
+      "toolResult": "Resultado de herramienta",
+      "toolUse": "Uso de herramienta",
+      "thinking": "Pensando",
+      "error": "Error",
+      "logEvent": "Evento de log",
+      "noErrorOutput": "Sin salida de error",
+      "noOutput": "Sin salida",
+      "noInput": "Sin entrada"
     },
     "blockingEdge": {
       "title": "Bloqueo de la dependencia",
       "blocks": "bloques",
       "close": "Cerca",
       "blockingHiddenTasks": "Bloqueo de tareas ocultas",
-      "blockedHiddenTasks": "Tareas ocultas bloqueadas"
+      "blockedHiddenTasks": "Tareas ocultas bloqueadas",
+      "links_one": "{{count}} enlace",
+      "links_other": "{{count}} enlaces",
+      "hiddenBlockingLinks_one": "{{count}} enlace bloqueante oculto",
+      "hiddenBlockingLinks_other": "{{count}} enlaces bloqueantes ocultos",
+      "hiddenTaskStack": "Pila de tareas ocultas",
+      "hiddenTasks_one": "{{count}} tarea oculta",
+      "hiddenTasks_other": "{{count}} tareas ocultas",
+      "task": "Tarea",
+      "openBlockerStack": "Abrir pila bloqueadora",
+      "openBlockedStack": "Abrir pila bloqueada",
+      "openBlockerTask": "Abrir tarea bloqueadora",
+      "openBlockedTask": "Abrir tarea bloqueada"
     },
     "activityHud": {
       "activity": "Actividad",
@@ -1778,7 +1817,11 @@
       "autoRefresh": "Auto-refresh",
       "wrapLines": "Líneas de trampa",
       "loadingTail": "Carga de proceso log tail...",
-      "empty": "Aún no se ha capturado ningún archivo de registro de procesos para este miembro."
+      "empty": "Aún no se ha capturado ningún archivo de registro de procesos para este miembro.",
+      "copy": "Copiar",
+      "fileEmpty": "El archivo de log del proceso está vacío.",
+      "showingLast": "Mostrando los últimos {{bytes}}.",
+      "showing": "Mostrando {{bytes}}."
     },
     "tasks": {
       "empty": "No se han asignado tareas a este miembro"
@@ -2029,7 +2072,8 @@
         "openCodeRuntimeMissing": "Instala o vuelve a iniciar OpenCode tiempo de ejecución de la tarjeta de estado del proveedor, y luego vuelve a abrir este diálogo.",
         "openCodeAppMcpUnreachable": "Lanzamiento de entrada para refrescar el puente de OpenCode MCP. Si se repite, reinicie la aplicación y el tiempo de ejecución OpenCode.",
         "cliBinaryMissing": "Asegúrese de que el binario local Claude CLI exista y pueda comenzar, y luego vuelva a abrir este diálogo.",
-        "default": "Resolver el tema anterior, luego reabrir este diálogo."
+        "default": "Resolver el tema anterior, luego reabrir este diálogo.",
+        "openCodeNodeModulesSymlinkPermission": "Ejecuta Agent Teams AI como administrador y vuelve a intentar el launch."
       }
     },
     "presentation": {
@@ -2404,14 +2448,23 @@
     }
   },
   "runningTeams": {
-    "title": "Equipos de ejecución"
+    "title": "Equipos de ejecución",
+    "status": {
+      "active": "Activo",
+      "provisioning": "Iniciando",
+      "idle": "En ejecución"
+    },
+    "noProject": "Sin proyecto"
   },
   "layout": {
     "maxPanesReached": "Máximo de los paneles {{count}} alcanzado"
   },
   "codexReconnect": {
     "description": "Su sesión de Codex parece ser firme. Reconéctate para continuar.",
-    "useCode": "Código de uso"
+    "useCode": "Código de uso",
+    "generating": "Generando...",
+    "openLogin": "Abrir inicio de sesión",
+    "generateLink": "Generar enlace"
   },
   "effortLevel": {
     "label": "Nivel de esfuerzo (opcional)",
@@ -2428,6 +2481,7 @@
     "customRole": "Función personalizada...",
     "searchPlaceholder": "Funciones de búsqueda...",
     "empty": "No hay papeles encontrados.",
-    "reservedRole": "Esta función está reservada"
+    "reservedRole": "Esta función está reservada",
+    "emptyCustomRole": "El rol no puede estar vacío"
   }
 }

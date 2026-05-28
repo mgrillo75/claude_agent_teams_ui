@@ -46,7 +46,8 @@
       "copiedShort": "复制",
       "copy": "复制诊断",
       "hints": "提示",
-      "likelyCause": "可能的原因是:"
+      "likelyCause": "可能的原因是:",
+      "windowsSymlinkAdminHint": "Windows: 以管理员身份运行 Agent Teams AI"
     },
     "models": {
       "alreadyDefault": "这已经是所选的 OpenCode 默认值 。",
@@ -64,7 +65,15 @@
       "searchPlaceholder": "搜索模式",
       "selectProjectBeforeTesting": "在测试模型前选择项目上下文 。",
       "selectProjectBeforeTestingDefaults": "在测试或保存 OpenCode 默认值之前选择工程上下文 。",
-      "useInTeamPicker": "用于团队拾取器"
+      "useInTeamPicker": "用于团队拾取器",
+      "testInProgress": "模型测试已在运行。",
+      "validationContextRequired": "请先在上方选择验证上下文, 才能启用 Test 和 Set default。保存到 team picker 只会为新团队记录 route。",
+      "defaultSaveInProgress": "正在保存 OpenCode default。",
+      "routeUnavailableAuth": "此 provider 需要先完成身份验证, 才能使用此模型。",
+      "routeUnavailableFailed": "此 model route 未通过上次 execution test。",
+      "routeUnavailableUnknown": "此模型是当前 OpenCode default, 但尚未出现在 live catalog 中。",
+      "actionsUnavailable": "操作暂时不可用。",
+      "routeUnavailableGeneric": "此 model route 当前无法使用。"
     },
     "providers": {
       "catalog": "OpenCode 提供者目录",
@@ -108,7 +117,8 @@
       "needsTest": "需要测试",
       "failed": "失败",
       "unknown": "不详",
-      "default": "默认"
+      "default": "默认",
+      "knownRoute": "已知 route"
     },
     "compatibleEndpoint": {
       "baseUrlPlaceholder": "http://localhost:1234 苏维埃社会主义共和国"
@@ -894,7 +904,8 @@
         "apiKeyConfiguredNotVerified": "配置了 API 密钥,但尚未验证",
         "apiKeyModeMissingCredential": "选择了 API 密钥模式,但没有配置 API 密钥",
         "connectedVia": "通过{{method}}连接",
-        "unableToVerify": "无法校验"
+        "unableToVerify": "无法校验",
+        "modelsAvailable": "模型可用"
       },
       "mode": {
         "selectedAuth": "选中的认证: {{authMode}}",

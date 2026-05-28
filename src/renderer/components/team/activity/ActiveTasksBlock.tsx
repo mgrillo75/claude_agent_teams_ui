@@ -83,7 +83,11 @@ export const ActiveTasksBlock = memo(function ActiveTasksBlock({
           type="button"
           className="flex min-w-0 items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-secondary)]"
           onClick={() => setCollapsed((v) => !v)}
-          aria-label={collapsed ? 'Expand in progress' : 'Collapse in progress'}
+          aria-label={
+            collapsed
+              ? t('activity.activeTasks.expandInProgress')
+              : t('activity.activeTasks.collapseInProgress')
+          }
         >
           <ChevronRight
             size={10}
@@ -106,7 +110,10 @@ export const ActiveTasksBlock = memo(function ActiveTasksBlock({
           );
           const dotPing = kind === 'reviewing' ? 'bg-amber-400' : 'bg-emerald-400';
           const dotSolid = kind === 'reviewing' ? 'bg-amber-500' : 'bg-emerald-500';
-          const activityLabel = kind === 'reviewing' ? 'reviewing' : 'working on';
+          const activityLabel =
+            kind === 'reviewing'
+              ? t('activity.activeTasks.reviewing')
+              : t('activity.activeTasks.workingOn');
 
           return (
             <article

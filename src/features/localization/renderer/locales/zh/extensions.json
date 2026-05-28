@@ -589,7 +589,11 @@
     "actions": {
       "add": "添加 API 密钥",
       "addFirst": "添加您的第一个密钥",
-      "edit": "编辑"
+      "edit": "编辑",
+      "copied": "已复制！",
+      "copyEnvVarName": "复制环境变量名",
+      "confirmDelete": "再次点击确认",
+      "delete": "删除"
     },
     "empty": {
       "title": "没有保存 ZXCVKEN0ZXCV 密钥",
