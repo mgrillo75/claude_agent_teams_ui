@@ -606,6 +606,13 @@ function createMemberSpawnStatusEntry(
 }
 
 type TeamProvisioningServicePrivateHarness = {
+  resolveProjectClaudeSettingsPath: (projectCwd: string) => Promise<string>;
+  resolveSafeTeamStoragePath: (
+    basePath: string,
+    teamName: string,
+    ...segments: string[]
+  ) => string;
+  mergeAndRemoveDuplicateInboxes: (teamName: string, baseNames: Set<string>) => Promise<void>;
   getLiveTeamAgentRuntimeMetadata: (
     teamName: string
   ) => Promise<Map<string, Record<string, unknown>>>;
@@ -17944,6 +17951,112 @@ describe('TeamProvisioningService', () => {
       permissions?: { allow?: string[] };
     };
     expect(settings.permissions?.allow).toEqual(['mcp__agent-teams__team_stop']);
+  });
+
+  it('resolves project Claude local settings only inside an absolute project cwd', async () => {
+    const svc = new TeamProvisioningService();
+    const settingsPath = await privateHarness(svc).resolveProjectClaudeSettingsPath(tempClaudeRoot);
+
+    expect(settingsPath).toBe(
+      path.join(fs.realpathSync(tempClaudeRoot), '.claude', 'settings.local.json')
+    );
+    fs.writeFileSync(settingsPath, '{}', 'utf8');
+    expect(fs.existsSync(path.join(tempClaudeRoot, '.claude', 'settings.local.json'))).toBe(true);
+  });
+
+  it('rejects unsafe project cwd values for local settings writes', async () => {
+    const svc = new TeamProvisioningService();
+    const harness = privateHarness(svc);
+    const filePath = path.join(tempClaudeRoot, 'not-a-directory');
+    fs.writeFileSync(filePath, 'x', 'utf8');
+
+    await expect(harness.resolveProjectClaudeSettingsPath('relative/project')).rejects.toThrow(
+      'absolute path'
+    );
+    await expect(
+      harness.resolveProjectClaudeSettingsPath(path.join(tempClaudeRoot, 'missing'))
+    ).rejects.toThrow('does not exist');
+    await expect(harness.resolveProjectClaudeSettingsPath(filePath)).rejects.toThrow(
+      'not a directory'
+    );
+  });
+
+  it('rejects .claude symlink escapes for local settings writes', async () => {
+    const svc = new TeamProvisioningService();
+    const harness = privateHarness(svc);
+    const projectDir = path.join(tempClaudeRoot, 'project-with-symlink');
+    const outsideDir = path.join(tempClaudeRoot, 'outside-claude');
+    fs.mkdirSync(projectDir, { recursive: true });
+    fs.mkdirSync(outsideDir, { recursive: true });
+    fs.symlinkSync(
+      outsideDir,
+      path.join(projectDir, '.claude'),
+      process.platform === 'win32' ? 'junction' : 'dir'
+    );
+
+    await expect(harness.resolveProjectClaudeSettingsPath(projectDir)).rejects.toThrow(
+      'outside project cwd'
+    );
+  });
+
+  it('resolves team storage paths only for validated team names', () => {
+    const svc = new TeamProvisioningService();
+    const harness = privateHarness(svc);
+
+    expect(harness.resolveSafeTeamStoragePath(tempTeamsBase, 'safe-team', 'config.json')).toBe(
+      path.join(tempTeamsBase, 'safe-team', 'config.json')
+    );
+    expect(() => harness.resolveSafeTeamStoragePath(tempTeamsBase, '../bad')).toThrow(
+      /teamName contains invalid characters/i
+    );
+    expect(() => harness.resolveSafeTeamStoragePath(tempTeamsBase, 'bad/name')).toThrow(
+      /teamName contains invalid characters/i
+    );
+    expect(() => harness.resolveSafeTeamStoragePath(tempTeamsBase, 'bad\\name')).toThrow(
+      /teamName contains invalid characters/i
+    );
+  });
+
+  it('cleans only expected auto-suffixed inbox duplicates', async () => {
+    const svc = new TeamProvisioningService();
+    const harness = privateHarness(svc);
+    const teamName = 'safe-inbox-cleanup';
+    const inboxDir = path.join(tempTeamsBase, teamName, 'inboxes');
+    fs.mkdirSync(inboxDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(inboxDir, 'alice.json'),
+      JSON.stringify([{ messageId: 'm1', timestamp: '2026-01-01T00:00:00.000Z' }]),
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(inboxDir, 'alice-2.json'),
+      JSON.stringify([{ messageId: 'm2', timestamp: '2026-01-02T00:00:00.000Z' }]),
+      'utf8'
+    );
+    fs.writeFileSync(path.join(inboxDir, 'alice-x.json'), '[]', 'utf8');
+    fs.writeFileSync(path.join(inboxDir, 'bob-2.json'), '[]', 'utf8');
+
+    await harness.mergeAndRemoveDuplicateInboxes(teamName, new Set(['alice', '../escape']));
+
+    const merged = JSON.parse(fs.readFileSync(path.join(inboxDir, 'alice.json'), 'utf8')) as {
+      messageId?: string;
+    }[];
+    expect(merged.map((message) => message.messageId)).toEqual(['m2', 'm1']);
+    expect(fs.existsSync(path.join(inboxDir, 'alice-2.json'))).toBe(false);
+    expect(fs.existsSync(path.join(inboxDir, 'alice-x.json'))).toBe(true);
+    expect(fs.existsSync(path.join(inboxDir, 'bob-2.json'))).toBe(true);
+  });
+
+  it('rejects unsafe team names before inbox cleanup paths are built', async () => {
+    const svc = new TeamProvisioningService();
+    const harness = privateHarness(svc);
+
+    await expect(
+      harness.mergeAndRemoveDuplicateInboxes('../bad', new Set(['alice']))
+    ).rejects.toThrow(/teamName contains invalid characters/i);
+    await expect(
+      harness.mergeAndRemoveDuplicateInboxes('bad\\name', new Set(['alice']))
+    ).rejects.toThrow(/teamName contains invalid characters/i);
   });
 
   it('builds teammate AskUserQuestion permission responses with answers', () => {

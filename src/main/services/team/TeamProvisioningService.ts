@@ -52,6 +52,7 @@ import {
   type WorkspaceTrustProvider,
   type WorkspaceTrustWorkspace,
 } from '@features/workspace-trust/main';
+import { validateTeamName } from '@main/ipc/guards';
 import { ConfigManager } from '@main/services/infrastructure/ConfigManager';
 import { NotificationManager } from '@main/services/infrastructure/NotificationManager';
 import { prepareAgentChildProcessWritableEnv } from '@main/services/runtime/agentChildProcessPreflight';
@@ -636,8 +637,31 @@ const TEAMMATE_BOOTSTRAP_PROOF_TOKEN_ENV = 'CLAUDE_CODE_BOOTSTRAP_PROOF_TOKEN';
 const NATIVE_APP_MANAGED_BOOTSTRAP_CONTEXT_ENV =
   'CLAUDE_CODE_NATIVE_APP_MANAGED_BOOTSTRAP_CONTEXT_PATH';
 
+function resolveValidatedTeamStoragePath(
+  basePath: string,
+  teamName: string,
+  ...segments: string[]
+): string {
+  const validated = validateTeamName(teamName);
+  if (!validated.valid || !validated.value) {
+    throw new Error(validated.error ?? 'Invalid teamName for team storage path');
+  }
+
+  const root = path.resolve(basePath);
+  const teamDir = path.resolve(root, validated.value);
+  if (!isPathWithinRoot(teamDir, root)) {
+    throw new Error(`Invalid team storage path for "${validated.value}"`);
+  }
+
+  const target = path.resolve(teamDir, ...segments);
+  if (!isPathWithinRoot(target, teamDir)) {
+    throw new Error(`Invalid team storage child path for "${validated.value}"`);
+  }
+  return target;
+}
+
 function getTeamRuntimeEventsDir(teamName: string): string {
-  return path.join(getTeamsBasePath(), teamName, 'runtime');
+  return resolveValidatedTeamStoragePath(getTeamsBasePath(), teamName, 'runtime');
 }
 
 function isProcessBootstrapTransportDiagnostic(value: unknown): value is string {
@@ -4993,7 +5017,7 @@ export class TeamProvisioningService {
   }
 
   private readPersistedTeamProcessRows(teamName: string): unknown[] | null {
-    const processesPath = path.join(getTeamsBasePath(), teamName, 'processes.json');
+    const processesPath = this.resolveSafeTeamStoragePath(getTeamsBasePath(), teamName, 'processes.json');
     let parsed: unknown;
     try {
       parsed = JSON.parse(fs.readFileSync(processesPath, 'utf8')) as unknown;
@@ -14702,7 +14726,7 @@ export class TeamProvisioningService {
     bootstrapContextHash?: string;
     bootstrapBriefingHash?: string;
   }): Promise<void> {
-    const configPath = path.join(getTeamsBasePath(), input.teamName, 'config.json');
+    const configPath = this.resolveSafeTeamStoragePath(getTeamsBasePath(), input.teamName, 'config.json');
     const raw = await tryReadRegularFileUtf8(configPath, {
       timeoutMs: TEAM_JSON_READ_TIMEOUT_MS,
       maxBytes: TEAM_CONFIG_MAX_BYTES,
@@ -19890,7 +19914,7 @@ export class TeamProvisioningService {
     try {
       const teamsBasePathsToProbe = getTeamsBasePathsToProbe();
       for (const probe of teamsBasePathsToProbe) {
-        const configPath = path.join(probe.basePath, request.teamName, 'config.json');
+        const configPath = this.resolveSafeTeamStoragePath(probe.basePath, request.teamName, 'config.json');
         if (await this.pathExists(configPath)) {
           const suffix = probe.location === 'configured' ? '' : ` (found under ${probe.basePath})`;
           throw new Error(`Team already exists${suffix}`);
@@ -20199,8 +20223,8 @@ export class TeamProvisioningService {
         // member_briefing intentionally reads canonical team metadata/inboxes, so
         // createTeam must materialize those files before building the bootstrap spec.
         emitProvisioningCheckpoint(run, 'Persisting team metadata before spawn');
-        const teamDir = path.join(getTeamsBasePath(), request.teamName);
-        const tasksDir = path.join(getTasksBasePath(), request.teamName);
+        const teamDir = this.resolveSafeTeamStoragePath(getTeamsBasePath(), request.teamName);
+        const tasksDir = this.resolveSafeTeamStoragePath(getTasksBasePath(), request.teamName);
         await fs.promises.mkdir(teamDir, { recursive: true });
         await fs.promises.mkdir(tasksDir, { recursive: true });
         await this.teamMetaStore.writeMeta(request.teamName, {
@@ -20297,8 +20321,8 @@ export class TeamProvisioningService {
           }).catch(() => undefined);
         }
         await this.teamMetaStore.deleteMeta(request.teamName).catch(() => {});
-        const teamDir = path.join(getTeamsBasePath(), request.teamName);
-        const tasksDir = path.join(getTasksBasePath(), request.teamName);
+        const teamDir = this.resolveSafeTeamStoragePath(getTeamsBasePath(), request.teamName);
+        const tasksDir = this.resolveSafeTeamStoragePath(getTasksBasePath(), request.teamName);
         await fs.promises.rm(teamDir, { recursive: true, force: true }).catch(() => {});
         await fs.promises.rm(tasksDir, { recursive: true, force: true }).catch(() => {});
         await removeDeterministicBootstrapSpecFile(run.bootstrapSpecPath).catch(() => {});
@@ -20402,8 +20426,8 @@ export class TeamProvisioningService {
       } catch (error) {
         // Clean up pre-saved meta files if spawn failed (instant failure, not transient)
         await this.teamMetaStore.deleteMeta(request.teamName).catch(() => {});
-        const teamDir = path.join(getTeamsBasePath(), request.teamName);
-        const tasksDir = path.join(getTasksBasePath(), request.teamName);
+        const teamDir = this.resolveSafeTeamStoragePath(getTeamsBasePath(), request.teamName);
+        const tasksDir = this.resolveSafeTeamStoragePath(getTasksBasePath(), request.teamName);
         await fs.promises.rm(teamDir, { recursive: true, force: true }).catch(() => {});
         await fs.promises.rm(tasksDir, { recursive: true, force: true }).catch(() => {});
         await removeDeterministicBootstrapSpecFile(run.bootstrapSpecPath).catch(() => {});
@@ -20510,7 +20534,7 @@ export class TeamProvisioningService {
   ): Promise<TeamCreateResponse> {
     const teamsBasePathsToProbe = getTeamsBasePathsToProbe();
     for (const probe of teamsBasePathsToProbe) {
-      const configPath = path.join(probe.basePath, request.teamName, 'config.json');
+      const configPath = this.resolveSafeTeamStoragePath(probe.basePath, request.teamName, 'config.json');
       if (await this.pathExists(configPath)) {
         const suffix = probe.location === 'configured' ? '' : ` (found under ${probe.basePath})`;
         throw new Error(`Team already exists${suffix}`);
@@ -20529,8 +20553,8 @@ export class TeamProvisioningService {
       leadProviderId: launchRequest.providerId,
       members: materialized.members,
     });
-    const teamDir = path.join(getTeamsBasePath(), launchRequest.teamName);
-    const tasksDir = path.join(getTasksBasePath(), launchRequest.teamName);
+    const teamDir = this.resolveSafeTeamStoragePath(getTeamsBasePath(), launchRequest.teamName);
+    const tasksDir = this.resolveSafeTeamStoragePath(getTasksBasePath(), launchRequest.teamName);
     await fs.promises.mkdir(teamDir, { recursive: true });
     await fs.promises.mkdir(tasksDir, { recursive: true });
     await this.teamMetaStore.writeMeta(launchRequest.teamName, {
@@ -20568,7 +20592,7 @@ export class TeamProvisioningService {
     request: TeamLaunchRequest,
     onProgress: (progress: TeamProvisioningProgress) => void
   ): Promise<TeamLaunchResponse> {
-    const configPath = path.join(getTeamsBasePath(), request.teamName, 'config.json');
+    const configPath = this.resolveSafeTeamStoragePath(getTeamsBasePath(), request.teamName, 'config.json');
     const configRaw = await tryReadRegularFileUtf8(configPath, {
       timeoutMs: TEAM_JSON_READ_TIMEOUT_MS,
       maxBytes: TEAM_CONFIG_MAX_BYTES,
@@ -20842,7 +20866,7 @@ export class TeamProvisioningService {
     request: TeamCreateRequest,
     members: TeamCreateRequest['members']
   ): Promise<void> {
-    const configPath = path.join(getTeamsBasePath(), request.teamName, 'config.json');
+    const configPath = this.resolveSafeTeamStoragePath(getTeamsBasePath(), request.teamName, 'config.json');
     const config: TeamConfig = {
       name: request.displayName?.trim() || request.teamName,
       description: request.description,
@@ -21078,7 +21102,7 @@ export class TeamProvisioningService {
 
     try {
       // Verify config.json exists — team must already be provisioned
-      const configPath = path.join(getTeamsBasePath(), request.teamName, 'config.json');
+      const configPath = this.resolveSafeTeamStoragePath(getTeamsBasePath(), request.teamName, 'config.json');
       const configRaw = await tryReadRegularFileUtf8(configPath, {
         timeoutMs: TEAM_JSON_READ_TIMEOUT_MS,
         maxBytes: TEAM_CONFIG_MAX_BYTES,
@@ -23927,7 +23951,12 @@ export class TeamProvisioningService {
     member: string,
     messages: { messageId: string }[]
   ): Promise<void> {
-    const inboxPath = path.join(getTeamsBasePath(), teamName, 'inboxes', `${member}.json`);
+    const inboxDir = this.resolveSafeTeamStoragePath(getTeamsBasePath(), teamName, 'inboxes');
+    const safeMemberName = this.normalizeSafeInboxBaseName(member);
+    if (!safeMemberName) {
+      return;
+    }
+    const inboxPath = this.resolveSafeInboxFilePath(inboxDir, `${safeMemberName}.json`);
 
     await withFileLock(inboxPath, async () => {
       await withInboxLock(inboxPath, async () => {
@@ -24060,7 +24089,7 @@ export class TeamProvisioningService {
    * one-shot subagent instead of a persistent teammate.
    */
   private async getRegisteredTeamMemberNames(teamName: string): Promise<Set<string> | null> {
-    const configPath = path.join(getTeamsBasePath(), teamName, 'config.json');
+    const configPath = this.resolveSafeTeamStoragePath(getTeamsBasePath(), teamName, 'config.json');
     try {
       const raw = await tryReadRegularFileUtf8(configPath, {
         timeoutMs: TEAM_JSON_READ_TIMEOUT_MS,
@@ -24089,7 +24118,7 @@ export class TeamProvisioningService {
     const registeredNames = await this.getRegisteredTeamMemberNames(run.teamName);
     if (!registeredNames) {
       try {
-        await fs.promises.access(path.join(getTeamsBasePath(), run.teamName));
+        await fs.promises.access(this.resolveSafeTeamStoragePath(getTeamsBasePath(), run.teamName));
       } catch {
         return;
       }
@@ -28946,7 +28975,12 @@ export class TeamProvisioningService {
     teamName: string,
     leadName: string
   ): Promise<LeadInboxLaunchReconcileMessage[]> {
-    const inboxPath = path.join(getTeamsBasePath(), teamName, 'inboxes', `${leadName}.json`);
+    const inboxDir = this.resolveSafeTeamStoragePath(getTeamsBasePath(), teamName, 'inboxes');
+    const safeLeadName = this.normalizeSafeInboxBaseName(leadName);
+    if (!safeLeadName) {
+      return [];
+    }
+    const inboxPath = this.resolveSafeInboxFilePath(inboxDir, `${safeLeadName}.json`);
     try {
       const raw = await tryReadRegularFileUtf8(inboxPath, {
         timeoutMs: TEAM_JSON_READ_TIMEOUT_MS,
@@ -29772,7 +29806,7 @@ export class TeamProvisioningService {
       return { snapshot: null, statuses: {} };
     }
 
-    const configPath = path.join(getTeamsBasePath(), teamName, 'config.json');
+    const configPath = this.resolveSafeTeamStoragePath(getTeamsBasePath(), teamName, 'config.json');
     let configMembers = new Set<string>();
     let configBootstrapRunIds = new Map<string, string>();
     let leadName = 'team-lead';
@@ -31714,7 +31748,7 @@ export class TeamProvisioningService {
   }
 
   private readPersistedTeamProjectPath(teamName: string): string | null {
-    const configPath = path.join(getTeamsBasePath(), teamName, 'config.json');
+    const configPath = this.resolveSafeTeamStoragePath(getTeamsBasePath(), teamName, 'config.json');
     try {
       const raw = fs.readFileSync(configPath, 'utf8');
       const parsed = JSON.parse(raw) as { projectPath?: unknown };
@@ -31726,7 +31760,7 @@ export class TeamProvisioningService {
   }
 
   private readPersistedRuntimeMembers(teamName: string): PersistedRuntimeMemberLike[] {
-    const configPath = path.join(getTeamsBasePath(), teamName, 'config.json');
+    const configPath = this.resolveSafeTeamStoragePath(getTeamsBasePath(), teamName, 'config.json');
     try {
       const raw = fs.readFileSync(configPath, 'utf8');
       const parsed = JSON.parse(raw) as { members?: unknown };
@@ -33778,8 +33812,8 @@ export class TeamProvisioningService {
               toolNames = ['Edit', 'Write', 'NotebookEdit', 'Bash', 'Read', 'Grep', 'Glob'];
             }
             if (toolNames.length > 0) {
-              const settingsPath = path.join(projectCwd, '.claude', 'settings.local.json');
               try {
+                const settingsPath = await this.resolveProjectClaudeSettingsPath(projectCwd);
                 await this.addPermissionRulesToSettings(settingsPath, toolNames, 'allow');
                 logger.info(
                   `[${run.teamName}] Applied setMode "${mode}" for ${agentId}: ${toolNames.join(', ')} in ${settingsPath}`
@@ -33818,13 +33852,9 @@ export class TeamProvisioningService {
           }
 
           const behavior = suggestion.behavior ?? 'allow';
-          // FACT: observed destinations are "localSettings" (project-level .claude/settings.local.json)
-          const settingsPath =
-            suggestion.destination === 'localSettings'
-              ? path.join(projectCwd, '.claude', 'settings.local.json')
-              : path.join(projectCwd, '.claude', 'settings.local.json'); // default to local
-
           try {
+            // FACT: observed destinations are "localSettings"; default to project local settings.
+            const settingsPath = await this.resolveProjectClaudeSettingsPath(projectCwd);
             await this.addPermissionRulesToSettings(settingsPath, toolNames, behavior);
             logger.info(
               `[${run.teamName}] Added permission rules for ${agentId}: ${toolNames.join(', ')} -> ${behavior} in ${settingsPath}`
@@ -33957,6 +33987,94 @@ export class TeamProvisioningService {
     return typeof firstQuestion?.question === 'string' ? { [firstQuestion.question]: message } : {};
   }
 
+  private resolveSafeTeamStoragePath(
+    basePath: string,
+    teamName: string,
+    ...segments: string[]
+  ): string {
+    return resolveValidatedTeamStoragePath(basePath, teamName, ...segments);
+  }
+
+  private async resolveProjectClaudeSettingsPath(projectCwd: string): Promise<string> {
+    if (!path.isAbsolute(projectCwd)) {
+      throw new Error('Project cwd must be an absolute path');
+    }
+
+    const projectRoot = path.resolve(projectCwd);
+    let projectStat: fs.Stats;
+    try {
+      projectStat = await fs.promises.stat(projectRoot);
+    } catch {
+      throw new Error(`Project cwd does not exist: ${projectCwd}`);
+    }
+    if (!projectStat.isDirectory()) {
+      throw new Error(`Project cwd is not a directory: ${projectCwd}`);
+    }
+
+    const realProjectRoot = await fs.promises.realpath(projectRoot);
+    const claudeDir = path.join(realProjectRoot, '.claude');
+    let claudeDirStat: fs.Stats | null = null;
+    try {
+      claudeDirStat = await fs.promises.lstat(claudeDir);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        throw error;
+      }
+    }
+
+    if (claudeDirStat && !claudeDirStat.isDirectory() && !claudeDirStat.isSymbolicLink()) {
+      throw new Error('Project .claude path is not a directory');
+    }
+    if (!claudeDirStat) {
+      await fs.promises.mkdir(claudeDir, { recursive: true });
+    }
+
+    const realClaudeDir = await fs.promises.realpath(claudeDir);
+    if (!isPathWithinRoot(realClaudeDir, realProjectRoot)) {
+      throw new Error('Project .claude directory resolves outside project cwd');
+    }
+    const realClaudeStat = await fs.promises.stat(realClaudeDir);
+    if (!realClaudeStat.isDirectory()) {
+      throw new Error('Project .claude path is not a directory');
+    }
+
+    return path.join(claudeDir, 'settings.local.json');
+  }
+
+  private normalizeSafeInboxBaseName(baseName: string): string | null {
+    const trimmed = baseName.trim();
+    return /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(trimmed) ? trimmed : null;
+  }
+
+  private isSafeInboxJsonFileName(fileName: string): boolean {
+    return (
+      path.basename(fileName) === fileName &&
+      /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}\.json$/.test(fileName)
+    );
+  }
+
+  private resolveSafeInboxFilePath(inboxDir: string, fileName: string): string {
+    if (!this.isSafeInboxJsonFileName(fileName)) {
+      throw new Error(`Invalid inbox file name: ${fileName}`);
+    }
+    const resolved = path.resolve(inboxDir, fileName);
+    if (!isPathWithinRoot(resolved, inboxDir)) {
+      throw new Error(`Invalid inbox file path: ${fileName}`);
+    }
+    return resolved;
+  }
+
+  private isSafeAutoSuffixedInboxDuplicate(fileName: string, baseName: string): boolean {
+    if (!this.isSafeInboxJsonFileName(fileName)) {
+      return false;
+    }
+    const prefix = `${baseName}-`;
+    if (!fileName.startsWith(prefix) || !fileName.endsWith('.json')) {
+      return false;
+    }
+    const suffix = fileName.slice(prefix.length, -'.json'.length);
+    return /^\d+$/.test(suffix);
+  }
   /**
    * Safely add tool names to the permissions.allow (or deny) array in a Claude settings file.
    * Creates the file and parent directories if they don't exist.
@@ -34015,8 +34133,8 @@ export class TeamProvisioningService {
     teamName: string,
     projectCwd: string
   ): Promise<void> {
-    const settingsPath = path.join(projectCwd, '.claude', 'settings.local.json');
     try {
+      const settingsPath = await this.resolveProjectClaudeSettingsPath(projectCwd);
       const allTools = [
         ...AGENT_TEAMS_NAMESPACED_LEAD_BOOTSTRAP_TOOL_NAMES,
         'Edit',
@@ -34109,7 +34227,7 @@ export class TeamProvisioningService {
       // Best-effort: detect CLI-suffixed member names (alice-2, bob-2) that indicate
       // a stale config.json was present during launch (double-launch race).
       try {
-        const postLaunchConfigPath = path.join(getTeamsBasePath(), run.teamName, 'config.json');
+        const postLaunchConfigPath = this.resolveSafeTeamStoragePath(getTeamsBasePath(), run.teamName, 'config.json');
         const raw = await tryReadRegularFileUtf8(postLaunchConfigPath, {
           timeoutMs: TEAM_JSON_READ_TIMEOUT_MS,
           maxBytes: TEAM_CONFIG_MAX_BYTES,
@@ -35169,9 +35287,12 @@ export class TeamProvisioningService {
    * Emits progress updates as team files appear (config, inboxes, tasks).
    */
   private startFilesystemMonitor(run: ProvisioningRun, request: TeamCreateRequest): void {
-    const configuredTeamDir = path.join(getTeamsBasePath(), run.teamName);
-    const defaultTeamDir = path.join(getAutoDetectedClaudeBasePath(), 'teams', run.teamName);
-    const tasksDir = path.join(getTasksBasePath(), run.teamName);
+    const configuredTeamDir = this.resolveSafeTeamStoragePath(getTeamsBasePath(), run.teamName);
+    const defaultTeamDir = this.resolveSafeTeamStoragePath(
+      path.join(getAutoDetectedClaudeBasePath(), 'teams'),
+      run.teamName
+    );
+    const tasksDir = this.resolveSafeTeamStoragePath(getTasksBasePath(), run.teamName);
     const primaryProvisioningMembers = Array.isArray(run.effectiveMembers)
       ? run.effectiveMembers
       : request.members;
@@ -35442,9 +35563,9 @@ export class TeamProvisioningService {
     }
 
     if (code === 0) {
-      const configuredConfigPath = path.join(getTeamsBasePath(), run.teamName, 'config.json');
+      const configuredConfigPath = this.resolveSafeTeamStoragePath(getTeamsBasePath(), run.teamName, 'config.json');
       const defaultTeamsBasePath = path.join(getAutoDetectedClaudeBasePath(), 'teams');
-      const defaultConfigPath = path.join(defaultTeamsBasePath, run.teamName, 'config.json');
+      const defaultConfigPath = this.resolveSafeTeamStoragePath(defaultTeamsBasePath, run.teamName, 'config.json');
       const combinedLogs = buildCombinedLogs(run.stdoutBuffer, run.stderrBuffer);
       const cleanupHint = logsSuggestShutdownOrCleanup(combinedLogs)
         ? ' CLI output suggests the team was shut down / cleaned up, so no persisted config was left on disk.'
@@ -35492,7 +35613,7 @@ export class TeamProvisioningService {
   ): Promise<ValidConfigProbeResult> {
     const probes = run.teamsBasePathsToProbe.map((probe) => ({
       ...probe,
-      configPath: path.join(probe.basePath, run.teamName, 'config.json'),
+      configPath: this.resolveSafeTeamStoragePath(probe.basePath, run.teamName, 'config.json'),
     }));
     const deadline = Date.now() + timeoutMs;
 
@@ -35549,7 +35670,7 @@ export class TeamProvisioningService {
     if (run.expectedMembers.length === 0) {
       return [];
     }
-    const inboxDir = path.join(getTeamsBasePath(), run.teamName, 'inboxes');
+    const inboxDir = this.resolveSafeTeamStoragePath(getTeamsBasePath(), run.teamName, 'inboxes');
     const deadline = Date.now() + VERIFY_TIMEOUT_MS;
     let missing = new Set(run.expectedMembers);
 
@@ -35559,7 +35680,12 @@ export class TeamProvisioningService {
       }
       const nextMissing = new Set<string>();
       for (const member of missing) {
-        const inboxPath = path.join(inboxDir, `${member}.json`);
+        const safeMemberName = this.normalizeSafeInboxBaseName(member);
+        if (!safeMemberName) {
+          nextMissing.add(member);
+          continue;
+        }
+        const inboxPath = this.resolveSafeInboxFilePath(inboxDir, `${safeMemberName}.json`);
         if (!(await this.pathExists(inboxPath))) {
           nextMissing.add(member);
         }
@@ -35960,7 +36086,7 @@ export class TeamProvisioningService {
    * is interrupted. On failure, restorePrelaunchConfig() reverts to the backup.
    */
   private async updateConfigProjectPath(teamName: string, cwd: string): Promise<void> {
-    const configPath = path.join(getTeamsBasePath(), teamName, 'config.json');
+    const configPath = this.resolveSafeTeamStoragePath(getTeamsBasePath(), teamName, 'config.json');
     try {
       const raw = await tryReadRegularFileUtf8(configPath, {
         timeoutMs: TEAM_JSON_READ_TIMEOUT_MS,
@@ -36142,7 +36268,7 @@ export class TeamProvisioningService {
   ): Promise<void> {
     const MAX_SESSION_HISTORY = 5000;
     const MAX_PROJECT_PATH_HISTORY = 500;
-    const configPath = path.join(getTeamsBasePath(), teamName, 'config.json');
+    const configPath = this.resolveSafeTeamStoragePath(getTeamsBasePath(), teamName, 'config.json');
     try {
       const raw = await tryReadRegularFileUtf8(configPath, {
         timeoutMs: TEAM_JSON_READ_TIMEOUT_MS,
@@ -36229,7 +36355,7 @@ export class TeamProvisioningService {
   }
 
   private async cleanupCliAutoSuffixedMembers(teamName: string): Promise<void> {
-    const configPath = path.join(getTeamsBasePath(), teamName, 'config.json');
+    const configPath = this.resolveSafeTeamStoragePath(getTeamsBasePath(), teamName, 'config.json');
 
     const removedFromConfig: string[] = [];
     try {
@@ -36370,7 +36496,7 @@ export class TeamProvisioningService {
   }
 
   private async assertConfigLeadOnlyForLaunch(teamName: string): Promise<void> {
-    const configPath = path.join(getTeamsBasePath(), teamName, 'config.json');
+    const configPath = this.resolveSafeTeamStoragePath(getTeamsBasePath(), teamName, 'config.json');
     const raw = await tryReadRegularFileUtf8(configPath, {
       timeoutMs: TEAM_JSON_READ_TIMEOUT_MS,
       maxBytes: TEAM_CONFIG_MAX_BYTES,
@@ -36418,7 +36544,7 @@ export class TeamProvisioningService {
   }
 
   private async normalizeTeamConfigForLaunch(teamName: string, configRaw: string): Promise<void> {
-    const configPath = path.join(getTeamsBasePath(), teamName, 'config.json');
+    const configPath = this.resolveSafeTeamStoragePath(getTeamsBasePath(), teamName, 'config.json');
     const backupPath = `${configPath}.prelaunch.bak`;
 
     let parsed: unknown;
@@ -36546,7 +36672,7 @@ export class TeamProvisioningService {
    * Restore config.json from prelaunch backup if launch fails after normalization.
    */
   private async restorePrelaunchConfig(teamName: string): Promise<void> {
-    const configPath = path.join(getTeamsBasePath(), teamName, 'config.json');
+    const configPath = this.resolveSafeTeamStoragePath(getTeamsBasePath(), teamName, 'config.json');
     const backupPath = `${configPath}.prelaunch.bak`;
     try {
       const backupRaw = await tryReadRegularFileUtf8(backupPath, {
@@ -36568,7 +36694,7 @@ export class TeamProvisioningService {
    * Remove the prelaunch backup file after a successful launch.
    */
   async cleanupPrelaunchBackup(teamName: string): Promise<void> {
-    const configPath = path.join(getTeamsBasePath(), teamName, 'config.json');
+    const configPath = this.resolveSafeTeamStoragePath(getTeamsBasePath(), teamName, 'config.json');
     const backupPath = `${configPath}.prelaunch.bak`;
     try {
       await fs.promises.unlink(backupPath);
@@ -36583,7 +36709,7 @@ export class TeamProvisioningService {
   ): Promise<void> {
     if (baseNames.size === 0) return;
 
-    const inboxDir = path.join(getTeamsBasePath(), teamName, 'inboxes');
+    const inboxDir = this.resolveSafeTeamStoragePath(getTeamsBasePath(), teamName, 'inboxes');
     let entries: string[];
     try {
       entries = await fs.promises.readdir(inboxDir);
@@ -36591,23 +36717,29 @@ export class TeamProvisioningService {
       return;
     }
 
-    const existing = new Set(entries.filter((e) => e.endsWith('.json') && !e.startsWith('.')));
+    const existing = new Set(
+      entries.filter((entry) => this.isSafeInboxJsonFileName(entry) && !entry.startsWith('.'))
+    );
 
-    for (const baseName of baseNames) {
+    for (const rawBaseName of baseNames) {
+      const baseName = this.normalizeSafeInboxBaseName(rawBaseName);
+      if (!baseName) {
+        continue;
+      }
       const canonicalFile = `${baseName}.json`;
       if (!existing.has(canonicalFile)) {
         continue;
       }
 
-      const duplicates = Array.from(existing)
-        .filter((file) => file.startsWith(`${baseName}-`) && file.endsWith('.json'))
-        .filter((file) => /-\d+\.json$/.test(file));
+      const duplicates = Array.from(existing).filter((file) =>
+        this.isSafeAutoSuffixedInboxDuplicate(file, baseName)
+      );
 
       if (duplicates.length === 0) {
         continue;
       }
 
-      const canonicalPath = path.join(inboxDir, canonicalFile);
+      const canonicalPath = this.resolveSafeInboxFilePath(inboxDir, canonicalFile);
       let canonicalRaw: string;
       try {
         const raw = await tryReadRegularFileUtf8(canonicalPath, {
@@ -36633,7 +36765,7 @@ export class TeamProvisioningService {
 
       const merged = [...canonicalList];
       for (const dupFile of duplicates) {
-        const dupPath = path.join(inboxDir, dupFile);
+        const dupPath = this.resolveSafeInboxFilePath(inboxDir, dupFile);
         let dupRaw: string;
         try {
           const raw = await tryReadRegularFileUtf8(dupPath, {
@@ -36700,7 +36832,7 @@ export class TeamProvisioningService {
 
       for (const dupFile of duplicates) {
         try {
-          await fs.promises.unlink(path.join(inboxDir, dupFile));
+          await fs.promises.unlink(this.resolveSafeInboxFilePath(inboxDir, dupFile));
           existing.delete(dupFile);
         } catch {
           // Best-effort cleanup.
@@ -37696,7 +37828,7 @@ export class TeamProvisioningService {
     );
     const teamName = 'mcp-validation-team';
     const memberName = 'mcp-validation-member';
-    const teamDir = path.join(claudeDir, 'teams', teamName);
+    const teamDir = resolveValidatedTeamStoragePath(path.join(claudeDir, 'teams'), teamName);
 
     await fs.promises.mkdir(teamDir, { recursive: true });
     await fs.promises.writeFile(
