@@ -363,7 +363,7 @@ export const MessagesPanel = memo(function MessagesPanel({
       // path for short lists and only switches to the windowed path once
       // the row count crosses its internal threshold.
       virtualizationEnabled: true,
-      virtualizationRowThreshold: position === 'sidebar' ? 24 : undefined,
+      virtualizationRowThreshold: position === 'sidebar' ? 48 : undefined,
     };
   }, [activeScrollContainerRef, position]);
   const handleExpandContent = useCallback(() => {
