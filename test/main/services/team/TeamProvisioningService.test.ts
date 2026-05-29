@@ -21167,6 +21167,47 @@ describe('TeamProvisioningService', () => {
     });
   });
 
+  it('parses a bootstrap transcript tail once and shares it across members', async () => {
+    const teamName = 'zz-unit-bootstrap-transcript-shared-parse';
+    const transcriptPath = path.join(tempProjectsBase, 'bootstrap-shared-parse.jsonl');
+    await fsPromises.writeFile(
+      transcriptPath,
+      `${JSON.stringify({
+        timestamp: '2026-05-24T09:25:42.904Z',
+        agentName: 'alice',
+        text: `member briefing for alice on team "${teamName}" (${teamName}). Ready.`,
+      })}\n`,
+      'utf8'
+    );
+    const updatedAt = new Date(Date.now() + 5_000);
+    await fsPromises.utimes(transcriptPath, updatedAt, updatedAt);
+
+    const svc = new TeamProvisioningService();
+
+    const aliceOutcome = await privateHarness(svc).readRecentBootstrapTranscriptOutcome(
+      transcriptPath,
+      null,
+      'alice',
+      teamName
+    );
+    const bobOutcome = await privateHarness(svc).readRecentBootstrapTranscriptOutcome(
+      transcriptPath,
+      null,
+      'bob',
+      teamName
+    );
+
+    // Per-member detection is unchanged: alice's briefing is a success, the same
+    // line is not attributed to bob.
+    expect(aliceOutcome).toMatchObject({ kind: 'success', source: 'member_briefing' });
+    expect(bobOutcome).toBeNull();
+    // The transcript tail is parsed once and shared: a single cache entry for the
+    // file rather than one parse per member.
+    expect((svc as unknown as Record<string, Map<string, unknown>>).parsedBootstrapTranscriptTailCache.size).toBe(
+      1
+    );
+  });
+
   it('caches persisted bootstrap transcript outcome lookup between close polling reads', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-05-03T12:00:00.000Z'));

@@ -704,6 +704,19 @@ interface BootstrapTranscriptOutcomeCandidate {
   parsedAgentName: string | null;
 }
 
+interface ParsedBootstrapTranscriptTailLine {
+  rawTimestamp: string | null;
+  timestampMs: number;
+  text: string | null;
+  parsedAgentName: string | null;
+}
+
+interface ParsedBootstrapTranscriptTailCacheEntry {
+  mtimeMs: number;
+  size: number;
+  lines: ParsedBootstrapTranscriptTailLine[];
+}
+
 import type {
   ActiveToolCall,
   AgentActionMode,
@@ -3374,6 +3387,13 @@ export class TeamProvisioningService {
   private readonly bootstrapTranscriptOutcomeCache = new Map<
     string,
     BootstrapTranscriptOutcomeCacheEntry
+  >();
+  // Shared parsed-tail cache keyed by filePath (validated by mtime+size) so the
+  // same growing transcript is read + JSON.parsed ONCE per change instead of once
+  // per member per poll. The per-member outcome scan below is unchanged.
+  private readonly parsedBootstrapTranscriptTailCache = new Map<
+    string,
+    ParsedBootstrapTranscriptTailCacheEntry
   >();
   private readonly bootstrapTranscriptOutcomeLookupCache = new Map<
     string,
@@ -30303,44 +30323,24 @@ export class TeamProvisioningService {
       if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
         return cached.outcome;
       }
-      const start = Math.max(0, stat.size - TeamProvisioningService.BOOTSTRAP_FAILURE_TAIL_BYTES);
-      const buffer = Buffer.alloc(stat.size - start);
-      if (buffer.length === 0) {
-        return null;
-      }
-      await handle.read(buffer, 0, buffer.length, start);
-      const lines = buffer.toString('utf8').split('\n');
-      if (start > 0) {
-        lines.shift();
-      }
+      // Parse the transcript tail once per (filePath, mtime, size) and share it
+      // across members. The per-member filter/scan below is byte-for-byte the same
+      // logic as before; only the redundant read + JSON.parse is now memoized.
+      const parsedLines = await this.getParsedBootstrapTranscriptTail(handle, filePath, stat);
       const shouldCollectBootstrapContext = options.allowAnonymousFailure !== true;
       const bootstrapContextMembers = new Set<string>();
       const candidates: BootstrapTranscriptOutcomeCandidate[] = [];
-      for (const rawLine of lines) {
-        const line = rawLine?.trim();
-        if (!line) continue;
-        let parsed: { timestamp?: unknown } | null = null;
-        try {
-          parsed = JSON.parse(line) as { timestamp?: unknown };
-        } catch {
-          continue;
-        }
-        const timestampMs =
-          typeof parsed.timestamp === 'string' ? Date.parse(parsed.timestamp) : Number.NaN;
+      for (const parsedLine of parsedLines) {
+        const { timestampMs, parsedAgentName, text, rawTimestamp } = parsedLine;
         if (sinceMs != null && (!Number.isFinite(timestampMs) || timestampMs < sinceMs)) {
           continue;
         }
-        const parsedAgentName =
-          typeof (parsed as { agentName?: unknown }).agentName === 'string'
-            ? (parsed as { agentName?: string }).agentName?.trim().toLowerCase() || null
-            : null;
         if (
           parsedAgentName &&
           !matchesObservedMemberNameForExpected(parsedAgentName, normalizedMemberName)
         ) {
           continue;
         }
-        const text = extractTranscriptMessageText(parsed);
         if (!text) {
           continue;
         }
@@ -30354,9 +30354,7 @@ export class TeamProvisioningService {
         candidates.push({
           text,
           observedAt:
-            typeof parsed.timestamp === 'string' && parsed.timestamp.trim().length > 0
-              ? parsed.timestamp.trim()
-              : new Date().toISOString(),
+            rawTimestamp && rawTimestamp.length > 0 ? rawTimestamp : new Date().toISOString(),
           parsedAgentName,
         });
       }
@@ -30426,6 +30424,73 @@ export class TeamProvisioningService {
       input.allowAnonymousFailure ? '1' : '0',
       normalizedContextMembers,
     ].join('\0');
+  }
+
+  private async getParsedBootstrapTranscriptTail(
+    handle: fs.promises.FileHandle,
+    filePath: string,
+    stat: { mtimeMs: number; size: number }
+  ): Promise<ParsedBootstrapTranscriptTailLine[]> {
+    const cached = this.parsedBootstrapTranscriptTailCache.get(filePath);
+    if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+      return cached.lines;
+    }
+    const lines: ParsedBootstrapTranscriptTailLine[] = [];
+    const start = Math.max(0, stat.size - TeamProvisioningService.BOOTSTRAP_FAILURE_TAIL_BYTES);
+    const length = stat.size - start;
+    if (length > 0) {
+      const buffer = Buffer.alloc(length);
+      await handle.read(buffer, 0, length, start);
+      const rawLines = buffer.toString('utf8').split('\n');
+      if (start > 0) {
+        rawLines.shift();
+      }
+      for (const rawLine of rawLines) {
+        const line = rawLine?.trim();
+        if (!line) continue;
+        let parsed: { timestamp?: unknown; agentName?: unknown } | null = null;
+        try {
+          parsed = JSON.parse(line) as { timestamp?: unknown; agentName?: unknown };
+        } catch {
+          continue;
+        }
+        const rawTimestamp =
+          typeof parsed.timestamp === 'string' && parsed.timestamp.trim().length > 0
+            ? parsed.timestamp.trim()
+            : null;
+        const timestampMs =
+          typeof parsed.timestamp === 'string' ? Date.parse(parsed.timestamp) : Number.NaN;
+        const parsedAgentName =
+          typeof parsed.agentName === 'string'
+            ? parsed.agentName.trim().toLowerCase() || null
+            : null;
+        const text = extractTranscriptMessageText(parsed);
+        lines.push({ rawTimestamp, timestampMs, text, parsedAgentName });
+      }
+    }
+    this.setParsedBootstrapTranscriptTailCacheEntry(filePath, {
+      mtimeMs: stat.mtimeMs,
+      size: stat.size,
+      lines,
+    });
+    return lines;
+  }
+
+  private setParsedBootstrapTranscriptTailCacheEntry(
+    filePath: string,
+    entry: ParsedBootstrapTranscriptTailCacheEntry
+  ): void {
+    if (
+      !this.parsedBootstrapTranscriptTailCache.has(filePath) &&
+      this.parsedBootstrapTranscriptTailCache.size >=
+        TeamProvisioningService.BOOTSTRAP_TRANSCRIPT_OUTCOME_CACHE_MAX_ENTRIES
+    ) {
+      const oldestKey = this.parsedBootstrapTranscriptTailCache.keys().next().value;
+      if (oldestKey) {
+        this.parsedBootstrapTranscriptTailCache.delete(oldestKey);
+      }
+    }
+    this.parsedBootstrapTranscriptTailCache.set(filePath, entry);
   }
 
   private setBootstrapTranscriptOutcomeCacheEntry(
