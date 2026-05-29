@@ -6,6 +6,19 @@ import { useShallow } from 'zustand/react/shallow';
 
 const TEAM_AGENT_RUNTIME_REFRESH_MS = 5_000;
 
+export function shouldWatchTeamAgentRuntime(input: {
+  enabled: boolean;
+  isTeamProvisioning: boolean | undefined;
+  isTeamAlive: boolean | undefined;
+  leadActivity: 'active' | 'idle' | 'offline' | undefined;
+}): boolean {
+  if (!input.enabled) return false;
+  if (input.isTeamProvisioning) return true;
+  if (input.isTeamAlive === true) return true;
+  if (input.isTeamAlive === false) return false;
+  return input.leadActivity === 'active' || input.leadActivity === 'idle';
+}
+
 interface TeamAgentRuntimeWatcherOptions {
   teamName: string;
   enabled: boolean;
@@ -33,12 +46,12 @@ export function useTeamAgentRuntimeWatcher({
   const effectiveIsTeamProvisioning = isTeamProvisioning ?? storeIsTeamProvisioning;
 
   useEffect(() => {
-    if (!enabled) return;
-    const shouldWatch =
-      effectiveIsTeamProvisioning ||
-      effectiveIsTeamAlive === true ||
-      leadActivity === 'active' ||
-      leadActivity === 'idle';
+    const shouldWatch = shouldWatchTeamAgentRuntime({
+      enabled,
+      isTeamProvisioning: effectiveIsTeamProvisioning,
+      isTeamAlive: effectiveIsTeamAlive,
+      leadActivity,
+    });
     if (!shouldWatch) return;
 
     void fetchTeamAgentRuntime(teamName);
