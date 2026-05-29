@@ -50,6 +50,7 @@ import { formatProjectPath } from '@renderer/utils/pathDisplay';
 import { buildTaskCountsByOwner, normalizePath } from '@renderer/utils/pathNormalize';
 import { nameColorSet } from '@renderer/utils/projectColor';
 import { resolveProjectIdByPath } from '@renderer/utils/projectLookup';
+import { scheduleStartupIdleTask } from '@renderer/utils/startupIdleTask';
 import {
   buildTaskChangeRequestOptions,
   type TaskChangeRequestOptions,
@@ -116,9 +117,24 @@ const TeamGraphOverlay = lazy(() =>
     default: m.TeamGraphOverlay,
   }))
 );
-const TaskDetailDialog = lazy(() =>
-  import('./dialogs/TaskDetailDialog').then((m) => ({ default: m.TaskDetailDialog }))
-);
+let taskDetailDialogImportPromise: Promise<{
+  default: typeof import('./dialogs/TaskDetailDialog').TaskDetailDialog;
+}> | null = null;
+function loadTaskDetailDialog(): Promise<{
+  default: typeof import('./dialogs/TaskDetailDialog').TaskDetailDialog;
+}> {
+  taskDetailDialogImportPromise ??= import('./dialogs/TaskDetailDialog')
+    .then((m) => ({ default: m.TaskDetailDialog }))
+    .catch((error) => {
+      taskDetailDialogImportPromise = null;
+      throw error;
+    });
+  return taskDetailDialogImportPromise;
+}
+function preloadTaskDetailDialog(): void {
+  void loadTaskDetailDialog().catch(() => undefined);
+}
+const TaskDetailDialog = lazy(loadTaskDetailDialog);
 const SendMessageDialog = lazy(() =>
   import('./dialogs/SendMessageDialog').then((m) => ({ default: m.SendMessageDialog }))
 );
@@ -2004,6 +2020,19 @@ export const TeamDetailView = memo(function TeamDetailView({
     if (!kanbanSearchQuery) return filteredTasks;
     return filterKanbanTasks(filteredTasks, kanbanSearchQuery);
   }, [filteredTasks, kanbanSearchQuery]);
+  const loadedTeamName = data?.teamName;
+  const taskCount = data?.tasks.length ?? 0;
+
+  useEffect(() => {
+    if (taskCount === 0) {
+      return;
+    }
+
+    return scheduleStartupIdleTask(preloadTaskDetailDialog, {
+      minDelayMs: 1000,
+      maxDelayMs: 5000,
+    });
+  }, [loadedTeamName, taskCount]);
 
   const resolvedActiveTeammateCount = useMemo(
     () => activeMembers.filter((m) => !isLeadMember(m)).length,
