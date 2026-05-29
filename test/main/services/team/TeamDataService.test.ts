@@ -2520,6 +2520,95 @@ describe('TeamDataService', () => {
     }
   });
 
+  it('uses startup team summary lead fields without rereading config for comment notification baselines', async () => {
+    const previous = process.env[TASK_COMMENT_FORWARDING_ENV];
+    process.env[TASK_COMMENT_FORWARDING_ENV] = 'on';
+    const journalEntries: Array<Record<string, unknown>> = [];
+    const inboxWriter = { sendMessage: vi.fn() };
+    const getConfig = vi.fn(async () => {
+      throw new Error('unexpected config read');
+    });
+    const journal = {
+      exists: vi.fn(async () => false),
+      ensureFile: vi.fn(async () => undefined),
+      withEntries: vi.fn(
+        async (_teamName: string, fn: (entries: unknown[]) => Promise<{ result: unknown }>) => {
+          const outcome = await fn(journalEntries);
+          return outcome.result;
+        }
+      ),
+    };
+
+    try {
+      const service = new TeamDataService(
+        {
+          listTeams: vi.fn(async () => [
+            {
+              teamName: 'my-team',
+              displayName: 'My team',
+              description: '',
+              memberCount: 1,
+              taskCount: 1,
+              lastActivity: null,
+              leadName: 'team-lead',
+              leadSessionId: 'lead-1',
+            },
+          ]),
+          getConfig,
+        } as never,
+        {
+          getTasks: vi.fn(async () => [
+            {
+              id: 'task-1',
+              displayId: 'abcd1234',
+              subject: 'Investigate',
+              status: 'pending',
+              owner: 'alice',
+              comments: [
+                {
+                  id: 'comment-1',
+                  author: 'alice',
+                  text: 'Found the root cause.',
+                  createdAt: '2026-03-14T10:00:00.000Z',
+                  type: 'regular',
+                },
+              ],
+            },
+          ]),
+        } as never,
+        {
+          listInboxNames: vi.fn(async () => []),
+          getMessages: vi.fn(async () => []),
+          getMessagesFor: vi.fn(async () => []),
+        } as never,
+        inboxWriter as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        (() => ({}) as never) as never,
+        journal as never
+      );
+
+      await service.initializeTaskCommentNotificationState();
+
+      expect(getConfig).not.toHaveBeenCalled();
+      expect(inboxWriter.sendMessage).not.toHaveBeenCalled();
+      expect(journalEntries).toEqual([
+        expect.objectContaining({
+          key: 'task-1:comment-1',
+          state: 'seeded',
+          messageId: 'task-comment-forward:my-team:task-1:comment-1',
+        }),
+      ]);
+    } finally {
+      if (previous === undefined) delete process.env[TASK_COMMENT_FORWARDING_ENV];
+      else process.env[TASK_COMMENT_FORWARDING_ENV] = previous;
+    }
+  });
+
   it('forwards a new eligible task comment to the lead exactly once in live mode', async () => {
     const previous = process.env[TASK_COMMENT_FORWARDING_ENV];
     process.env[TASK_COMMENT_FORWARDING_ENV] = 'on';

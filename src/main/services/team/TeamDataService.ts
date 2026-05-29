@@ -218,6 +218,12 @@ interface EligibleTaskCommentNotification {
   summary: string;
 }
 
+interface TaskCommentNotificationTeamContext {
+  deletedAt?: string;
+  leadName?: string;
+  leadSessionId?: string;
+}
+
 interface TaskChangeLogSourceSnapshot {
   projectFingerprint: string | null;
   logSourceGeneration: string | null;
@@ -2441,6 +2447,11 @@ export class TeamDataService {
           await this.processTaskCommentNotifications(team.teamName, undefined, {
             seedHistoricalIfJournalMissing: true,
             recoverPending: true,
+            teamContext: {
+              deletedAt: team.deletedAt,
+              leadName: team.leadName,
+              leadSessionId: team.leadSessionId,
+            },
           });
         } catch (error) {
           logger.warn(
@@ -2722,20 +2733,28 @@ export class TeamDataService {
     options?: {
       seedHistoricalIfJournalMissing?: boolean;
       recoverPending?: boolean;
+      teamContext?: TaskCommentNotificationTeamContext;
     }
   ): Promise<void> {
     const seedHistoricalIfJournalMissing = options?.seedHistoricalIfJournalMissing === true;
     const recoverPending = options?.recoverPending === true;
-    let config: TeamConfig | null = null;
-    try {
-      config = await readConfigForUiSnapshot(this.configReader, teamName);
-    } catch {
-      return;
-    }
-    if (!config || config.deletedAt) return;
+    const teamContext = options?.teamContext;
+    if (teamContext?.deletedAt) return;
 
-    const leadName = this.resolveLeadNameFromConfig(config);
-    const leadSessionId = config.leadSessionId;
+    let leadName = teamContext?.leadName?.trim() ?? '';
+    let leadSessionId = teamContext?.leadSessionId;
+    if (!leadName) {
+      let config: TeamConfig | null = null;
+      try {
+        config = await readConfigForUiSnapshot(this.configReader, teamName);
+      } catch {
+        return;
+      }
+      if (!config || config.deletedAt) return;
+
+      leadName = this.resolveLeadNameFromConfig(config);
+      leadSessionId = config.leadSessionId;
+    }
     if (!leadName.trim()) return;
 
     const journalExists = await this.taskCommentNotificationJournal.exists(teamName);
