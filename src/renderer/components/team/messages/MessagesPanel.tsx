@@ -920,7 +920,7 @@ export const MessagesPanel = memo(function MessagesPanel({
     );
   }, [bottomSheetSnapIndex]);
 
-  const defaultComposerSection = (
+  const renderDefaultComposerSection = (): React.JSX.Element => (
     <MessagesComposerSection
       teamName={teamName}
       members={members}
@@ -939,7 +939,7 @@ export const MessagesPanel = memo(function MessagesPanel({
     />
   );
 
-  const floatingComposerModeControls = (
+  const renderFloatingComposerModeControls = (): React.JSX.Element => (
     <div className="inline-flex items-center pr-1">
       <DropdownMenu>
         <Tooltip>
@@ -975,7 +975,7 @@ export const MessagesPanel = memo(function MessagesPanel({
     </div>
   );
 
-  const compactComposerSection = (
+  const renderCompactComposerSection = (): React.JSX.Element => (
     <MessagesComposerSection
       teamName={teamName}
       layout="compact"
@@ -995,7 +995,7 @@ export const MessagesPanel = memo(function MessagesPanel({
     />
   );
 
-  const floatingComposerSection = (
+  const renderFloatingComposerSection = (): React.JSX.Element => (
     <MessagesComposerSection
       teamName={teamName}
       layout="compact"
@@ -1007,7 +1007,7 @@ export const MessagesPanel = memo(function MessagesPanel({
       sendWarning={effectiveSendMessageWarning}
       sendDebugDetails={effectiveSendMessageDebugDetails}
       lastResult={lastSendMessageResult}
-      cornerActionPrefix={floatingComposerModeControls}
+      cornerActionPrefix={renderFloatingComposerModeControls()}
       revisionRequest={revisionRequest}
       textareaRef={composerTextareaRef}
       onSend={handleSend}
@@ -1017,7 +1017,7 @@ export const MessagesPanel = memo(function MessagesPanel({
     />
   );
 
-  const inlineStatusSection = (
+  const renderInlineStatusSection = (): React.JSX.Element => (
     <MessagesStatusSection
       members={members}
       tasks={tasks}
@@ -1030,7 +1030,7 @@ export const MessagesPanel = memo(function MessagesPanel({
     />
   );
 
-  const sidebarStatusSection = (
+  const renderSidebarStatusSection = (): React.JSX.Element => (
     <MessagesStatusSection
       members={members}
       tasks={tasks}
@@ -1043,7 +1043,7 @@ export const MessagesPanel = memo(function MessagesPanel({
     />
   );
 
-  const timelineSection = (
+  const renderTimelineSection = (): React.JSX.Element => (
     <MessagesTimelineSection
       messages={activityTimelineMessages}
       loading={loadingInitialMessages}
@@ -1081,7 +1081,7 @@ export const MessagesPanel = memo(function MessagesPanel({
   );
 
   // ---- Shared content (used in both modes) ----
-  const searchAndFilterControls = (
+  const renderSearchAndFilterControls = (): React.JSX.Element => (
     <div className="flex items-center gap-2">
       <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md border border-[var(--color-border)] bg-transparent px-2 py-1">
         <Search size={12} className="shrink-0 text-[var(--color-text-muted)]" />
@@ -1116,9 +1116,9 @@ export const MessagesPanel = memo(function MessagesPanel({
     </div>
   );
 
-  const searchAndFilterBar = (
+  const renderSearchAndFilterBar = (): React.JSX.Element => (
     <div className="flex items-center gap-2">
-      {searchAndFilterControls}
+      {renderSearchAndFilterControls()}
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
@@ -1140,11 +1140,11 @@ export const MessagesPanel = memo(function MessagesPanel({
     </div>
   );
 
-  const messagesContent = (
+  const renderMessagesContent = (): React.JSX.Element => (
     <div className="pb-14">
-      {defaultComposerSection}
-      {inlineStatusSection}
-      {timelineSection}
+      {renderDefaultComposerSection()}
+      {renderInlineStatusSection()}
+      {renderTimelineSection()}
     </div>
   );
 
@@ -1258,7 +1258,7 @@ export const MessagesPanel = memo(function MessagesPanel({
         {/* Search & filter bar (toggleable) */}
         {messagesSearchBarVisible && (
           <div className="shrink-0 border-b border-[var(--color-border)] px-3 py-1.5">
-            {searchAndFilterControls}
+            {renderSearchAndFilterControls()}
           </div>
         )}
         {/* Scrollable content */}
@@ -1268,10 +1268,10 @@ export const MessagesPanel = memo(function MessagesPanel({
           onScroll={handleSidebarScroll}
         >
           <div className="pl-3">
-            {defaultComposerSection}
-            {sidebarStatusSection}
+            {renderDefaultComposerSection()}
+            {renderSidebarStatusSection()}
           </div>
-          {timelineSection}
+          {renderTimelineSection()}
         </div>
       </div>
     );
@@ -1282,7 +1282,7 @@ export const MessagesPanel = memo(function MessagesPanel({
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-40 px-4 pb-5 sm:px-6 sm:pb-6">
         <div className="mx-auto flex w-full max-w-[500px] justify-center">
           <div ref={floatingComposerMeasureRef} className="pointer-events-auto">
-            {floatingComposerSection}
+            {renderFloatingComposerSection()}
           </div>
         </div>
       </div>
@@ -1463,13 +1463,13 @@ export const MessagesPanel = memo(function MessagesPanel({
               >
                 {messagesSearchBarVisible && (
                   <div className="border-b border-[var(--color-border)] px-3 py-2">
-                    {searchAndFilterControls}
+                    {renderSearchAndFilterControls()}
                   </div>
                 )}
-                <div className="p-3">{compactComposerSection}</div>
+                <div className="p-3">{renderCompactComposerSection()}</div>
               </div>
-              <div className="shrink-0 px-3 pt-2">{inlineStatusSection}</div>
-              <div className="flex-1 px-3 pb-4 pt-2">{timelineSection}</div>
+              <div className="shrink-0 px-3 pt-2">{renderInlineStatusSection()}</div>
+              <div className="flex-1 px-3 pb-4 pt-2">{renderTimelineSection()}</div>
             </Sheet.Content>
           )}
         </Sheet.Container>
@@ -1562,9 +1562,9 @@ export const MessagesPanel = memo(function MessagesPanel({
         </div>
       }
       defaultOpen
-      action={<div className="flex items-center gap-2 px-2">{searchAndFilterBar}</div>}
+      action={<div className="flex items-center gap-2 px-2">{renderSearchAndFilterBar()}</div>}
     >
-      {messagesContent}
+      {renderMessagesContent()}
     </CollapsibleTeamSection>
   );
 });
