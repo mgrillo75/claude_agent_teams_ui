@@ -71,8 +71,23 @@ function removeLockPath(lockPath: string): void {
 
 function writeLockFile(lockPath: string): void {
   const fd = fs.openSync(lockPath, 'wx');
-  fs.writeSync(fd, `${process.pid}\n${Date.now()}\n`);
-  fs.closeSync(fd);
+  let closeError: unknown = null;
+  try {
+    fs.writeSync(fd, `${process.pid}\n${Date.now()}\n`);
+  } finally {
+    try {
+      fs.closeSync(fd);
+    } catch (err) {
+      closeError = err;
+    }
+  }
+  if (closeError) {
+    throw closeError;
+  }
+}
+
+function isExistingLockError(code: string | undefined): boolean {
+  return code === 'EEXIST' || code === 'EISDIR';
 }
 
 function tryAcquire(lockPath: string, options: Required<FileLockOptions>): boolean {
@@ -85,19 +100,27 @@ function tryAcquire(lockPath: string, options: Required<FileLockOptions>): boole
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
     if (code === 'ENOENT') {
-      // Lock directory missing — create it lazily and acquire in the same call, so
+      // Lock directory missing - create it lazily and acquire in the same call, so
       // first-acquire latency in a fresh dir is unchanged.
       try {
         fs.mkdirSync(path.dirname(lockPath), { recursive: true });
         writeLockFile(lockPath);
         return true;
-      } catch {
-        // Lost a race (another process created the dir/lock) or still failing —
-        // fall through to a normal retry on the next loop iteration.
-        return false;
+      } catch (retryError) {
+        const retryCode = (retryError as NodeJS.ErrnoException).code;
+        if (retryCode === 'ENOENT') {
+          return false;
+        }
+        if (isExistingLockError(retryCode)) {
+          if (shouldBreakExistingLock(lockPath, options.staleTimeoutMs)) {
+            removeLockPath(lockPath);
+          }
+          return false;
+        }
+        throw retryError;
       }
     }
-    if (code === 'EEXIST' || code === 'EISDIR') {
+    if (isExistingLockError(code)) {
       if (shouldBreakExistingLock(lockPath, options.staleTimeoutMs)) {
         removeLockPath(lockPath);
       }
