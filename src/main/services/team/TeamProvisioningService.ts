@@ -850,6 +850,15 @@ interface RuntimeTelemetryProcessTableRow extends RuntimeProcessTableRow, Runtim
   runtimeTelemetrySource?: RuntimeTelemetryProcessSource;
 }
 
+interface RuntimeProcessRowsCacheEntry {
+  expiresAtMs: number;
+  generation: number;
+  runId: string | null;
+  sampledAtMs: number;
+  rows: RuntimeTelemetryProcessTableRow[] | null;
+  includesWindowsHostRows: boolean;
+}
+
 class RuntimeTelemetryTimeoutError extends Error {
   constructor(message: string) {
     super(message);
@@ -3378,6 +3387,8 @@ export class TeamProvisioningService {
   private static readonly MAX_RUNTIME_USAGE_PIDS_PER_SNAPSHOT = 512;
   private static readonly RUNTIME_PROCESS_TABLE_TIMEOUT_MS = 1_500;
   private static readonly RUNTIME_WINDOWS_PROCESS_TABLE_TIMEOUT_MS = 1_500;
+  private static readonly RUNTIME_LIVENESS_PROCESS_TABLE_CACHE_TTL_MS = 5_000;
+  private static readonly RUNTIME_LIVENESS_PROCESS_TABLE_FAILURE_CACHE_TTL_MS = 2_000;
   private static readonly RUNTIME_PROCESS_USAGE_CACHE_TTL_MS = 30_000;
   private static readonly RUNTIME_PROCESS_USAGE_CACHE_MAX_ENTRIES = 4_096;
   private static readonly RUNTIME_PIDUSAGE_BATCH_TIMEOUT_MS = 2_000;
@@ -3490,13 +3501,7 @@ export class TeamProvisioningService {
   >();
   private readonly runtimeProcessRowsForUsageSnapshotByTeam = new Map<
     string,
-    {
-      expiresAtMs: number;
-      generation: number;
-      runId: string | null;
-      rows: RuntimeTelemetryProcessTableRow[] | null;
-      includesWindowsHostRows: boolean;
-    }
+    RuntimeProcessRowsCacheEntry
   >();
   private readonly runtimeProcessUsageStatsCacheByPid = new Map<
     number,
@@ -3798,9 +3803,8 @@ export class TeamProvisioningService {
     this.liveTeamAgentRuntimeMetadataCache.delete(teamName);
     this.liveTeamAgentRuntimeMetadataInFlightByTeam.delete(teamName);
     this.persistedTeamConfigCache.delete(teamName);
-    // CPU/RSS telemetry is TTL-bound and does not decide liveness. Keep the
-    // process table cache across noisy runtime snapshot invalidations so UI
-    // refreshes do not respawn `ps` just to repaint resource badges.
+    // Process table rows are TTL-bound. Resource telemetry can use the longer
+    // TTL, while liveness only reuses rows through a short age gate.
   }
 
   private cloneMemberSpawnStatusesSnapshot(
@@ -25450,35 +25454,43 @@ export class TeamProvisioningService {
       paneInfoById,
     });
     if (shouldReadProcessTable) {
-      processRowsReadForMetadata = true;
-      try {
-        processRows =
-          this.normalizeRuntimeProcessRowsForTelemetry(
-            await this.withRuntimeTelemetryTimeout(
-              listRuntimeProcessTableForCurrentPlatform(),
-              TeamProvisioningService.RUNTIME_PROCESS_TABLE_TIMEOUT_MS,
-              'process table runtime snapshot'
-            ),
-            process.platform === 'win32' ? 'wsl' : 'native'
-          ) ?? [];
-      } catch (error) {
-        processTableAvailable = false;
-        logger.debug(
-          `[${teamName}] Failed to read process table for runtime snapshot: ${
-            error instanceof Error ? error.message : String(error)
-          }`
-        );
+      const cachedRows = this.readCachedRuntimeProcessRowsForLiveRuntimeMetadata(teamName, runId);
+      if (cachedRows) {
+        processTableAvailable = cachedRows.rows !== null;
+        processRows = cachedRows.rows ?? [];
+      } else {
+        processRowsReadForMetadata = true;
+        try {
+          processRows =
+            this.normalizeRuntimeProcessRowsForTelemetry(
+              await this.withRuntimeTelemetryTimeout(
+                listRuntimeProcessTableForCurrentPlatform(),
+                TeamProvisioningService.RUNTIME_PROCESS_TABLE_TIMEOUT_MS,
+                'process table runtime snapshot'
+              ),
+              process.platform === 'win32' ? 'wsl' : 'native'
+            ) ?? [];
+        } catch (error) {
+          processTableAvailable = false;
+          logger.debug(
+            `[${teamName}] Failed to read process table for runtime snapshot: ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          );
+        }
       }
     }
     if (processRowsReadForMetadata) {
+      const sampledAtMs = Date.now();
       this.runtimeProcessRowsForUsageSnapshotByTeam.set(teamName, {
         expiresAtMs:
-          Date.now() +
+          sampledAtMs +
           (processTableAvailable
             ? TeamProvisioningService.RUNTIME_RESOURCE_TELEMETRY_CACHE_TTL_MS
             : TeamProvisioningService.RUNTIME_RESOURCE_TELEMETRY_FAILURE_CACHE_TTL_MS),
         generation: generationAtStart,
         runId,
+        sampledAtMs,
         rows: processTableAvailable ? processRows : null,
         includesWindowsHostRows: false,
       });
@@ -25914,6 +25926,39 @@ export class TeamProvisioningService {
     return false;
   }
 
+  private readCachedRuntimeProcessRowsForLiveRuntimeMetadata(
+    teamName: string,
+    runId: string | null
+  ): { rows: RuntimeTelemetryProcessTableRow[] | null } | null {
+    const cached = this.runtimeProcessRowsForUsageSnapshotByTeam.get(teamName);
+    const nowMs = Date.now();
+    if (!cached || cached.expiresAtMs <= nowMs || cached.runId !== runId) {
+      return null;
+    }
+
+    const sampledAtMs =
+      typeof cached.sampledAtMs === 'number' && Number.isFinite(cached.sampledAtMs)
+        ? cached.sampledAtMs
+        : 0;
+    const maxAgeMs =
+      cached.rows === null
+        ? TeamProvisioningService.RUNTIME_LIVENESS_PROCESS_TABLE_FAILURE_CACHE_TTL_MS
+        : TeamProvisioningService.RUNTIME_LIVENESS_PROCESS_TABLE_CACHE_TTL_MS;
+    if (sampledAtMs <= 0 || nowMs - sampledAtMs > maxAgeMs) {
+      return null;
+    }
+
+    if (cached.rows === null) {
+      return { rows: null };
+    }
+
+    const rows =
+      this.normalizeRuntimeProcessRowsForTelemetry(cached.rows)?.filter(
+        (row) => row.runtimeTelemetrySource !== 'windows-host'
+      ) ?? [];
+    return { rows };
+  }
+
   private async readRuntimeProcessRowsForUsageSnapshot(
     teamName: string,
     options: { includeWindowsHostRows?: boolean } = {}
@@ -25978,14 +26023,16 @@ export class TeamProvisioningService {
     }
 
     const resultRows = rows && rows.length > 0 ? rows : runtimeProcessTableAvailable ? [] : null;
+    const sampledAtMs = Date.now();
     this.runtimeProcessRowsForUsageSnapshotByTeam.set(teamName, {
       expiresAtMs:
-        Date.now() +
+        sampledAtMs +
         (resultRows === null
           ? TeamProvisioningService.RUNTIME_RESOURCE_TELEMETRY_FAILURE_CACHE_TTL_MS
           : TeamProvisioningService.RUNTIME_RESOURCE_TELEMETRY_CACHE_TTL_MS),
       generation: this.getRuntimeSnapshotCacheGeneration(teamName),
       runId: this.getTrackedRunId(teamName),
+      sampledAtMs,
       rows: resultRows,
       includesWindowsHostRows,
     });
