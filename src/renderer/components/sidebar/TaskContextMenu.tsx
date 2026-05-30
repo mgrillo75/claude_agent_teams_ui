@@ -39,7 +39,7 @@ export const TaskContextMenu = ({
   const [open, setOpen] = useState(false);
 
   return (
-    <ContextMenu open={open} onOpenChange={setOpen}>
+    <ContextMenu onOpenChange={setOpen}>
       <ContextMenuTrigger asChild>
         <div className="w-full">{children}</div>
       </ContextMenuTrigger>
