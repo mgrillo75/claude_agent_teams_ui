@@ -194,6 +194,7 @@ import type {
   CreateTaskRequest,
   EffortLevel,
   GlobalTask,
+  InboxMessage,
   IpcResult,
   KanbanColumnId,
   LeadActivitySnapshot,
@@ -329,6 +330,33 @@ function noteHeavyTeamDataWorkerFallback(operation: string): void {
   logger.error(
     `[${operation}] team-data-worker unavailable in packaged runtime; falling back to main-thread execution for heavy message/activity path`
   );
+}
+
+async function getNewestMessagesPageWithLiveOverlay(input: {
+  teamName: string;
+  limit: number;
+  liveMessages: InboxMessage[];
+  includeUndefinedCursorInFallback?: boolean;
+}): Promise<MessagesPage> {
+  const { teamName, limit, liveMessages } = input;
+  const worker = getTeamDataWorkerClient();
+  const options = input.includeUndefinedCursorInFallback
+    ? { cursor: undefined, limit, liveMessages }
+    : { limit, liveMessages };
+  if (worker.isAvailable()) {
+    try {
+      return await worker.getMessagesPage(teamName, options);
+    } catch (workerErr) {
+      logger.warn(
+        `[teams:getMessagesPage] worker failed for live overlay, falling back: ${
+          workerErr instanceof Error ? workerErr.message : workerErr
+        }`
+      );
+    }
+  }
+
+  noteHeavyTeamDataWorkerFallback('teams:getMessagesPage.liveOverlay');
+  return getTeamDataService().getMessagesPage(teamName, options);
 }
 
 function invalidateTeamRosterSnapshotCaches(teamName: string): void {
@@ -992,7 +1020,8 @@ async function handleGetData(
   let merged = mergeLiveLeadProcessMessages(durableMessages, live);
   if (durableMessages.length >= 50) {
     try {
-      const newestPage = await teamDataService.getMessagesPage(tn, {
+      const newestPage = await getNewestMessagesPageWithLiveOverlay({
+        teamName: tn,
         limit: 50,
         liveMessages: live,
       });
@@ -2722,10 +2751,11 @@ async function handleGetMessagesPage(
       cursor == null ? getTeamProvisioningService().getLiveLeadProcessMessages(teamName) : [];
 
     if (liveMessages.length > 0) {
-      page = await getTeamDataService().getMessagesPage(teamName, {
-        cursor,
+      page = await getNewestMessagesPageWithLiveOverlay({
+        teamName,
         limit,
         liveMessages,
+        includeUndefinedCursorInFallback: true,
       });
       scanNotifications(page);
       return page;

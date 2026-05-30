@@ -33,10 +33,7 @@ import {
 import { atomicWriteAsync } from './atomicWrite';
 import { extractLeadSessionMessagesFromJsonl } from './leadSessionMessageExtractor';
 import { MemberActivityMetaService } from './MemberActivityMetaService';
-import {
-  getLiveLeadProcessMessageKey,
-  mergeLiveLeadProcessMessages,
-} from './mergeLiveLeadProcessMessages';
+import { mergeLiveLeadProcessMessagesPage } from './mergeLiveLeadProcessMessages';
 import { buildTaskChangePresenceDescriptor } from './taskChangePresenceUtils';
 import {
   choosePreferredLaunchSnapshot,
@@ -1504,9 +1501,6 @@ export class TeamDataService {
   ): Promise<MessagesPage> {
     const feed = await this.messageFeedService.getFeed(teamName);
     const newestDurableMessages = feed.messages;
-    const durableMessageIndexByKey = new Map(
-      newestDurableMessages.map((message, index) => [getLiveLeadProcessMessageKey(message), index])
-    );
     let messages = newestDurableMessages;
 
     if (options.cursor) {
@@ -1533,55 +1527,12 @@ export class TeamDataService {
 
     // Merge live lead thoughts against the full durable newest-page history so we do not
     // re-introduce persisted thoughts that have simply paged off the first durable page.
-    const displayMessages = mergeLiveLeadProcessMessages(
-      newestDurableMessages,
-      options.liveMessages
-    ).slice(0, options.limit);
-
-    if (displayMessages.length === 0) {
-      return {
-        messages: displayMessages,
-        nextCursor: null,
-        hasMore: false,
-        feedRevision: feed.feedRevision,
-      };
-    }
-
-    let lastDurableDisplayed: InboxMessage | null = null;
-    for (let index = displayMessages.length - 1; index >= 0; index -= 1) {
-      const candidate = displayMessages[index];
-      if (durableMessageIndexByKey.has(getLiveLeadProcessMessageKey(candidate))) {
-        lastDurableDisplayed = candidate;
-        break;
-      }
-    }
-
-    if (!lastDurableDisplayed) {
-      const boundary = displayMessages[displayMessages.length - 1];
-      return {
-        messages: displayMessages,
-        nextCursor:
-          newestDurableMessages.length > 0
-            ? `${boundary.timestamp}|${boundary.messageId ?? ''}`
-            : null,
-        hasMore: newestDurableMessages.length > 0,
-        feedRevision: feed.feedRevision,
-      };
-    }
-
-    const durableIndex =
-      durableMessageIndexByKey.get(getLiveLeadProcessMessageKey(lastDurableDisplayed)) ??
-      Number.POSITIVE_INFINITY;
-    const durableHasMore = durableIndex < newestDurableMessages.length - 1;
-
-    return {
-      messages: displayMessages,
-      nextCursor: durableHasMore
-        ? `${lastDurableDisplayed.timestamp}|${lastDurableDisplayed.messageId ?? ''}`
-        : null,
-      hasMore: durableHasMore,
+    return mergeLiveLeadProcessMessagesPage({
+      durableMessages: newestDurableMessages,
+      liveMessages: options.liveMessages,
+      limit: options.limit,
       feedRevision: feed.feedRevision,
-    };
+    });
   }
 
   async getMessageFeed(
@@ -3179,12 +3130,11 @@ export class TeamDataService {
       }
     } finally {
       const current = this.fileWatchReconcileDiagnostics.get(teamName);
-      if (!current) {
-        return;
-      }
-      current.inFlight = Math.max(0, current.inFlight - 1);
-      if (current.inFlight === 0 && Date.now() - current.windowStartedAt > 30_000) {
-        this.fileWatchReconcileDiagnostics.delete(teamName);
+      if (current) {
+        current.inFlight = Math.max(0, current.inFlight - 1);
+        if (current.inFlight === 0 && Date.now() - current.windowStartedAt > 30_000) {
+          this.fileWatchReconcileDiagnostics.delete(teamName);
+        }
       }
     }
   }

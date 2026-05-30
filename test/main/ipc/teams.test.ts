@@ -1896,6 +1896,53 @@ describe('ipc teams handlers', () => {
     expect(service.getMessagesPage).not.toHaveBeenCalled();
   });
 
+  it('keeps live message overlay on TEAM_GET_MESSAGES_PAGE in worker path', async () => {
+    mockTeamDataWorkerClient.isAvailable.mockReturnValue(true);
+    const liveMessage: InboxMessage = {
+      from: 'team-lead',
+      text: 'Команда поднята, приступаю к раздаче задач.',
+      timestamp: '2026-02-23T10:00:01.000Z',
+      read: true,
+      source: 'lead_process' as const,
+      messageId: 'live-1',
+    };
+    mockTeamDataWorkerClient.getMessagesPage.mockResolvedValueOnce({
+      messages: [
+        liveMessage,
+        {
+          from: 'user',
+          text: 'Ping',
+          timestamp: '2026-02-23T10:00:00.000Z',
+          read: true,
+          source: 'user_sent' as const,
+          messageId: 'durable-1',
+        },
+      ],
+      nextCursor: null,
+      hasMore: false,
+      feedRevision: 'rev-worker',
+    });
+    provisioningService.getLiveLeadProcessMessages.mockReturnValueOnce([liveMessage]);
+
+    const handler = handlers.get(TEAM_GET_MESSAGES_PAGE)!;
+    const result = (await handler({} as never, 'my-team', {
+      limit: 20,
+    })) as { success: boolean; data: MessagesPage };
+
+    expect(result.success).toBe(true);
+    expect(result.data.messages.map((message) => message.messageId)).toEqual([
+      'live-1',
+      'durable-1',
+    ]);
+    expect(result.data.feedRevision).toBe('rev-worker');
+    expect(mockTeamDataWorkerClient.getMessagesPage).toHaveBeenCalledWith('my-team', {
+      cursor: undefined,
+      limit: 20,
+      liveMessages: [liveMessage],
+    });
+    expect(service.getMessagesPage).not.toHaveBeenCalled();
+  });
+
   it('scans rate-limit notifications from message-page results without hydrating TEAM_GET_DATA feed', async () => {
     mockTeamDataWorkerClient.isAvailable.mockReturnValue(true);
     mockTeamDataWorkerClient.getMessagesPage.mockResolvedValueOnce({
@@ -2454,6 +2501,64 @@ describe('ipc teams handlers', () => {
         }),
       ]),
     });
+    expect(result.data.messages).toHaveLength(50);
+  });
+
+  it('rebuilds capped TEAM_GET_DATA live overlay through worker when available', async () => {
+    mockTeamDataWorkerClient.isAvailable.mockReturnValue(true);
+    const liveMessage: InboxMessage = {
+      from: 'team-lead',
+      text: 'Live thought',
+      timestamp: '2026-02-23T11:00:00.000Z',
+      read: true,
+      source: 'lead_process' as const,
+      messageId: 'live-1',
+    };
+    mockTeamDataWorkerClient.getTeamData.mockResolvedValueOnce({
+      teamName: 'my-team',
+      config: { name: 'My Team' },
+      tasks: [],
+      members: [],
+      messages: Array.from({ length: 50 }, (_, index) => ({
+        from: 'alice',
+        text: `filler-${index}`,
+        timestamp: `2026-02-23T10:${String(index).padStart(2, '0')}:00.000Z`,
+        read: true,
+        source: 'inbox' as const,
+        messageId: `durable-${index}`,
+      })),
+      kanbanState: { teamName: 'my-team', reviewers: [], tasks: {} },
+      processes: [],
+    });
+    mockTeamDataWorkerClient.getMessagesPage.mockResolvedValueOnce({
+      messages: [
+        {
+          from: 'alice',
+          text: 'filler-0',
+          timestamp: '2026-02-23T10:00:00.000Z',
+          read: true,
+          source: 'inbox' as const,
+          messageId: 'durable-0',
+        },
+      ],
+      nextCursor: null,
+      hasMore: false,
+      feedRevision: 'rev-worker',
+    });
+    provisioningService.getLiveLeadProcessMessages.mockReturnValueOnce([liveMessage]);
+
+    const getDataHandler = handlers.get(TEAM_GET_DATA)!;
+    const result = (await getDataHandler({} as never, 'my-team')) as {
+      success: boolean;
+      data: { messages?: InboxMessage[] };
+    };
+
+    expect(result.success).toBe(true);
+    expect(mockTeamDataWorkerClient.getMessagesPage).toHaveBeenCalledWith('my-team', {
+      limit: 50,
+      liveMessages: [liveMessage],
+    });
+    expect(service.getMessagesPage).not.toHaveBeenCalled();
     expect(result.data.messages).toHaveLength(50);
   });
 
