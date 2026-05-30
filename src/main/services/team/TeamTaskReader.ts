@@ -48,8 +48,8 @@ interface CachedTaskFile {
   task: TeamTask | null;
 }
 
-function cloneTasks<T>(tasks: T[]): T[] {
-  return structuredClone(tasks);
+function cloneTasks<T>(tasks: readonly T[]): T[] {
+  return structuredClone([...tasks]);
 }
 
 function cloneTask(task: TeamTask): TeamTask {
