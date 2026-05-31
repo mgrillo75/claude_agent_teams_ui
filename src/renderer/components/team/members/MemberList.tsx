@@ -279,28 +279,6 @@ function isRuntimeResourceSampleLike(value: unknown): value is TeamAgentRuntimeR
   return Boolean(value) && typeof value === 'object';
 }
 
-function areRuntimeResourceSamplesEquivalent(left: unknown, right: unknown): boolean {
-  if (left === right) return true;
-  if (!isRuntimeResourceSampleLike(left) || !isRuntimeResourceSampleLike(right)) {
-    return false;
-  }
-  return (
-    left.timestamp === right.timestamp &&
-    left.cpuPercent === right.cpuPercent &&
-    left.rssBytes === right.rssBytes &&
-    left.primaryCpuPercent === right.primaryCpuPercent &&
-    left.primaryRssBytes === right.primaryRssBytes &&
-    left.childCpuPercent === right.childCpuPercent &&
-    left.childRssBytes === right.childRssBytes &&
-    left.processCount === right.processCount &&
-    left.runtimeLoadScope === right.runtimeLoadScope &&
-    left.runtimeLoadTruncated === right.runtimeLoadTruncated &&
-    left.pidSource === right.pidSource &&
-    left.pid === right.pid &&
-    left.runtimePid === right.runtimePid
-  );
-}
-
 function areMemberRuntimeEntriesEquivalent(
   left: Map<string, TeamAgentRuntimeEntry> | undefined,
   right: Map<string, TeamAgentRuntimeEntry> | undefined
@@ -312,13 +290,6 @@ function areMemberRuntimeEntriesEquivalent(
     const rightEntry = right.get(key);
     const leftDiagnostics = Array.isArray(leftEntry.diagnostics) ? leftEntry.diagnostics : [];
     const rightDiagnostics = Array.isArray(rightEntry?.diagnostics) ? rightEntry.diagnostics : [];
-    const rightResourceHistoryCandidate = rightEntry?.resourceHistory;
-    const leftResourceHistory = Array.isArray(leftEntry.resourceHistory)
-      ? leftEntry.resourceHistory
-      : [];
-    const rightResourceHistory = Array.isArray(rightResourceHistoryCandidate)
-      ? rightResourceHistoryCandidate
-      : [];
     if (
       leftEntry.memberName !== rightEntry?.memberName ||
       leftEntry.alive !== rightEntry?.alive ||
@@ -352,11 +323,7 @@ function areMemberRuntimeEntriesEquivalent(
       leftEntry.runtimeLastSeenAt !== rightEntry?.runtimeLastSeenAt ||
       leftEntry.historicalBootstrapConfirmed !== rightEntry?.historicalBootstrapConfirmed ||
       leftDiagnostics.length !== rightDiagnostics.length ||
-      !leftDiagnostics.every((value, index) => value === rightDiagnostics[index]) ||
-      leftResourceHistory.length !== rightResourceHistory.length ||
-      !leftResourceHistory.every((value, index) =>
-        areRuntimeResourceSamplesEquivalent(value, rightResourceHistory[index])
-      )
+      !leftDiagnostics.every((value, index) => value === rightDiagnostics[index])
     ) {
       return false;
     }
