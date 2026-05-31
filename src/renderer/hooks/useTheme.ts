@@ -44,6 +44,12 @@ let systemThemeSnapshot: ResolvedTheme | null = null;
 let systemThemeQuery: MediaQueryList | null = null;
 const systemThemeListeners = new Set<() => void>();
 
+function selectConfiguredTheme(state: {
+  appConfig: { general?: { theme?: Theme } } | null;
+}): Theme {
+  return state.appConfig?.general?.theme ?? 'system';
+}
+
 function getSystemThemeSnapshot(): ResolvedTheme {
   systemThemeSnapshot ??= readCachedResolvedTheme() ?? readSystemResolvedTheme();
   return systemThemeSnapshot;
@@ -89,10 +95,7 @@ export function useTheme(): {
   isDark: boolean;
   isLight: boolean;
 } {
-  const appConfig = useStore((s) => s.appConfig);
-
-  // Get configured theme
-  const configuredTheme: Theme = appConfig?.general?.theme ?? 'system';
+  const configuredTheme = useStore(selectConfiguredTheme);
   const systemTheme = useSystemTheme();
   const resolvedTheme = configuredTheme === 'system' ? systemTheme : configuredTheme;
 
