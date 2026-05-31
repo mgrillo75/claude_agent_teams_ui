@@ -22,7 +22,7 @@ import type {
 
 const logger = createLogger('Service:TeamTaskReader');
 const MAX_TASK_FILE_BYTES = 2 * 1024 * 1024;
-const ALL_TASKS_CACHE_TTL_MS = 5_000;
+const ALL_TASKS_CACHE_TTL_MS = 30_000;
 const TASK_FILE_CACHE_MAX_ENTRIES = 8_192;
 
 interface CachedAllTasks {
