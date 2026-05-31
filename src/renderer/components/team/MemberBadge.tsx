@@ -17,6 +17,8 @@ import {
 
 import { MemberHoverCard } from './members/MemberHoverCard';
 
+import type { ResolvedTeamMember } from '@shared/types';
+
 interface MemberBadgeProps {
   name: string;
   color?: string;
@@ -30,6 +32,8 @@ interface MemberBadgeProps {
   /** Disable the hover card (e.g. inside MemberHoverCard itself to avoid nesting) */
   disableHoverCard?: boolean;
 }
+
+const EMPTY_TEAM_MEMBERS: readonly ResolvedTeamMember[] = [];
 
 /**
  * Reusable member avatar + colored name badge.
@@ -49,10 +53,13 @@ export const MemberBadge = memo(
   }: MemberBadgeProps): React.JSX.Element => {
     const colors = getTeamColorSet(color ?? '');
     const { isLight } = useTheme();
-    const selectedTeamName = useStore((s) => s.selectedTeamName);
-    const effectiveTeamName = teamName ?? selectedTeamName;
+    const effectiveAvatarTeamName = useStore((s) =>
+      hideAvatar ? null : (teamName ?? s.selectedTeamName)
+    );
     const teamMembers = useStore((s) =>
-      effectiveTeamName ? selectResolvedMembersForTeamName(s, effectiveTeamName) : []
+      effectiveAvatarTeamName
+        ? selectResolvedMembersForTeamName(s, effectiveAvatarTeamName)
+        : EMPTY_TEAM_MEMBERS
     );
     const avatarMap = useMemo(() => buildMemberAvatarMap(teamMembers), [teamMembers]);
     const avatarSize = size === 'md' ? 32 : size === 'sm' ? 24 : 18;
