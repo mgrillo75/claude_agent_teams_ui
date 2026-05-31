@@ -731,6 +731,8 @@ interface ParsedBootstrapTranscriptTailLine {
   // this line's parse-cache entry (filePath + mtime + size); a file change re-parses
   // into fresh line objects, so the memo cannot drift from the line's text.
   bootstrapFailureReason?: string | null;
+  bootstrapContextCandidateByTeam?: Map<string, boolean>;
+  bootstrapContextMemberMatchByName?: Map<string, boolean>;
 }
 
 interface ParsedBootstrapTranscriptTailCacheEntry {
@@ -762,6 +764,50 @@ function isNormalizedBootstrapTranscriptContextMemberText(
   normalizedMemberName: string
 ): boolean {
   return !!normalizedMemberName && normalizedText.includes(normalizedMemberName);
+}
+
+function getCachedBootstrapContextCandidateForLine(
+  line: ParsedBootstrapTranscriptTailLine,
+  normalizedText: string,
+  normalizedTeamName: string
+): boolean {
+  let candidateByTeam = line.bootstrapContextCandidateByTeam;
+  if (!candidateByTeam) {
+    candidateByTeam = new Map<string, boolean>();
+    line.bootstrapContextCandidateByTeam = candidateByTeam;
+  }
+  const cached = candidateByTeam.get(normalizedTeamName);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const value = isNormalizedBootstrapTranscriptContextCandidateText(
+    normalizedText,
+    normalizedTeamName
+  );
+  candidateByTeam.set(normalizedTeamName, value);
+  return value;
+}
+
+function getCachedBootstrapContextMemberMatchForLine(
+  line: ParsedBootstrapTranscriptTailLine,
+  normalizedText: string,
+  normalizedMemberName: string
+): boolean {
+  let matchByName = line.bootstrapContextMemberMatchByName;
+  if (!matchByName) {
+    matchByName = new Map<string, boolean>();
+    line.bootstrapContextMemberMatchByName = matchByName;
+  }
+  const cached = matchByName.get(normalizedMemberName);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const value = isNormalizedBootstrapTranscriptContextMemberText(
+    normalizedText,
+    normalizedMemberName
+  );
+  matchByName.set(normalizedMemberName, value);
+  return value;
 }
 
 import type {
@@ -30545,14 +30591,16 @@ export class TeamProvisioningService {
         }
         const lineNormalizedText = normalizedText ?? '';
         if (shouldCollectBootstrapContext) {
-          const isBootstrapContextLine = isNormalizedBootstrapTranscriptContextCandidateText(
+          const isBootstrapContextLine = getCachedBootstrapContextCandidateForLine(
+            parsedLine,
             lineNormalizedText,
             normalizedTeamName
           );
           if (isBootstrapContextLine) {
             for (const contextMemberName of normalizedContextMemberNames) {
               if (
-                isNormalizedBootstrapTranscriptContextMemberText(
+                getCachedBootstrapContextMemberMatchForLine(
+                  parsedLine,
                   lineNormalizedText,
                   contextMemberName
                 )
