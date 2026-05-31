@@ -809,6 +809,61 @@ describe('team-fs-worker integration', () => {
     }
   });
 
+  it('removes stale persisted task projection caches when a team has no cacheable task files', async () => {
+    const workerPath = await getWorkerPath();
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'team-fs-worker-'));
+    const tasksBase = path.join(tempDir, 'tasks');
+    const projectionCacheBase = path.join(tempDir, 'projection-cache');
+    const teamName = 'empty-stale-persistent-cache-team';
+    const tasksDir = path.join(tasksBase, teamName);
+    const taskPath = path.join(tasksDir, '1.json');
+    await fs.mkdir(tasksDir, { recursive: true });
+    await fs.writeFile(
+      taskPath,
+      JSON.stringify({
+        id: '1',
+        subject: 'Temporary subject',
+        status: 'pending',
+        createdAt: '2026-05-02T12:00:00.000Z',
+      }),
+      'utf8'
+    );
+
+    const firstWorker = createWorker(workerPath);
+    let cachePath = '';
+    try {
+      const first = await callGetAllTasks(firstWorker, tasksBase, projectionCacheBase);
+      expect(first.tasks[0]).toMatchObject({ teamName, subject: 'Temporary subject' });
+      expect(first.diag?.persistentCacheWrites).toBe(1);
+      const cacheFiles = await fs.readdir(path.join(projectionCacheBase, 'v1'));
+      cachePath = path.join(projectionCacheBase, 'v1', cacheFiles[0]);
+    } finally {
+      await firstWorker.terminate();
+    }
+
+    await fs.rm(taskPath);
+
+    const secondWorker = createWorker(workerPath);
+    try {
+      const second = await callGetAllTasks(secondWorker, tasksBase, projectionCacheBase);
+      expect(second.tasks).toHaveLength(0);
+      expect(second.diag?.persistentCacheLoads).toBe(1);
+      await expect(fs.stat(cachePath)).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      await secondWorker.terminate();
+    }
+
+    const thirdWorker = createWorker(workerPath);
+    try {
+      const third = await callGetAllTasks(thirdWorker, tasksBase, projectionCacheBase);
+      expect(third.tasks).toHaveLength(0);
+      expect(third.diag?.persistentCacheLoads).toBe(0);
+      expect(third.diag?.persistentCacheReadFailures).toBe(0);
+    } finally {
+      await thirdWorker.terminate();
+    }
+  });
+
   it('rejects persisted task projections that contain deleted tasks as task records', async () => {
     const workerPath = await getWorkerPath();
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'team-fs-worker-'));

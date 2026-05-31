@@ -1935,7 +1935,14 @@ async function readTasksDirForTeam(
       }
     }
   }
-  if (shouldWritePersistentTaskProjectionCache(persistentCache, nextPersistentEntries, taskDiag)) {
+  if (persistentCache && nextPersistentEntries.size === 0) {
+    const cachePath = getPersistentTaskProjectionCachePath(payload, teamName);
+    if (cachePath) {
+      await fs.promises.rm(cachePath, { force: true }).catch(() => undefined);
+    }
+  } else if (
+    shouldWritePersistentTaskProjectionCache(persistentCache, nextPersistentEntries, taskDiag)
+  ) {
     await writePersistentTaskProjectionCache(
       payload,
       teamName,
