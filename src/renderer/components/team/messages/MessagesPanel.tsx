@@ -507,6 +507,9 @@ export const MessagesPanel = memo(function MessagesPanel({
   );
   const messagesScrollTopRef = useRef(initialSidebarStateRef.current.messagesScrollTop);
   const messagesScrollPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Tracks which team the pending scroll persistence belongs to, so a debounced update
+  // scheduled before a team switch is never applied to or persisted under the new team.
+  const messagesScrollPersistTeamRef = useRef(teamName);
   const [bottomSheetSnapIndex, setBottomSheetSnapIndex] = useState(
     initialSidebarStateRef.current.bottomSheetSnapIndex
   );
@@ -522,6 +525,7 @@ export const MessagesPanel = memo(function MessagesPanel({
     setMessagesSearchBarVisible(initialSidebarStateRef.current.messagesSearchBarVisible);
     setExpandedItemKey(initialSidebarStateRef.current.expandedItemKey);
     messagesScrollTopRef.current = initialSidebarStateRef.current.messagesScrollTop;
+    messagesScrollPersistTeamRef.current = teamName;
     setMessagesScrollTop(initialSidebarStateRef.current.messagesScrollTop);
     setBottomSheetSnapIndex(initialSidebarStateRef.current.bottomSheetSnapIndex);
   }, [teamName]);
@@ -551,11 +555,17 @@ export const MessagesPanel = memo(function MessagesPanel({
 
   const persistMessagesScrollTop = useCallback((nextScrollTop: number): void => {
     messagesScrollTopRef.current = nextScrollTop;
+    const scheduledTeamName = messagesScrollPersistTeamRef.current;
     if (messagesScrollPersistTimerRef.current) {
       clearTimeout(messagesScrollPersistTimerRef.current);
     }
     messagesScrollPersistTimerRef.current = setTimeout(() => {
       messagesScrollPersistTimerRef.current = null;
+      // Drop a queued update that outlived a team switch: it carries the previous team's
+      // offset and must not overwrite the scroll state the new team just restored.
+      if (messagesScrollPersistTeamRef.current !== scheduledTeamName) {
+        return;
+      }
       setMessagesScrollTop((current) =>
         Math.abs(current - messagesScrollTopRef.current) < 1
           ? current

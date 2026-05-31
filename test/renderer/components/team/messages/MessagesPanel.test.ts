@@ -570,6 +570,97 @@ describe('MessagesPanel idle summary invariants', () => {
     );
   });
 
+  it('flushes a pending scroll to the previous team without leaking it when switching teams mid-debounce', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    const messagesState = {
+      canonicalMessages: [makeMessage({ messageId: 'm-1', text: 'hello' })],
+      optimisticMessages: [],
+      feedRevision: 'rev-1',
+      nextCursor: null,
+      hasMore: false,
+      lastFetchedAt: Date.now(),
+      loadingHead: false,
+      loadingOlder: false,
+      headHydrated: true,
+    };
+
+    await act(async () => {
+      storeState.teamMessagesByName['atlas-hq'] = messagesState;
+      storeState.teamMessagesByName['beta-hq'] = messagesState;
+      root.render(
+        React.createElement(MessagesPanel, {
+          teamName: 'atlas-hq',
+          position: 'sidebar',
+          onPositionChange: vi.fn(),
+          members: [],
+          tasks: [],
+          timeWindow: null,
+          pendingRepliesByMember: {},
+          onPendingReplyChange: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const scrollContainer = host.querySelector('.overflow-y-auto') as HTMLDivElement | null;
+    expect(scrollContainer).not.toBeNull();
+
+    // Scroll, leaving the 100ms persist debounce pending (do not advance timers yet).
+    await act(async () => {
+      scrollContainer!.scrollTop = 320;
+      scrollContainer!.dispatchEvent(new Event('scroll', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    vi.mocked(setTeamMessagesSidebarUiState).mockClear();
+
+    // Switch teams while the debounced scroll update is still queued.
+    await act(async () => {
+      root.render(
+        React.createElement(MessagesPanel, {
+          teamName: 'beta-hq',
+          position: 'sidebar',
+          onPositionChange: vi.fn(),
+          members: [],
+          tasks: [],
+          timeWindow: null,
+          pendingRepliesByMember: {},
+          onPendingReplyChange: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(100);
+      await Promise.resolve();
+    });
+
+    // The pending offset is flushed to the team that actually owned it...
+    expect(setTeamMessagesSidebarUiState).toHaveBeenCalledWith(
+      'atlas-hq',
+      expect.objectContaining({ messagesScrollTop: 320 })
+    );
+    // ...and is never persisted under the team we switched into.
+    const leakedToNewTeam = vi
+      .mocked(setTeamMessagesSidebarUiState)
+      .mock.calls.some(
+        ([name, state]) =>
+          name === 'beta-hq' && (state as { messagesScrollTop?: number }).messagesScrollTop === 320
+      );
+    expect(leakedToNewTeam).toBe(false);
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
   it('hides passive peer summaries by default while unread badge only counts filtered unread messages', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     const host = document.createElement('div');
