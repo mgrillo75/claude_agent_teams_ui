@@ -29,7 +29,10 @@ export function structurallySharePlainValue<T>(previous: T, next: T): T {
 
     for (let index = 0; index < next.length; index += 1) {
       const previousItem = previous[index];
-      const sharedItem = structurallySharePlainValue(previousItem, next[index]);
+      const nextItem = next[index];
+      const sharedItem = Object.is(previousItem, nextItem)
+        ? previousItem
+        : structurallySharePlainValue(previousItem, nextItem);
 
       if (result) {
         result[index] = sharedItem;
@@ -56,10 +59,15 @@ export function structurallySharePlainValue<T>(previous: T, next: T): T {
     for (let index = 0; index < nextKeys.length; index += 1) {
       const key = nextKeys[index];
       const hasPreviousKey = Object.prototype.hasOwnProperty.call(previousRecord, key);
-      const sharedValue = structurallySharePlainValue(previousRecord[key], nextRecord[key]);
+      const previousValue = previousRecord[key];
+      const nextValue = nextRecord[key];
+      const sharedValue =
+        hasPreviousKey && Object.is(previousValue, nextValue)
+          ? previousValue
+          : structurallySharePlainValue(previousValue, nextValue);
       if (result) {
         result[key] = sharedValue;
-      } else if (!hasPreviousKey || !Object.is(sharedValue, previousRecord[key])) {
+      } else if (!hasPreviousKey || !Object.is(sharedValue, previousValue)) {
         result = {};
         for (let copyIndex = 0; copyIndex < index; copyIndex += 1) {
           const previousKey = nextKeys[copyIndex];
