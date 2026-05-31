@@ -26006,7 +26006,12 @@ export class TeamProvisioningService {
   ): { rows: RuntimeTelemetryProcessTableRow[] | null } | null {
     const cached = this.runtimeProcessRowsForUsageSnapshotByTeam.get(teamName);
     const nowMs = Date.now();
-    if (!cached || cached.expiresAtMs <= nowMs || cached.runId !== runId) {
+    if (
+      !cached ||
+      cached.expiresAtMs <= nowMs ||
+      cached.runId !== runId ||
+      cached.generation !== this.getRuntimeSnapshotCacheGeneration(teamName)
+    ) {
       return null;
     }
 
@@ -26026,7 +26031,10 @@ export class TeamProvisioningService {
       return { rows: null };
     }
 
-    const rows = cached.rows.filter((row) => row.runtimeTelemetrySource !== 'windows-host');
+    const rows =
+      this.normalizeRuntimeProcessRowsForTelemetry(cached.rows)?.filter(
+        (row) => row.runtimeTelemetrySource !== 'windows-host'
+      ) ?? [];
     return { rows };
   }
 
@@ -26427,14 +26435,10 @@ export class TeamProvisioningService {
   }
 
   private shouldSampleMissingRuntimeUsageStatsWithPidusage(): boolean {
-    if (!this.isRuntimePidusageTelemetryEnabled()) {
-      return false;
-    }
-
     // CPU/RSS telemetry already comes from the enriched process table in the
     // default path. If this opt-in is enabled, preserve the older fallback for
     // missing rows across platforms.
-    return true;
+    return this.isRuntimePidusageTelemetryEnabled();
   }
 
   private isRuntimePidusageTelemetryEnabled(): boolean {

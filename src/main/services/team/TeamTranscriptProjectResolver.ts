@@ -72,12 +72,12 @@ interface TeamTranscriptProjectContextOptions {
   includeTeamSubagentSessionDiscovery?: boolean;
 }
 
-type TeamTranscriptFileStat = {
+interface TeamTranscriptFileStat {
   mtimeMs: number;
   size: number;
   ctimeMs?: number;
   isFile: () => boolean;
-};
+}
 
 type ScannedSessionProjectMatch = Omit<SessionProjectMatch, 'projectPath'> & {
   projectPath?: string;

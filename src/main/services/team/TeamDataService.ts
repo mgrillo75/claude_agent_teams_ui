@@ -256,7 +256,7 @@ async function mapLimitLocal<T, R>(
         if (index >= items.length) {
           return;
         }
-        results[index] = await mapper(items[index]!);
+        results[index] = await mapper(items[index]);
       }
     })
   );

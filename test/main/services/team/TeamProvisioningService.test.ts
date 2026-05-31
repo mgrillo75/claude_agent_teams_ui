@@ -3514,7 +3514,7 @@ describe('TeamProvisioningService', () => {
       expect(listRuntimeProcessTableForCurrentPlatform).toHaveBeenCalledTimes(2);
     });
 
-    it('keeps the short live runtime metadata cache for tracked runs', async () => {
+    it('reuses process rows through the short liveness cache for tracked runs', async () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date('2026-05-03T12:00:00.000Z'));
       const svc = new TeamProvisioningService();
@@ -3531,6 +3531,11 @@ describe('TeamProvisioningService', () => {
 
       await (svc as any).getLiveTeamAgentRuntimeMetadata('runtime-team');
       vi.setSystemTime(new Date('2026-05-03T12:00:03.000Z'));
+      await (svc as any).getLiveTeamAgentRuntimeMetadata('runtime-team');
+
+      expect(listRuntimeProcessTableForCurrentPlatform).toHaveBeenCalledTimes(1);
+
+      vi.setSystemTime(new Date('2026-05-03T12:00:06.000Z'));
       await (svc as any).getLiveTeamAgentRuntimeMetadata('runtime-team');
 
       expect(listRuntimeProcessTableForCurrentPlatform).toHaveBeenCalledTimes(2);
