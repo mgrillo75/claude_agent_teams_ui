@@ -54,6 +54,7 @@ const readHookState = {
   markRead: vi.fn(),
   markAllRead: vi.fn(),
 };
+const activityTimelineRenderSpy = vi.hoisted(() => vi.fn());
 
 const expandedHookState = {
   expandedSet: new Set<string>(),
@@ -161,37 +162,44 @@ vi.mock('@renderer/components/team/activity/ActivityTimeline', () => ({
     loading,
     revisionMessageId,
     onReviseMessage,
+    leadActivity,
+    leadContextUpdatedAt,
   }: {
     messages: InboxMessage[];
     loading?: boolean;
     revisionMessageId?: string | null;
     onReviseMessage?: (message: InboxMessage) => void;
+    leadActivity?: string;
+    leadContextUpdatedAt?: string;
   }) =>
-    React.createElement(
-      'div',
-      { 'data-testid': 'activity-timeline' },
-      loading ? React.createElement('div', null, 'timeline-loading') : null,
-      messages.map((message) =>
-        React.createElement(
-          'div',
-          {
-            key: message.messageId ?? `${message.from}-${message.timestamp}`,
-            'data-message-id': message.messageId ?? '',
-          },
-          `${message.messageId ?? 'no-id'}:${message.text}`,
-          message.messageId === revisionMessageId
-            ? React.createElement(
-                'button',
-                {
-                  type: 'button',
-                  onClick: () => onReviseMessage?.(message),
-                },
-                'Edit message'
-              )
-            : null
+    (() => {
+      activityTimelineRenderSpy({ leadActivity, leadContextUpdatedAt, messages });
+      return React.createElement(
+        'div',
+        { 'data-testid': 'activity-timeline' },
+        loading ? React.createElement('div', null, 'timeline-loading') : null,
+        messages.map((message) =>
+          React.createElement(
+            'div',
+            {
+              key: message.messageId ?? `${message.from}-${message.timestamp}`,
+              'data-message-id': message.messageId ?? '',
+            },
+            `${message.messageId ?? 'no-id'}:${message.text}`,
+            message.messageId === revisionMessageId
+              ? React.createElement(
+                  'button',
+                  {
+                    type: 'button',
+                    onClick: () => onReviseMessage?.(message),
+                  },
+                  'Edit message'
+                )
+              : null
+          )
         )
-      )
-    ),
+      );
+    })(),
 }));
 
 vi.mock('@renderer/components/team/activity/MessageExpandDialog', () => ({
@@ -238,6 +246,7 @@ describe('MessagesPanel idle summary invariants', () => {
     readHookState.readSet = new Set<string>();
     readHookState.markRead.mockReset();
     readHookState.markAllRead.mockReset();
+    activityTimelineRenderSpy.mockClear();
     expandedHookState.expandedSet = new Set<string>();
     expandedHookState.toggle.mockReset();
     storeState.sendTeamMessage.mockClear();
@@ -328,6 +337,113 @@ describe('MessagesPanel idle summary invariants', () => {
     });
 
     expect(host.textContent).not.toContain('timeline-loading');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('does not pass live lead status to timeline when newest visible item is not a current lead thought', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      storeState.teamMessagesByName['atlas-hq'] = {
+        canonicalMessages: [makeMessage({ messageId: 'm-1', text: 'ordinary message' })],
+        optimisticMessages: [],
+        feedRevision: 'rev-1',
+        nextCursor: null,
+        hasMore: false,
+        lastFetchedAt: Date.now(),
+        loadingHead: false,
+        loadingOlder: false,
+        headHydrated: true,
+      };
+      root.render(
+        React.createElement(MessagesPanel, {
+          teamName: 'atlas-hq',
+          position: 'sidebar',
+          onPositionChange: vi.fn(),
+          members: [],
+          tasks: [],
+          isTeamAlive: true,
+          leadActivity: 'active',
+          leadContextUpdatedAt: '2026-05-31T10:00:00.000Z',
+          currentLeadSessionId: 'lead-session-current',
+          timeWindow: null,
+          pendingRepliesByMember: {},
+          onPendingReplyChange: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(activityTimelineRenderSpy).toHaveBeenCalled();
+    expect(activityTimelineRenderSpy.mock.lastCall?.[0]).toMatchObject({
+      leadActivity: undefined,
+      leadContextUpdatedAt: undefined,
+    });
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('passes live lead status when newest visible item is the current lead thought', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      storeState.teamMessagesByName['atlas-hq'] = {
+        canonicalMessages: [
+          makeMessage({
+            from: 'lead',
+            to: undefined,
+            source: 'lead_session',
+            leadSessionId: 'lead-session-current',
+            messageId: 'lead-thought-1',
+            text: 'thinking',
+          }),
+        ],
+        optimisticMessages: [],
+        feedRevision: 'rev-1',
+        nextCursor: null,
+        hasMore: false,
+        lastFetchedAt: Date.now(),
+        loadingHead: false,
+        loadingOlder: false,
+        headHydrated: true,
+      };
+      root.render(
+        React.createElement(MessagesPanel, {
+          teamName: 'atlas-hq',
+          position: 'sidebar',
+          onPositionChange: vi.fn(),
+          members: [],
+          tasks: [],
+          isTeamAlive: true,
+          leadActivity: 'active',
+          leadContextUpdatedAt: '2026-05-31T10:00:00.000Z',
+          currentLeadSessionId: 'lead-session-current',
+          timeWindow: null,
+          pendingRepliesByMember: {},
+          onPendingReplyChange: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(activityTimelineRenderSpy).toHaveBeenCalled();
+    expect(activityTimelineRenderSpy.mock.lastCall?.[0]).toMatchObject({
+      leadActivity: 'active',
+      leadContextUpdatedAt: '2026-05-31T10:00:00.000Z',
+    });
 
     await act(async () => {
       root.unmount();

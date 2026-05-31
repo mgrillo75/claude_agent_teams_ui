@@ -53,7 +53,11 @@ import {
 import { useShallow } from 'zustand/react/shallow';
 
 import { ActivityTimeline, type TimelineViewport } from '../activity/ActivityTimeline';
-import { getThoughtGroupKey, groupTimelineItems } from '../activity/LeadThoughtsGroup';
+import {
+  getThoughtGroupKey,
+  groupTimelineItems,
+  isLeadThought,
+} from '../activity/LeadThoughtsGroup';
 import { MessageExpandDialog } from '../activity/MessageExpandDialog';
 import { CollapsibleTeamSection } from '../CollapsibleTeamSection';
 import {
@@ -691,6 +695,15 @@ export const MessagesPanel = memo(function MessagesPanel({
       searchQuery: messagesSearchQuery,
     });
   }, [effectiveMessages, leadNames, messagesFilter, messagesSearchQuery, timeWindow]);
+  const firstTimelineMessage = activityTimelineMessages[0];
+  const hasVisibleCurrentLeadThought =
+    firstTimelineMessage != null &&
+    isLeadThought(firstTimelineMessage) &&
+    (currentLeadSessionId ? firstTimelineMessage.leadSessionId === currentLeadSessionId : true);
+  const timelineLeadActivity = hasVisibleCurrentLeadThought ? leadActivity : undefined;
+  const timelineLeadContextUpdatedAt = hasVisibleCurrentLeadThought
+    ? leadContextUpdatedAt
+    : undefined;
 
   const hasTrackedPendingReplies = useMemo(
     () => Object.keys(pendingRepliesByMember).length > 0,
@@ -1175,8 +1188,8 @@ export const MessagesPanel = memo(function MessagesPanel({
       onToggleExpandOverride={toggleExpandOverride}
       currentLeadSessionId={currentLeadSessionId}
       isTeamAlive={isTeamAlive}
-      leadActivity={leadActivity}
-      leadContextUpdatedAt={leadContextUpdatedAt}
+      leadActivity={timelineLeadActivity}
+      leadContextUpdatedAt={timelineLeadContextUpdatedAt}
       teamNames={teamNames}
       teamColorByName={teamColorByName}
       onTeamClick={openTeamTab}
