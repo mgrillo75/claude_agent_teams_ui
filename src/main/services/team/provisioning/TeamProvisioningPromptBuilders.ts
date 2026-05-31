@@ -282,6 +282,22 @@ export function getBootstrapTranscriptSuccessSource(
     return null;
   }
 
+  return getBootstrapTranscriptSuccessSourceFromNormalized(
+    normalizedText,
+    normalizedTeamName,
+    normalizedMemberName
+  );
+}
+
+export function getBootstrapTranscriptSuccessSourceFromNormalized(
+  normalizedText: string,
+  normalizedTeamName: string,
+  normalizedMemberName: string
+): BootstrapTranscriptSuccessSource | null {
+  if (!normalizedText || !normalizedTeamName || !normalizedMemberName) {
+    return null;
+  }
+
   if (
     normalizedText.startsWith(
       `member briefing for ${normalizedMemberName} on team "${normalizedTeamName}" (${normalizedTeamName}).`

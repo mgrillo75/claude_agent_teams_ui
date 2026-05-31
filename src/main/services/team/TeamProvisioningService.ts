@@ -315,7 +315,7 @@ import {
   extractBootstrapFailureReason,
   extractHeartbeatTimestamp,
   extractTranscriptMessageText,
-  getBootstrapTranscriptSuccessSource,
+  getBootstrapTranscriptSuccessSourceFromNormalized,
   getCanonicalSendMessageFieldRule,
   getCanonicalSendMessageToolRule,
   isTaskBoardSnapshotWorkCandidate,
@@ -30598,11 +30598,10 @@ export class TeamProvisioningService {
           outcome = { kind: 'failure', observedAt: candidate.observedAt, reason };
           break;
         }
-        const successSource = getBootstrapTranscriptSuccessSource(
-          candidate.text,
-          teamName,
-          memberName,
-          candidate.normalizedText
+        const successSource = getBootstrapTranscriptSuccessSourceFromNormalized(
+          candidate.normalizedText,
+          normalizedTeamName,
+          normalizedMemberName
         );
         if (successSource) {
           outcome = { kind: 'success', observedAt: candidate.observedAt, source: successSource };
