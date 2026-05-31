@@ -45,7 +45,7 @@ export interface RuntimeProcessTableRow {
  * before acting. Keep this cache long enough to collapse bursts from concurrent
  * team refreshes, but short enough that stale "alive" UI is brief.
  */
-const RUNTIME_PROCESS_TABLE_CACHE_TTL_MS = 10_000;
+const RUNTIME_PROCESS_TABLE_CACHE_TTL_MS = 30_000;
 
 interface RuntimeProcessTableCacheEntry {
   rows: RuntimeProcessTableRow[];
