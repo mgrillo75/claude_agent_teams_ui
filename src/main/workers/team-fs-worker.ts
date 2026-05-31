@@ -774,9 +774,9 @@ function restorePersistentTaskProjectionShape(
     owner: typeof task.owner === 'string' ? task.owner : undefined,
     createdBy: typeof task.createdBy === 'string' ? task.createdBy : undefined,
     status,
-    workIntervals: Array.isArray(task.workIntervals) ? task.workIntervals : undefined,
-    reviewIntervals: Array.isArray(task.reviewIntervals) ? task.reviewIntervals : undefined,
-    historyEvents: Array.isArray(task.historyEvents) ? task.historyEvents : undefined,
+    workIntervals: normalizeWorkIntervals(task),
+    reviewIntervals: normalizeReviewIntervals(task),
+    historyEvents: normalizeHistoryEvents(task),
     blocks: Array.isArray(task.blocks) ? task.blocks : undefined,
     blockedBy: Array.isArray(task.blockedBy) ? task.blockedBy : undefined,
     related: Array.isArray(task.related)
@@ -785,7 +785,7 @@ function restorePersistentTaskProjectionShape(
     createdAt: typeof task.createdAt === 'string' ? task.createdAt : undefined,
     updatedAt: typeof task.updatedAt === 'string' ? task.updatedAt : undefined,
     projectPath: typeof task.projectPath === 'string' ? task.projectPath : undefined,
-    comments: Array.isArray(task.comments) ? task.comments : undefined,
+    comments: normalizeComments(task),
     needsClarification:
       task.needsClarification === 'lead' || task.needsClarification === 'user'
         ? task.needsClarification
