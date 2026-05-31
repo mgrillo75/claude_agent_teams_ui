@@ -142,4 +142,46 @@ describe('TeamTaskReader', () => {
     ]);
     expect(readFileSpy).toHaveBeenCalledTimes(2);
   });
+
+  it('reuses read-only team task projection snapshots until a file signature changes', async () => {
+    await setupTasksRoot();
+    const taskPath = await writeTaskFile('atlas-hq', {
+      id: '1',
+      subject: 'Projection cached task',
+      status: 'pending',
+      createdAt: '2026-05-02T12:00:00.000Z',
+    });
+
+    const readFileSpy = vi.spyOn(fs.promises, 'readFile');
+    const reader = new TeamTaskReader();
+
+    const firstRead = await reader.getTasksProjectionSnapshot('atlas-hq');
+    const secondRead = await reader.getTasksProjectionSnapshot('atlas-hq');
+
+    expect(secondRead).toBe(firstRead);
+    expect(secondRead).toMatchObject([{ id: '1', subject: 'Projection cached task' }]);
+    expect(readFileSpy).toHaveBeenCalledTimes(1);
+
+    await fsp.writeFile(
+      taskPath,
+      JSON.stringify(
+        {
+          id: '1',
+          subject: 'Projection changed task',
+          status: 'pending',
+          createdAt: '2026-05-02T12:00:00.000Z',
+        },
+        null,
+        2
+      ),
+      'utf8'
+    );
+    const changedTime = new Date(Date.now() + 2_000);
+    await fsp.utimes(taskPath, changedTime, changedTime);
+
+    const thirdRead = await reader.getTasksProjectionSnapshot('atlas-hq');
+    expect(thirdRead).not.toBe(firstRead);
+    expect(thirdRead).toMatchObject([{ id: '1', subject: 'Projection changed task' }]);
+    expect(readFileSpy).toHaveBeenCalledTimes(2);
+  });
 });

@@ -510,6 +510,15 @@ export class TeamDataService {
     TeamTaskReader.invalidateAllTasksCache();
   }
 
+  private async readTasksForUiSnapshot(teamName: string): Promise<readonly TeamTask[]> {
+    const snapshotReader = this.taskReader as TeamTaskReader & {
+      getTasksProjectionSnapshot?: (teamName: string) => Promise<readonly TeamTask[]>;
+    };
+    return typeof snapshotReader.getTasksProjectionSnapshot === 'function'
+      ? snapshotReader.getTasksProjectionSnapshot(teamName)
+      : this.taskReader.getTasks(teamName);
+  }
+
   private getController(teamName: string): AgentTeamsController {
     return this.controllerFactory(teamName);
   }
@@ -1013,7 +1022,7 @@ export class TeamDataService {
         : null;
 
     const [tasks, kanbanState, presenceIndex] = await Promise.all([
-      this.taskReader.getTasks(teamName).catch(() => [] as TeamTask[]),
+      this.readTasksForUiSnapshot(teamName).catch(() => [] as readonly TeamTask[]),
       this.kanbanManager
         .getState(teamName)
         .catch(() => ({ teamName, reviewers: [], tasks: {} }) as KanbanState),
@@ -1387,7 +1396,7 @@ export class TeamDataService {
         label: 'tasks',
         createFallback: () => [],
         warningText: 'Tasks failed to load',
-        load: () => this.taskReader.getTasks(teamName),
+        load: () => this.readTasksForUiSnapshot(teamName),
       })
     );
     const [
@@ -1424,7 +1433,7 @@ export class TeamDataService {
     if (launchStateStepResult.warning) warnings.push(launchStateStepResult.warning);
     if (kanbanStateStepResult.warning) warnings.push(kanbanStateStepResult.warning);
 
-    const tasks: TeamTask[] = tasksStepResult.value;
+    const tasks: readonly TeamTask[] = tasksStepResult.value;
     const inboxNames: string[] = inboxNamesStepResult.value;
     mark('postStart');
 
