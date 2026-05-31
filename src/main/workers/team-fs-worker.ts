@@ -744,6 +744,7 @@ function normalizePersistentTaskReadResult(
       ? task.status
       : null;
   if (!status) return null;
+  if (status === 'deleted') return null;
 
   return { task: restorePersistentTaskProjectionShape(task, teamName, status) };
 }

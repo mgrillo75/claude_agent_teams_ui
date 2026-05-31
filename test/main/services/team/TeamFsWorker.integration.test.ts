@@ -709,4 +709,68 @@ describe('team-fs-worker integration', () => {
       await corruptWorker.terminate();
     }
   });
+
+  it('rejects persisted task projections that contain deleted tasks as task records', async () => {
+    const workerPath = await getWorkerPath();
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'team-fs-worker-'));
+    const tasksBase = path.join(tempDir, 'tasks');
+    const projectionCacheBase = path.join(tempDir, 'projection-cache');
+    const teamName = 'deleted-persistent-cache-team';
+    const tasksDir = path.join(tasksBase, teamName);
+    await fs.mkdir(tasksDir, { recursive: true });
+    await fs.writeFile(
+      path.join(tasksDir, '1.json'),
+      JSON.stringify({
+        id: '1',
+        subject: 'Deleted subject',
+        status: 'deleted',
+        createdAt: '2026-05-02T12:00:00.000Z',
+      }),
+      'utf8'
+    );
+
+    const firstWorker = createWorker(workerPath);
+    try {
+      const first = await callGetAllTasks(firstWorker, tasksBase, projectionCacheBase);
+      expect(first.tasks).toHaveLength(0);
+      expect(first.diag?.skipReasons).toMatchObject({ task_deleted: 1 });
+      expect(first.diag?.persistentCacheWrites).toBe(1);
+    } finally {
+      await firstWorker.terminate();
+    }
+
+    const cacheFiles = await fs.readdir(path.join(projectionCacheBase, 'v1'));
+    const cachePath = path.join(projectionCacheBase, 'v1', cacheFiles[0]);
+    const cache = JSON.parse(await fs.readFile(cachePath, 'utf8')) as {
+      entries: Record<
+        string,
+        {
+          result: unknown;
+        }
+      >;
+    };
+    cache.entries['1.json'].result = {
+      task: {
+        id: '1',
+        displayId: '1',
+        subject: 'Should not return',
+        status: 'deleted',
+        teamName,
+      },
+    };
+    await fs.writeFile(cachePath, JSON.stringify(cache), 'utf8');
+
+    const secondWorker = createWorker(workerPath);
+    try {
+      const second = await callGetAllTasks(secondWorker, tasksBase, projectionCacheBase);
+      expect(second.tasks).toHaveLength(0);
+      expect(second.diag?.persistentCacheLoads).toBe(1);
+      expect(second.diag?.persistentCacheHits).toBe(0);
+      expect(second.diag?.persistentCacheMisses).toBe(1);
+      expect(second.diag?.cacheMisses).toBe(1);
+      expect(second.diag?.skipReasons).toMatchObject({ task_deleted: 1 });
+    } finally {
+      await secondWorker.terminate();
+    }
+  });
 });
