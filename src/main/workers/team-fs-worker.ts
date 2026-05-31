@@ -831,6 +831,7 @@ async function readPersistentTaskProjectionCache(
     const stat = await fs.promises.stat(cachePath);
     if (!stat.isFile() || stat.size > MAX_PERSISTENT_TASK_PROJECTION_CACHE_BYTES) {
       taskDiag.persistentCacheReadFailures++;
+      await fs.promises.rm(cachePath, { force: true }).catch(() => undefined);
       return null;
     }
     const raw = await fs.promises.readFile(cachePath, 'utf8');
@@ -898,13 +899,19 @@ async function writePersistentTaskProjectionCache(
     writtenAt: nowMs(),
     entries: Object.fromEntries(entries),
   };
+  const raw = JSON.stringify(body);
+  if (Buffer.byteLength(raw, 'utf8') > MAX_PERSISTENT_TASK_PROJECTION_CACHE_BYTES) {
+    taskDiag.persistentCacheWriteFailures++;
+    await fs.promises.rm(cachePath, { force: true }).catch(() => undefined);
+    return;
+  }
   const tmpPath = `${cachePath}.${process.pid}.${Date.now()}.${Math.random()
     .toString(36)
     .slice(2)}.tmp`;
 
   try {
     await fs.promises.mkdir(path.dirname(cachePath), { recursive: true });
-    await fs.promises.writeFile(tmpPath, JSON.stringify(body), 'utf8');
+    await fs.promises.writeFile(tmpPath, raw, 'utf8');
     await fs.promises.rename(tmpPath, cachePath);
     taskDiag.persistentCacheWrites++;
   } catch {

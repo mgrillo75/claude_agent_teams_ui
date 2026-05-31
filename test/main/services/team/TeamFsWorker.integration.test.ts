@@ -710,6 +710,53 @@ describe('team-fs-worker integration', () => {
     }
   });
 
+  it('replaces oversized persisted task projection caches instead of repeatedly reusing them', async () => {
+    const workerPath = await getWorkerPath();
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'team-fs-worker-'));
+    const tasksBase = path.join(tempDir, 'tasks');
+    const projectionCacheBase = path.join(tempDir, 'projection-cache');
+    const teamName = 'oversized-persistent-cache-team';
+    const tasksDir = path.join(tasksBase, teamName);
+    await fs.mkdir(tasksDir, { recursive: true });
+    await fs.writeFile(
+      path.join(tasksDir, '1.json'),
+      JSON.stringify({
+        id: '1',
+        subject: 'Small subject',
+        status: 'pending',
+        createdAt: '2026-05-02T12:00:00.000Z',
+      }),
+      'utf8'
+    );
+
+    const firstWorker = createWorker(workerPath);
+    try {
+      const first = await callGetAllTasks(firstWorker, tasksBase, projectionCacheBase);
+      expect(first.tasks[0]).toMatchObject({ teamName, subject: 'Small subject' });
+      expect(first.diag?.persistentCacheWrites).toBe(1);
+    } finally {
+      await firstWorker.terminate();
+    }
+
+    const cacheFiles = await fs.readdir(path.join(projectionCacheBase, 'v1'));
+    const cachePath = path.join(projectionCacheBase, 'v1', cacheFiles[0]);
+    const oversizedBytes = 16 * 1024 * 1024 + 1;
+    await fs.writeFile(cachePath, Buffer.alloc(oversizedBytes, 120));
+
+    const secondWorker = createWorker(workerPath);
+    try {
+      const second = await callGetAllTasks(secondWorker, tasksBase, projectionCacheBase);
+      expect(second.tasks[0]).toMatchObject({ teamName, subject: 'Small subject' });
+      expect(second.diag?.persistentCacheReadFailures).toBe(1);
+      expect(second.diag?.cacheMisses).toBe(1);
+      expect(second.diag?.persistentCacheWrites).toBe(1);
+      const repairedStat = await fs.stat(cachePath);
+      expect(repairedStat.size).toBeLessThan(oversizedBytes);
+    } finally {
+      await secondWorker.terminate();
+    }
+  });
+
   it('rejects persisted task projections that contain deleted tasks as task records', async () => {
     const workerPath = await getWorkerPath();
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'team-fs-worker-'));
