@@ -938,6 +938,51 @@ describe('TeamDataService', () => {
     );
   });
 
+  it('persists member-level provider backend and fast mode during addMember', async () => {
+    const writeMembers = vi.fn(async () => {});
+    const membersMetaStore = {
+      getMembers: vi.fn(async () => []),
+      writeMembers,
+    } as never;
+
+    const service = new TeamDataService(
+      { getConfig: vi.fn(), listTeams: vi.fn() } as never,
+      { getTasks: vi.fn(async () => []) } as never,
+      { listInboxNames: vi.fn(async () => []), getMessages: vi.fn(async () => []) } as never,
+      {} as never,
+      {} as never,
+      { resolveMembers: vi.fn(() => []) } as never,
+      {
+        getState: vi.fn(async () => ({ teamName: 'runtime-team', reviewers: [], tasks: {} })),
+      } as never,
+      {} as never,
+      membersMetaStore,
+      { readMessages: vi.fn(async () => []) } as never,
+      (() => ({ processes: { listProcesses: vi.fn(async () => []) } }) as never) as never,
+      {} as never,
+      { getMeta: vi.fn(async () => ({ providerId: 'codex' })) } as never
+    );
+
+    await service.addMember('runtime-team', {
+      name: 'alice',
+      providerId: 'codex',
+      providerBackendId: 'codex-native',
+      fastMode: 'on',
+    });
+
+    expect(writeMembers).toHaveBeenCalledWith(
+      'runtime-team',
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'alice',
+          providerId: 'codex',
+          providerBackendId: 'codex-native',
+          fastMode: 'on',
+        }),
+      ])
+    );
+  });
+
   it('allows multiple OpenCode teammates in replaceMembers drafts before they are persisted', async () => {
     const writeMembers = vi.fn(async () => {});
     const membersMetaStore = {

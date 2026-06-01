@@ -3762,8 +3762,10 @@ export const TeamDetailView = memo(function TeamDetailView({
                             workflow: entry.workflow,
                             isolation: entry.isolation,
                             providerId: entry.providerId,
+                            providerBackendId: entry.providerBackendId,
                             model: entry.model,
                             effort: entry.effort,
+                            fastMode: entry.fastMode,
                             mcpPolicy: entry.mcpPolicy,
                           });
                         }

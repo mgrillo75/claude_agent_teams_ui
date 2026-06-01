@@ -331,6 +331,8 @@ describe('ipc teams handlers', () => {
     repairStaleTaskActivityIntervalsBeforeSnapshot: vi.fn(() => Promise.resolve(undefined)),
     reattachOpenCodeOwnedMemberLane: vi.fn(async () => undefined),
     detachOpenCodeOwnedMemberLane: vi.fn(async () => undefined),
+    attachLiveRosterMember: vi.fn(async () => undefined),
+    detachLiveRosterMember: vi.fn(async () => undefined),
   };
   const boardTaskActivityService = {
     getTaskActivity: vi.fn<() => Promise<BoardTaskActivityEntry[]>>(async () => []),
@@ -409,6 +411,10 @@ describe('ipc teams handlers', () => {
     provisioningService.prepareLiveMemberMcpLaunchConfig.mockResolvedValue(null);
     provisioningService.discardLiveMemberMcpLaunchConfig.mockReset();
     provisioningService.discardLiveMemberMcpLaunchConfig.mockResolvedValue(undefined);
+    provisioningService.attachLiveRosterMember.mockReset();
+    provisioningService.attachLiveRosterMember.mockResolvedValue(undefined);
+    provisioningService.detachLiveRosterMember.mockReset();
+    provisioningService.detachLiveRosterMember.mockResolvedValue(undefined);
     provisioningService.repairStaleTaskActivityIntervalsBeforeSnapshot.mockReset();
     provisioningService.repairStaleTaskActivityIntervalsBeforeSnapshot.mockResolvedValue(undefined);
     launchIoGovernor = new LaunchIoGovernor({ quietWindowMs: 100 });
@@ -2779,7 +2785,7 @@ describe('ipc teams handlers', () => {
       );
     });
 
-    it('notifies a live lead to use member_briefing bootstrap for the new teammate', async () => {
+    it('attaches a live teammate through the lifecycle service', async () => {
       const handler = handlers.get(TEAM_ADD_MEMBER)!;
       const result = (await handler({} as never, 'my-team', {
         name: 'alice',
@@ -2788,35 +2794,45 @@ describe('ipc teams handlers', () => {
       })) as { success: boolean };
 
       expect(result.success).toBe(true);
-      expect(provisioningService.sendMessageToTeam).toHaveBeenCalledWith(
+      expect(provisioningService.attachLiveRosterMember).toHaveBeenCalledWith(
         'my-team',
-        expect.stringContaining('and the exact prompt below:')
+        'alice',
+        { reason: 'member_added' }
       );
-      expect(provisioningService.sendMessageToTeam).toHaveBeenCalledWith(
+      expect(provisioningService.sendMessageToTeam).not.toHaveBeenCalled();
+    });
+
+    it('preserves runtime backend and fast mode when adding a live teammate', async () => {
+      const handler = handlers.get(TEAM_ADD_MEMBER)!;
+      const result = (await handler({} as never, 'my-team', {
+        name: 'alice',
+        role: 'developer',
+        providerId: 'codex',
+        providerBackendId: 'codex-native',
+        fastMode: 'on',
+      })) as { success: boolean };
+
+      expect(result.success).toBe(true);
+      expect(service.addMember).toHaveBeenCalledWith(
         'my-team',
-        expect.stringContaining('Your FIRST action: call MCP tool member_briefing')
+        expect.objectContaining({
+          name: 'alice',
+          providerId: 'codex',
+          providerBackendId: 'codex-native',
+          fastMode: 'on',
+        })
       );
-      expect(provisioningService.sendMessageToTeam).toHaveBeenCalledWith(
+      expect(provisioningService.attachLiveRosterMember).toHaveBeenCalledWith(
         'my-team',
-        expect.stringContaining(
-          'Do NOT start work, claim tasks, or improvise workflow/task/process rules'
-        )
-      );
-      expect(provisioningService.sendMessageToTeam).toHaveBeenCalledWith(
-        'my-team',
-        expect.stringContaining('You are alice, a developer on team "My Team" (my-team).')
-      );
-      expect(provisioningService.sendMessageToTeam).toHaveBeenCalledWith(
-        'my-team',
-        expect.stringContaining('Their workflow: Focus on frontend polish')
+        'alice',
+        { reason: 'member_added' }
       );
     });
 
-    it('passes Agent Teams MCP only launch overrides into live add-member Agent prompt', async () => {
-      const projectPath = path.join(os.tmpdir(), 'codex live add project with spaces');
+    it('lets lifecycle own MCP launch config for live add-member', async () => {
       service.getTeamData.mockResolvedValueOnce({
         teamName: 'my-team',
-        config: { name: 'My Team', projectPath },
+        config: { name: 'My Team' },
         tasks: [],
         members: [
           {
@@ -2830,11 +2846,6 @@ describe('ipc teams handlers', () => {
         kanbanState: { teamName: 'my-team', reviewers: [], tasks: {} },
         processes: [],
       });
-      provisioningService.prepareLiveMemberMcpLaunchConfig.mockResolvedValueOnce({
-        mcpConfigPath: '/tmp/codex live add/alice-app-only.json',
-        mcpSettingSources: 'user,project,local',
-        strictMcpConfig: true,
-      } as never);
 
       const handler = handlers.get(TEAM_ADD_MEMBER)!;
       const result = (await handler({} as never, 'my-team', {
@@ -2845,29 +2856,24 @@ describe('ipc teams handlers', () => {
       })) as { success: boolean };
 
       expect(result.success).toBe(true);
-      expect(provisioningService.prepareLiveMemberMcpLaunchConfig).toHaveBeenCalledWith({
-        teamName: 'my-team',
-        cwd: projectPath,
-        mcpPolicy: { mode: 'appOnly' },
-      });
-      expect(provisioningService.sendMessageToTeam).toHaveBeenCalledWith(
+      expect(provisioningService.attachLiveRosterMember).toHaveBeenCalledWith(
         'my-team',
-        expect.stringContaining(
-          'mcp_config="/tmp/codex live add/alice-app-only.json", mcp_setting_sources="user,project,local", strict_mcp_config=true'
-        )
+        'alice',
+        { reason: 'member_added' }
       );
+      expect(provisioningService.prepareLiveMemberMcpLaunchConfig).not.toHaveBeenCalled();
+      expect(provisioningService.sendMessageToTeam).not.toHaveBeenCalled();
     });
 
-    it('discards live add-member MCP config if lead notification fails after config creation', async () => {
-      const mcpLaunchConfig = {
-        mcpConfigPath: '/tmp/codex live add/alice-orphan-risk.json',
-        mcpSettingSources: 'user,project,local',
-        strictMcpConfig: true,
-      };
-      provisioningService.prepareLiveMemberMcpLaunchConfig.mockResolvedValueOnce(
-        mcpLaunchConfig as never
+    it('rolls back live addMember metadata when lifecycle attach fails', async () => {
+      mockGetMembersMetaFile.mockResolvedValueOnce({
+        version: 1,
+        providerBackendId: 'codex-native',
+        members: [],
+      });
+      provisioningService.attachLiveRosterMember.mockRejectedValueOnce(
+        new Error('attach failed')
       );
-      provisioningService.sendMessageToTeam.mockRejectedValueOnce(new Error('lead offline'));
 
       const handler = handlers.get(TEAM_ADD_MEMBER)!;
       const result = (await handler({} as never, 'my-team', {
@@ -2875,14 +2881,20 @@ describe('ipc teams handlers', () => {
         role: 'developer',
         providerId: 'codex',
         mcpPolicy: { mode: 'appOnly' },
-      })) as { success: boolean };
+      })) as { success: boolean; error?: string };
 
-      expect(result.success).toBe(true);
-      expect(provisioningService.discardLiveMemberMcpLaunchConfig).toHaveBeenCalledWith({
-        teamName: 'my-team',
-        mcpLaunchConfig,
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('attach failed');
+      expect(mockWriteMembersMeta).toHaveBeenCalledWith('my-team', [], {
+        providerBackendId: 'codex-native',
       });
-      vi.mocked(console.warn).mockClear();
+      expect(provisioningService.detachLiveRosterMember).toHaveBeenCalledWith('my-team', 'alice');
+      const detachOrder = provisioningService.detachLiveRosterMember.mock.invocationCallOrder[0];
+      const metadataRestoreOrder = mockWriteMembersMeta.mock.invocationCallOrder[0];
+      expect(detachOrder).toBeDefined();
+      expect(metadataRestoreOrder).toBeDefined();
+      expect(detachOrder!).toBeLessThan(metadataRestoreOrder!);
+      vi.mocked(console.error).mockClear();
     });
 
     it('rejects invalid team name', async () => {
@@ -2935,11 +2947,11 @@ describe('ipc teams handlers', () => {
       expect(result.success).toBe(false);
       expect(result.error).toContain('running OpenCode-led team');
       expect(service.addMember).not.toHaveBeenCalled();
-      expect(provisioningService.reattachOpenCodeOwnedMemberLane).not.toHaveBeenCalled();
+      expect(provisioningService.attachLiveRosterMember).not.toHaveBeenCalled();
       vi.mocked(console.error).mockClear();
     });
 
-    it('rolls back live OpenCode addMember metadata when controlled reattach fails', async () => {
+    it('rolls back live OpenCode addMember metadata when lifecycle attach fails', async () => {
       const handler = handlers.get(TEAM_ADD_MEMBER)!;
       mockGetMembersMetaFile.mockResolvedValueOnce({
         version: 1,
@@ -2985,7 +2997,7 @@ describe('ipc teams handlers', () => {
         kanbanState: { teamName: 'my-team', reviewers: [], tasks: {} },
         processes: [],
       });
-      provisioningService.reattachOpenCodeOwnedMemberLane.mockRejectedValueOnce(
+      provisioningService.attachLiveRosterMember.mockRejectedValueOnce(
         new Error('reattach failed')
       );
 
@@ -3030,7 +3042,7 @@ describe('ipc teams handlers', () => {
         ],
         { providerBackendId: 'codex-native' }
       );
-      expect(provisioningService.detachOpenCodeOwnedMemberLane).toHaveBeenCalledWith(
+      expect(provisioningService.detachLiveRosterMember).toHaveBeenCalledWith(
         'my-team',
         'alice'
       );
@@ -3250,11 +3262,11 @@ describe('ipc teams handlers', () => {
       expect(result.success).toBe(false);
       expect(result.error).toContain('running OpenCode-led team');
       expect(service.removeMember).not.toHaveBeenCalled();
-      expect(provisioningService.detachOpenCodeOwnedMemberLane).not.toHaveBeenCalled();
+      expect(provisioningService.detachLiveRosterMember).not.toHaveBeenCalled();
       vi.mocked(console.error).mockClear();
     });
 
-    it('rolls back live OpenCode removeMember metadata when lane detach fails', async () => {
+    it('rolls back live removeMember metadata when lifecycle detach fails', async () => {
       const handler = handlers.get(TEAM_REMOVE_MEMBER)!;
       mockGetMembersMetaFile.mockResolvedValueOnce({
         version: 1,
@@ -3300,7 +3312,7 @@ describe('ipc teams handlers', () => {
         kanbanState: { teamName: 'my-team', reviewers: [], tasks: {} },
         processes: [],
       });
-      provisioningService.detachOpenCodeOwnedMemberLane.mockRejectedValueOnce(
+      provisioningService.detachLiveRosterMember.mockRejectedValueOnce(
         new Error('detach failed')
       );
 
@@ -3333,7 +3345,7 @@ describe('ipc teams handlers', () => {
         ],
         { providerBackendId: undefined }
       );
-      expect(provisioningService.reattachOpenCodeOwnedMemberLane).toHaveBeenCalledWith(
+      expect(provisioningService.attachLiveRosterMember).toHaveBeenCalledWith(
         'my-team',
         'alice',
         { reason: 'member_updated' }
@@ -3362,11 +3374,10 @@ describe('ipc teams handlers', () => {
       expect(result.success).toBe(false);
     });
 
-    it('passes Agent Teams MCP only launch overrides into live restore-member Agent prompt', async () => {
-      const projectPath = path.join(os.tmpdir(), 'codex live restore project with spaces');
+    it('lets lifecycle own MCP launch config for live restore-member', async () => {
       service.getTeamData.mockResolvedValueOnce({
         teamName: 'my-team',
-        config: { name: 'My Team', projectPath },
+        config: { name: 'My Team' },
         tasks: [],
         members: [
           {
@@ -3394,30 +3405,21 @@ describe('ipc teams handlers', () => {
         providerId: 'codex',
         mcpPolicy: { mode: 'appOnly' },
       } as never);
-      provisioningService.prepareLiveMemberMcpLaunchConfig.mockResolvedValueOnce({
-        mcpConfigPath: '/tmp/codex live restore/alice-app-only.json',
-        mcpSettingSources: 'user,project,local',
-        strictMcpConfig: true,
-      } as never);
 
       const handler = handlers.get(TEAM_RESTORE_MEMBER)!;
       const result = (await handler({} as never, 'my-team', 'alice')) as { success: boolean };
 
       expect(result.success).toBe(true);
-      expect(provisioningService.prepareLiveMemberMcpLaunchConfig).toHaveBeenCalledWith({
-        teamName: 'my-team',
-        cwd: projectPath,
-        mcpPolicy: { mode: 'appOnly' },
-      });
-      expect(provisioningService.sendMessageToTeam).toHaveBeenCalledWith(
+      expect(provisioningService.attachLiveRosterMember).toHaveBeenCalledWith(
         'my-team',
-        expect.stringContaining(
-          'mcp_config="/tmp/codex live restore/alice-app-only.json", mcp_setting_sources="user,project,local", strict_mcp_config=true'
-        )
+        'alice',
+        { reason: 'member_restored' }
       );
+      expect(provisioningService.prepareLiveMemberMcpLaunchConfig).not.toHaveBeenCalled();
+      expect(provisioningService.sendMessageToTeam).not.toHaveBeenCalled();
     });
 
-    it('reattaches a restored OpenCode teammate on a live mixed team', async () => {
+    it('attaches a restored OpenCode teammate through the lifecycle service', async () => {
       const handler = handlers.get(TEAM_RESTORE_MEMBER)!;
       service.restoreMember.mockResolvedValueOnce({
         name: 'alice',
@@ -3452,10 +3454,10 @@ describe('ipc teams handlers', () => {
       const result = (await handler({} as never, 'my-team', 'alice')) as { success: boolean };
 
       expect(result.success).toBe(true);
-      expect(provisioningService.reattachOpenCodeOwnedMemberLane).toHaveBeenCalledWith(
+      expect(provisioningService.attachLiveRosterMember).toHaveBeenCalledWith(
         'my-team',
         'alice',
-        { reason: 'member_added' }
+        { reason: 'member_restored' }
       );
       expect(provisioningService.sendMessageToTeam).not.toHaveBeenCalled();
     });
@@ -3495,17 +3497,16 @@ describe('ipc teams handlers', () => {
       expect(result.success).toBe(false);
       expect(result.error).toContain('running OpenCode-led team');
       expect(service.restoreMember).not.toHaveBeenCalled();
-      expect(provisioningService.reattachOpenCodeOwnedMemberLane).not.toHaveBeenCalled();
+      expect(provisioningService.attachLiveRosterMember).not.toHaveBeenCalled();
       vi.mocked(console.error).mockClear();
     });
   });
 
   describe('replaceMembers', () => {
-    it('passes Agent Teams MCP only launch overrides into live replace-members added teammate prompt', async () => {
-      const projectPath = path.join(os.tmpdir(), 'codex live replace project with spaces');
+    it('attaches added teammates through lifecycle during live replaceMembers', async () => {
       service.getTeamData.mockResolvedValueOnce({
         teamName: 'my-team',
-        config: { name: 'My Team', projectPath },
+        config: { name: 'My Team' },
         tasks: [],
         members: [
           {
@@ -3519,11 +3520,6 @@ describe('ipc teams handlers', () => {
         kanbanState: { teamName: 'my-team', reviewers: [], tasks: {} },
         processes: [],
       });
-      provisioningService.prepareLiveMemberMcpLaunchConfig.mockResolvedValueOnce({
-        mcpConfigPath: '/tmp/codex live replace/alice-app-only.json',
-        mcpSettingSources: 'user,project,local',
-        strictMcpConfig: true,
-      } as never);
 
       const handler = handlers.get(TEAM_REPLACE_MEMBERS)!;
       const result = (await handler({} as never, 'my-team', {
@@ -3538,20 +3534,16 @@ describe('ipc teams handlers', () => {
       })) as { success: boolean };
 
       expect(result.success).toBe(true);
-      expect(provisioningService.prepareLiveMemberMcpLaunchConfig).toHaveBeenCalledWith({
-        teamName: 'my-team',
-        cwd: projectPath,
-        mcpPolicy: { mode: 'appOnly' },
-      });
-      expect(provisioningService.sendMessageToTeam).toHaveBeenCalledWith(
+      expect(provisioningService.attachLiveRosterMember).toHaveBeenCalledWith(
         'my-team',
-        expect.stringContaining(
-          'mcp_config="/tmp/codex live replace/alice-app-only.json", mcp_setting_sources="user,project,local", strict_mcp_config=true'
-        )
+        'alice',
+        { reason: 'member_added' }
       );
+      expect(provisioningService.prepareLiveMemberMcpLaunchConfig).not.toHaveBeenCalled();
+      expect(provisioningService.sendMessageToTeam).not.toHaveBeenCalled();
     });
 
-    it('reports existing teammate MCP policy changes in live replace-members summary', async () => {
+    it('reattaches updated primary-owned teammates through lifecycle during live replaceMembers', async () => {
       service.getTeamData.mockResolvedValueOnce({
         teamName: 'my-team',
         config: { name: 'My Team' },
@@ -3589,11 +3581,13 @@ describe('ipc teams handlers', () => {
       })) as { success: boolean };
 
       expect(result.success).toBe(true);
-      expect(provisioningService.prepareLiveMemberMcpLaunchConfig).not.toHaveBeenCalled();
-      expect(provisioningService.sendMessageToTeam).toHaveBeenCalledWith(
+      expect(provisioningService.attachLiveRosterMember).toHaveBeenCalledWith(
         'my-team',
-        expect.stringContaining('MCP access policy changed - restart required')
+        'alice',
+        { reason: 'member_updated' }
       );
+      expect(provisioningService.prepareLiveMemberMcpLaunchConfig).not.toHaveBeenCalled();
+      expect(provisioningService.sendMessageToTeam).not.toHaveBeenCalled();
     });
 
     it('blocks live replaceMembers for a running OpenCode-led team before metadata is changed', async () => {
@@ -3629,12 +3623,12 @@ describe('ipc teams handlers', () => {
       expect(result.success).toBe(false);
       expect(result.error).toContain('running OpenCode-led team');
       expect(service.replaceMembers).not.toHaveBeenCalled();
-      expect(provisioningService.reattachOpenCodeOwnedMemberLane).not.toHaveBeenCalled();
-      expect(provisioningService.detachOpenCodeOwnedMemberLane).not.toHaveBeenCalled();
+      expect(provisioningService.attachLiveRosterMember).not.toHaveBeenCalled();
+      expect(provisioningService.detachLiveRosterMember).not.toHaveBeenCalled();
       vi.mocked(console.error).mockClear();
     });
 
-    it('rolls back live OpenCode replaceMembers metadata when lane reattach fails', async () => {
+    it('rolls back live OpenCode replaceMembers metadata when lifecycle attach fails', async () => {
       const handler = handlers.get(TEAM_REPLACE_MEMBERS)!;
       mockGetMembersMetaFile.mockResolvedValueOnce({
         version: 1,
@@ -3696,7 +3690,7 @@ describe('ipc teams handlers', () => {
         kanbanState: { teamName: 'my-team', reviewers: [], tasks: {} },
         processes: [],
       });
-      provisioningService.reattachOpenCodeOwnedMemberLane.mockRejectedValueOnce(
+      provisioningService.attachLiveRosterMember.mockRejectedValueOnce(
         new Error('reattach failed')
       );
 
@@ -3774,13 +3768,13 @@ describe('ipc teams handlers', () => {
         ],
         { providerBackendId: 'codex-native' }
       );
-      expect(provisioningService.reattachOpenCodeOwnedMemberLane).toHaveBeenNthCalledWith(
+      expect(provisioningService.attachLiveRosterMember).toHaveBeenNthCalledWith(
         1,
         'my-team',
         'alice',
         { reason: 'member_updated' }
       );
-      expect(provisioningService.reattachOpenCodeOwnedMemberLane).toHaveBeenNthCalledWith(
+      expect(provisioningService.attachLiveRosterMember).toHaveBeenNthCalledWith(
         2,
         'my-team',
         'alice',
@@ -3832,8 +3826,8 @@ describe('ipc teams handlers', () => {
       );
       expect(result.error).toContain('alice');
       expect(service.replaceMembers).not.toHaveBeenCalled();
-      expect(provisioningService.reattachOpenCodeOwnedMemberLane).not.toHaveBeenCalled();
-      expect(provisioningService.detachOpenCodeOwnedMemberLane).not.toHaveBeenCalled();
+      expect(provisioningService.attachLiveRosterMember).not.toHaveBeenCalled();
+      expect(provisioningService.detachLiveRosterMember).not.toHaveBeenCalled();
       vi.mocked(console.error).mockClear();
     });
 
@@ -3880,8 +3874,8 @@ describe('ipc teams handlers', () => {
       );
       expect(result.error).toContain('alice');
       expect(service.replaceMembers).not.toHaveBeenCalled();
-      expect(provisioningService.reattachOpenCodeOwnedMemberLane).not.toHaveBeenCalled();
-      expect(provisioningService.detachOpenCodeOwnedMemberLane).not.toHaveBeenCalled();
+      expect(provisioningService.attachLiveRosterMember).not.toHaveBeenCalled();
+      expect(provisioningService.detachLiveRosterMember).not.toHaveBeenCalled();
       vi.mocked(console.error).mockClear();
     });
   });

@@ -1868,14 +1868,22 @@ export class TeamDataService {
       throw new Error(`Member "${name}" already exists`);
     }
 
+    const memberProviderId = normalizeOptionalTeamProviderId(request.providerId);
+    const memberProviderBackendId = memberProviderId
+      ? migrateProviderBackendId(memberProviderId, request.providerBackendId)
+      : request.providerBackendId;
     const newMember: TeamMember = {
       name,
       role: request.role?.trim() || undefined,
       workflow: request.workflow?.trim() || undefined,
       isolation: request.isolation === 'worktree' ? ('worktree' as const) : undefined,
-      providerId: normalizeOptionalTeamProviderId(request.providerId),
+      providerId: memberProviderId,
+      ...(memberProviderBackendId ? { providerBackendId: memberProviderBackendId } : {}),
       model: request.model?.trim() || undefined,
       effort: isTeamEffortLevel(request.effort) ? request.effort : undefined,
+      ...(request.fastMode === 'inherit' || request.fastMode === 'on' || request.fastMode === 'off'
+        ? { fastMode: request.fastMode }
+        : {}),
       mcpPolicy: normalizeTeamMemberMcpPolicy(request.mcpPolicy),
       agentType: 'general-purpose',
       joinedAt: Date.now(),
@@ -1940,13 +1948,17 @@ export class TeamDataService {
         nextByName.add(name.toLowerCase());
         const prev = existingByName.get(name.toLowerCase());
         const isSameActiveMember = Boolean(prev && prev.removedAt == null);
+        const providerId = normalizeOptionalTeamProviderId(member.providerId);
+        const providerBackendId = providerId
+          ? migrateProviderBackendId(providerId, member.providerBackendId)
+          : member.providerBackendId;
         return {
           name,
           role: member.role?.trim() || undefined,
           workflow: member.workflow?.trim() || undefined,
           isolation: member.isolation === 'worktree' ? ('worktree' as const) : undefined,
-          providerId: normalizeOptionalTeamProviderId(member.providerId),
-          providerBackendId: migrateProviderBackendId(member.providerId, member.providerBackendId),
+          providerId,
+          providerBackendId,
           model: member.model?.trim() || undefined,
           effort: isTeamEffortLevel(member.effort) ? member.effort : undefined,
           fastMode:

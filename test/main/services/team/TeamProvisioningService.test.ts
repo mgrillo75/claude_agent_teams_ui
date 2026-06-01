@@ -15989,6 +15989,195 @@ describe('TeamProvisioningService', () => {
       expect(run.pendingMemberRestarts.has('forge')).toBe(true);
     });
 
+    it.each([
+      ['anthropic', undefined, 'anthropic'],
+      ['codex', undefined, 'codex'],
+      ['gemini', undefined, 'gemini'],
+      ['codex', 'anthropic', 'anthropic'],
+      ['anthropic', 'codex', 'codex'],
+      ['codex', 'gemini', 'gemini'],
+    ] as const)(
+      'attaches live primary-owned %s/%s teammate through direct process lifecycle',
+      async (leadProviderId, memberProviderId, expectedProviderId) => {
+        const teamName = `direct-live-${leadProviderId}-${memberProviderId ?? 'inherit'}`;
+        const svc = new TeamProvisioningService();
+        const run = createMemberSpawnRun({
+          teamName,
+          expectedMembers: [],
+          memberSpawnStatuses: new Map(),
+        });
+        run.child = { pid: 111 };
+        run.processKilled = false;
+        run.cancelRequested = false;
+        run.request = { providerId: leadProviderId };
+        (svc as any).aliveRunByTeam.set(teamName, run.runId);
+        (svc as any).runs.set(run.runId, run);
+
+        const directProcessLaunch = vi.fn(async (input) => {
+          const memberSpec = (svc as any).buildPrimaryOwnedMemberSpecForRuntime({
+            configuredMember: input.configuredMember,
+            run: input.run,
+          });
+          expect(memberSpec.providerId).toBe(expectedProviderId);
+        });
+        const opencodeReattach = vi.fn(async () => {});
+        (svc as any).launchDirectProcessMemberRestart = directProcessLaunch;
+        (svc as any).reattachOpenCodeOwnedMemberLaneUnlocked = opencodeReattach;
+        (svc as any).readConfigForStrictDecision = vi.fn(async () => ({
+          name: 'Direct Live Team',
+          members: [
+            { name: 'team-lead', agentType: 'team-lead', providerId: leadProviderId },
+            {
+              name: 'forge',
+              role: 'Developer',
+              ...(memberProviderId ? { providerId: memberProviderId } : {}),
+              agentType: 'general-purpose',
+            },
+          ],
+        }));
+        (svc as any).membersMetaStore = { getMembers: vi.fn(async () => []) };
+        (svc as any).readPersistedRuntimeMembers = vi.fn(() => []);
+        (svc as any).getLiveTeamAgentRuntimeMetadata = vi.fn(async () => new Map());
+
+        await svc.attachLiveRosterMember(teamName, 'forge', { reason: 'member_added' });
+
+        expect(directProcessLaunch).toHaveBeenCalledWith(
+          expect.objectContaining({
+            teamName,
+            memberName: 'forge',
+            operation: 'member_added',
+            configuredMember: expect.objectContaining({
+              name: 'forge',
+            }),
+          })
+        );
+        expect(opencodeReattach).not.toHaveBeenCalled();
+      }
+    );
+
+    it('routes live OpenCode teammates through the OpenCode lane lifecycle', async () => {
+      const teamName = 'direct-live-opencode-member';
+      const svc = new TeamProvisioningService();
+      const run = createMemberSpawnRun({
+        teamName,
+        expectedMembers: [],
+        memberSpawnStatuses: new Map(),
+      });
+      run.child = { pid: 111 };
+      run.processKilled = false;
+      run.cancelRequested = false;
+      run.request = { providerId: 'codex' };
+      (svc as any).aliveRunByTeam.set(teamName, run.runId);
+      (svc as any).runs.set(run.runId, run);
+
+      const directProcessLaunch = vi.fn(async () => {});
+      const opencodeReattach = vi.fn(async () => {});
+      (svc as any).launchDirectProcessMemberRestart = directProcessLaunch;
+      (svc as any).reattachOpenCodeOwnedMemberLaneUnlocked = opencodeReattach;
+      (svc as any).readConfigForStrictDecision = vi.fn(async () => ({
+        name: 'Direct Live OpenCode Team',
+        members: [
+          { name: 'team-lead', agentType: 'team-lead', providerId: 'codex' },
+          {
+            name: 'forge',
+            role: 'Developer',
+            providerId: 'opencode',
+            agentType: 'general-purpose',
+          },
+        ],
+      }));
+      (svc as any).membersMetaStore = { getMembers: vi.fn(async () => []) };
+
+      await svc.attachLiveRosterMember(teamName, 'forge', { reason: 'member_added' });
+
+      expect(opencodeReattach).toHaveBeenCalledWith(teamName, 'forge', {
+        reason: 'member_added',
+      });
+      expect(directProcessLaunch).not.toHaveBeenCalled();
+    });
+
+    it('blocks live primary-owned teammate attach for OpenCode-led teams', async () => {
+      const teamName = 'opencode-led-live-primary-member';
+      const svc = new TeamProvisioningService();
+      const run = createMemberSpawnRun({
+        teamName,
+        expectedMembers: [],
+        memberSpawnStatuses: new Map(),
+      });
+      run.child = { pid: 111 };
+      run.processKilled = false;
+      run.cancelRequested = false;
+      run.request = { providerId: 'opencode' };
+      (svc as any).aliveRunByTeam.set(teamName, run.runId);
+      (svc as any).runs.set(run.runId, run);
+
+      const directProcessLaunch = vi.fn(async () => {});
+      const opencodeReattach = vi.fn(async () => {});
+      (svc as any).launchDirectProcessMemberRestart = directProcessLaunch;
+      (svc as any).reattachOpenCodeOwnedMemberLaneUnlocked = opencodeReattach;
+      (svc as any).readConfigForStrictDecision = vi.fn(async () => ({
+        name: 'OpenCode Led Live Team',
+        members: [
+          { name: 'team-lead', agentType: 'team-lead', providerId: 'opencode' },
+          {
+            name: 'forge',
+            role: 'Developer',
+            providerId: 'codex',
+            agentType: 'general-purpose',
+          },
+        ],
+      }));
+      (svc as any).membersMetaStore = { getMembers: vi.fn(async () => []) };
+
+      await expect(
+        svc.attachLiveRosterMember(teamName, 'forge', { reason: 'member_added' })
+      ).rejects.toThrow('OpenCode-led mixed teams are not supported');
+
+      expect(directProcessLaunch).not.toHaveBeenCalled();
+      expect(opencodeReattach).not.toHaveBeenCalled();
+    });
+
+    it('blocks live primary-owned teammate detach for OpenCode-led teams', async () => {
+      const teamName = 'opencode-led-live-primary-detach';
+      const svc = new TeamProvisioningService();
+      const run = createMemberSpawnRun({
+        teamName,
+        expectedMembers: ['forge'],
+        memberSpawnStatuses: new Map(),
+      });
+      run.child = { pid: 111 };
+      run.processKilled = false;
+      run.cancelRequested = false;
+      run.request = { providerId: 'opencode' };
+      (svc as any).aliveRunByTeam.set(teamName, run.runId);
+      (svc as any).runs.set(run.runId, run);
+
+      const opencodeDetach = vi.fn(async () => {});
+      const stopPrimaryRuntime = vi.fn(async () => {});
+      (svc as any).detachOpenCodeOwnedMemberLaneUnlocked = opencodeDetach;
+      (svc as any).stopPrimaryOwnedRosterRuntime = stopPrimaryRuntime;
+      (svc as any).readConfigForStrictDecision = vi.fn(async () => ({
+        name: 'OpenCode Led Live Team',
+        members: [
+          { name: 'team-lead', agentType: 'team-lead', providerId: 'opencode' },
+          {
+            name: 'forge',
+            role: 'Developer',
+            providerId: 'codex',
+            agentType: 'general-purpose',
+          },
+        ],
+      }));
+      (svc as any).membersMetaStore = { getMembers: vi.fn(async () => []) };
+
+      await expect(svc.detachLiveRosterMember(teamName, 'forge')).rejects.toThrow(
+        'OpenCode-led mixed teams are not supported'
+      );
+
+      expect(opencodeDetach).not.toHaveBeenCalled();
+      expect(stopPrimaryRuntime).not.toHaveBeenCalled();
+    });
+
     it('launches direct process teammate restarts with normal MCP settings inheritance', async () => {
       const teamName = 'process-flags-team';
       const projectPath = path.join(tempProjectsBase, 'process-flags-project');
@@ -15997,6 +16186,130 @@ describe('TeamProvisioningService', () => {
       vi.mocked(ClaudeBinaryResolver.resolve).mockResolvedValue('/mock/claude');
       const child = Object.assign(new EventEmitter(), {
         pid: 4567,
+        stdin: { on: vi.fn(), unref: vi.fn() },
+        stdout: { pipe: vi.fn(), unref: vi.fn() },
+        stderr: { pipe: vi.fn(), unref: vi.fn() },
+        unref: vi.fn(),
+      });
+      vi.mocked(spawnCli).mockReturnValue(child as any);
+
+      const svc = new TeamProvisioningService(undefined, undefined, undefined, undefined, {
+        writeConfigFile: vi.fn(async () => '/mock/mcp-config.json'),
+      } as any);
+      const run = createMemberSpawnRun({
+        teamName,
+        expectedMembers: ['atlas'],
+        memberSpawnStatuses: new Map(),
+      });
+      run.child = { pid: 111 };
+      run.request = { providerId: 'codex', skipPermissions: true, fastMode: 'on' };
+      run.detectedSessionId = 'lead-session-1';
+      const configuredMember = {
+        name: 'forge',
+        role: 'Developer',
+        providerId: 'codex',
+        model: 'gpt-5.4',
+        effort: 'medium',
+        agentType: 'general-purpose',
+      };
+      const config = {
+        name: 'Process Flags Team',
+        projectPath,
+        leadSessionId: 'lead-session-1',
+        members: [{ name: 'team-lead', agentType: 'team-lead' }, configuredMember],
+      };
+
+      (svc as any).buildProvisioningEnv = vi.fn(async () => ({
+        env: { CODEX_API_KEY: 'test-openai-key' },
+        authSource: 'openai_api_key',
+        providerArgs: [],
+      }));
+      const launchIdentity = {
+        providerId: 'codex',
+        providerBackendId: 'native',
+        selectedFastMode: 'on',
+        resolvedFastMode: true,
+      };
+      (svc as any).resolveDirectMemberLaunchIdentity = vi.fn(async (input) => {
+        expect(input.memberSpec.fastMode).toBe('on');
+        return launchIdentity;
+      });
+      (svc as any).buildTeamRuntimeLaunchArgsPlan = vi.fn(async (input) => ({
+        fastModeArgs:
+          input.launchIdentity === launchIdentity ? ['--test-codex-fast-mode'] : [],
+        runtimeTurnSettledHookArgs: [],
+        providerArgs: [],
+        settingsArgs: [],
+        extraArgs: [],
+        inheritedProviderArgs: [],
+        appManagedSettingsPath: null,
+      }));
+      (svc as any).materializeDirectProcessNativeBootstrapContext = vi.fn(async () => ({}));
+      (svc as any).updateDirectTmuxRestartMemberConfig = vi.fn(async () => {});
+      (svc as any).enqueueDirectRestartPrompt = vi.fn();
+      (svc as any).appendDirectProcessRuntimeEvent = vi.fn(async () => {});
+
+      await (svc as any).launchDirectProcessMemberRestart({
+        run,
+        teamName,
+        displayName: 'Process Flags Team',
+        leadName: 'team-lead',
+        memberName: 'forge',
+        config,
+        configuredMember,
+        persistedRuntimeMembers: [],
+        operation: 'member_added',
+      });
+
+      child.emit('close', 0, null);
+      await new Promise((resolve) => setTimeout(resolve, 25));
+
+      expect((svc as any).resolveDirectMemberLaunchIdentity).toHaveBeenCalledWith(
+        expect.objectContaining({
+          memberSpec: expect.objectContaining({ fastMode: 'on' }),
+        })
+      );
+      expect((svc as any).buildTeamRuntimeLaunchArgsPlan).toHaveBeenCalledWith(
+        expect.objectContaining({ launchIdentity })
+      );
+      expect(run.expectedMembers).toEqual(['atlas', 'forge']);
+      expect(run.effectiveMembers).toEqual([
+        expect.objectContaining({
+          name: 'forge',
+          providerId: 'codex',
+          fastMode: 'on',
+        }),
+      ]);
+      expect(run.allEffectiveMembers).toEqual([
+        expect.objectContaining({
+          name: 'forge',
+          providerId: 'codex',
+          fastMode: 'on',
+        }),
+      ]);
+      const launchArgs = vi.mocked(spawnCli).mock.calls[0]?.[1] as string[];
+      expect(launchArgs).toEqual(
+        expect.arrayContaining([
+          '--teammate-runtime',
+          'headless',
+          '--setting-sources',
+          'user,project,local',
+          '--mcp-config',
+          '/mock/mcp-config.json',
+          '--test-codex-fast-mode',
+        ])
+      );
+      expect(launchArgs).not.toContain('--strict-mcp-config');
+    });
+
+    it('stops a direct process teammate when post-spawn runtime event persistence fails', async () => {
+      const teamName = 'process-event-failure-team';
+      const projectPath = path.join(tempProjectsBase, 'process-event-failure-project');
+      fs.mkdirSync(projectPath, { recursive: true });
+
+      vi.mocked(ClaudeBinaryResolver.resolve).mockResolvedValue('/mock/claude');
+      const child = Object.assign(new EventEmitter(), {
+        pid: 5678,
         stdin: { on: vi.fn(), unref: vi.fn() },
         stdout: { pipe: vi.fn(), unref: vi.fn() },
         stderr: { pipe: vi.fn(), unref: vi.fn() },
@@ -16024,7 +16337,7 @@ describe('TeamProvisioningService', () => {
         agentType: 'general-purpose',
       };
       const config = {
-        name: 'Process Flags Team',
+        name: 'Process Event Failure Team',
         projectPath,
         leadSessionId: 'lead-session-1',
         members: [{ name: 'team-lead', agentType: 'team-lead' }, configuredMember],
@@ -16035,6 +16348,7 @@ describe('TeamProvisioningService', () => {
         authSource: 'openai_api_key',
         providerArgs: [],
       }));
+      (svc as any).resolveDirectMemberLaunchIdentity = vi.fn(async () => ({ providerId: 'codex' }));
       (svc as any).buildTeamRuntimeLaunchArgsPlan = vi.fn(async () => ({
         fastModeArgs: [],
         runtimeTurnSettledHookArgs: [],
@@ -16047,34 +16361,28 @@ describe('TeamProvisioningService', () => {
       (svc as any).materializeDirectProcessNativeBootstrapContext = vi.fn(async () => ({}));
       (svc as any).updateDirectTmuxRestartMemberConfig = vi.fn(async () => {});
       (svc as any).enqueueDirectRestartPrompt = vi.fn();
-      (svc as any).appendDirectProcessRuntimeEvent = vi.fn(async () => {});
+      (svc as any).appendDirectProcessRuntimeEvent = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('event write failed'));
 
-      await (svc as any).launchDirectProcessMemberRestart({
-        run,
-        teamName,
-        displayName: 'Process Flags Team',
-        leadName: 'team-lead',
-        memberName: 'forge',
-        config,
-        configuredMember,
-        persistedRuntimeMembers: [],
-      });
+      await expect(
+        (svc as any).launchDirectProcessMemberRestart({
+          run,
+          teamName,
+          displayName: 'Process Event Failure Team',
+          leadName: 'team-lead',
+          memberName: 'forge',
+          config,
+          configuredMember,
+          persistedRuntimeMembers: [],
+          operation: 'member_added',
+        })
+      ).rejects.toThrow('event write failed');
 
-      child.emit('close', 0, null);
+      expect(killProcessByPid).toHaveBeenCalledWith(5678);
+      expect((svc as any).updateDirectTmuxRestartMemberConfig).not.toHaveBeenCalled();
+      expect(run.allEffectiveMembers ?? []).toEqual([]);
       await new Promise((resolve) => setTimeout(resolve, 25));
-
-      const launchArgs = vi.mocked(spawnCli).mock.calls[0]?.[1] as string[];
-      expect(launchArgs).toEqual(
-        expect.arrayContaining([
-          '--teammate-runtime',
-          'headless',
-          '--setting-sources',
-          'user,project,local',
-          '--mcp-config',
-          '/mock/mcp-config.json',
-        ])
-      );
-      expect(launchArgs).not.toContain('--strict-mcp-config');
     });
 
     it('launches direct process teammate restarts with strict per-member MCP policy', async () => {
@@ -16135,6 +16443,8 @@ describe('TeamProvisioningService', () => {
         authSource: 'openai_api_key',
         providerArgs: [],
       }));
+      const launchIdentity = { providerId: 'codex' };
+      (svc as any).resolveDirectMemberLaunchIdentity = vi.fn(async () => launchIdentity);
       (svc as any).buildTeamRuntimeLaunchArgsPlan = vi.fn(async () => ({
         fastModeArgs: [],
         runtimeTurnSettledHookArgs: [],
