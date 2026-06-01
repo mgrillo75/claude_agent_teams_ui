@@ -60,6 +60,7 @@ vi.mock('@renderer/components/ui/tabs', () => {
 const storeState = {
   cliStatus: null as unknown,
   cliStatusLoading: false,
+  cliProviderStatusLoading: {} as Record<string, boolean>,
   appConfig: { general: { multimodelEnabled: true } },
   fetchCliProviderStatus: vi.fn().mockResolvedValue(undefined),
 };
@@ -109,8 +110,10 @@ import { TeamModelSelector } from '@renderer/components/team/dialogs/TeamModelSe
 describe('TeamModelSelector disabled Codex models', () => {
   afterEach(() => {
     document.body.innerHTML = '';
+    Reflect.deleteProperty(window, 'electronAPI');
     storeState.cliStatus = null;
     storeState.cliStatusLoading = false;
+    storeState.cliProviderStatusLoading = {};
     storeState.fetchCliProviderStatus.mockClear();
     codexAccountHookState.snapshot = null;
     codexAccountHookState.loading = false;
@@ -124,6 +127,7 @@ describe('TeamModelSelector disabled Codex models', () => {
 
   it('shows only Default while Codex runtime models are still loading', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    Object.defineProperty(window, 'electronAPI', { value: {}, configurable: true });
     storeState.cliStatusLoading = true;
     const host = document.createElement('div');
     document.body.appendChild(host);
@@ -142,6 +146,7 @@ describe('TeamModelSelector disabled Codex models', () => {
     });
 
     expect(host.textContent).toContain('Default');
+    expect(host.querySelector('[data-testid="provider-activity-status-codex"]')).not.toBeNull();
     expect(host.textContent).not.toContain('5.1 Codex Mini');
     expect(host.textContent).not.toContain('5.3 Codex Spark');
     const defaultButton = Array.from(host.querySelectorAll('button')).find((button) =>

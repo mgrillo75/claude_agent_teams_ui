@@ -166,6 +166,10 @@ export function isTeamProviderModelVerificationPending(
     return true;
   }
 
+  if (providerStatus.verificationState === 'error') {
+    return false;
+  }
+
   const statusMessage = providerStatus.statusMessage?.trim().toLowerCase() ?? '';
   const statusMessagePending =
     statusMessage === 'checking...' ||

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAppTranslation } from '@features/localization/renderer';
+import { ProviderActivityStatusStrip } from '@renderer/components/common/ProviderActivityStatusStrip';
 import { ProviderBrandLogo } from '@renderer/components/common/ProviderBrandLogo';
 import { isOpenCodeCatalogHydrating } from '@renderer/components/runtime/providerConnectionUi';
 import { Checkbox } from '@renderer/components/ui/checkbox';
@@ -814,8 +815,14 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
   const previousSelectedProviderIdRef = useRef<TeamProviderId>(selectedProviderId);
   const effectiveProviderId = inspectedProviderId ?? selectedProviderId;
   const isInspectingInactiveProvider = inspectedProviderId !== null;
-  const { cliStatus: effectiveCliStatus, providerStatus: runtimeProviderStatus } =
-    useEffectiveCliProviderStatus(effectiveProviderId);
+  const {
+    cliStatus: effectiveCliStatus,
+    sourceCliStatus,
+    providerStatus: runtimeProviderStatus,
+    codexSnapshotPending,
+  } = useEffectiveCliProviderStatus(effectiveProviderId);
+  const cliStatusLoading = useStore((s) => s.cliStatusLoading);
+  const cliProviderStatusLoading = useStore((s) => s.cliProviderStatusLoading ?? {});
   const multimodelAvailable =
     multimodelEnabled || effectiveCliStatus?.flavor === 'agent_teams_orchestrator';
   const runtimeProviderStatusById = useMemo(
@@ -1777,9 +1784,21 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
                 </div>
               ) : null}
               {shouldAwaitRuntimeModelList ? (
-                <p className="mb-2 text-[11px] text-[var(--color-text-muted)]">
-                  {t('modelSelector.runtimeModelsSyncing')}
-                </p>
+                <div className="mb-2 space-y-1.5">
+                  <p className="text-[11px] text-[var(--color-text-muted)]">
+                    {t('modelSelector.runtimeModelsSyncing')}
+                  </p>
+                  <ProviderActivityStatusStrip
+                    cliStatus={effectiveCliStatus}
+                    sourceCliStatus={sourceCliStatus}
+                    cliStatusLoading={cliStatusLoading}
+                    cliProviderStatusLoading={cliProviderStatusLoading}
+                    multimodelEnabled={multimodelEnabled}
+                    codexSnapshotPending={codexSnapshotPending}
+                    providerIds={[effectiveProviderId]}
+                    label={null}
+                  />
+                </div>
               ) : null}
               {showAnthropicCompatibleCustomModelInput ? (
                 <div className="mb-2 rounded-md border border-[var(--color-border-subtle)] bg-[var(--color-surface-raised)] p-2">
