@@ -133,6 +133,12 @@ describe('contextMetrics', () => {
         modelName: 'claude-sonnet-4-6',
       })
     ).toBe(1_000_000);
+    expect(
+      inferContextWindowTokens({
+        providerId: 'anthropic',
+        modelName: 'claude-opus-4-9',
+      })
+    ).toBe(1_000_000);
   });
 
   it('keeps older raw Anthropic models at 200K unless 1M is explicitly requested', () => {
@@ -140,6 +146,12 @@ describe('contextMetrics', () => {
       inferContextWindowTokens({
         providerId: 'anthropic',
         modelName: 'claude-sonnet-4-5-20250929',
+      })
+    ).toBe(200_000);
+    expect(
+      inferContextWindowTokens({
+        providerId: 'anthropic',
+        modelName: 'claude-opus-4-20250514',
       })
     ).toBe(200_000);
     expect(
