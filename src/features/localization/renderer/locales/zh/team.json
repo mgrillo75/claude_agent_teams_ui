@@ -339,7 +339,7 @@
     "status": {
       "active": "活跃",
       "launching": "发送…",
-      "running": "跑步"
+      "running": "运行中"
     },
     "telemetry": {
       "cpu": "中央处理器",
@@ -994,7 +994,7 @@
       "empty": "没有记录工作流程历史记录",
       "currentImplementationInterval": "当前实施间隔",
       "implementationIntervalEnded": "实施间隔在此过渡时结束",
-      "runningPrefix": "跑步",
+      "runningPrefix": "正在运行",
       "createdAs": "创建为",
       "by": "经过",
       "reassigned": "重新分配",
@@ -1441,7 +1441,7 @@
       "partialFailure": "启动中途失败",
       "partialPending": "引导挂起",
       "partialSkipped": "启动跳过的成员",
-      "running": "跑步"
+      "running": "运行中"
     },
     "title": "选择团队",
     "trash": "垃圾 ({{count}})",
@@ -1922,7 +1922,7 @@
       "pending": "待办的",
       "warmingUp": "热身",
       "warm": "温暖的",
-      "running": "跑步",
+      "running": "运行中",
       "completed": "完全的",
       "failed": "失败",
       "interrupted": "被打断",
@@ -2149,7 +2149,7 @@
     "diagnosticOnly": "仅用于诊断",
     "updated": "更新 {{value}}",
     "states": {
-      "running": "跑步",
+      "running": "运行中",
       "starting": "开始",
       "waiting": "等待",
       "degraded": "需要注意",
@@ -2345,7 +2345,7 @@
   "processes": {
     "ago": "{{time}} 前",
     "stoppedAgo": "之前停止过 {{time}}",
-    "running": "跑步",
+    "running": "运行中",
     "stopped": "已停止",
     "stopProcess": "停止进程（SIGTERM）",
     "kill": "杀",
@@ -2448,11 +2448,11 @@
     }
   },
   "runningTeams": {
-    "title": "跑步队",
+    "title": "运行团队",
     "status": {
       "active": "活跃",
-      "provisioning": "发送",
-      "idle": "跑步"
+      "provisioning": "启动中",
+      "idle": "运行中"
     },
     "noProject": "没有项目"
   },

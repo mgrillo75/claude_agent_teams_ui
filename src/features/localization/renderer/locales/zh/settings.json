@@ -188,7 +188,7 @@
         },
         "notClaudeDir": {
           "message": "该文件夹名为“{{folderName}}”，而不是“.claude”。仍要继续吗？",
-          "title": "所选文件夹不是。claude"
+          "title": "所选文件夹不是 .claude"
         },
         "noWslPaths": {
           "message": "无法自动找到带有 Claude 数据的 WSL 发行版。手动选择文件夹？",
@@ -309,7 +309,7 @@
       },
       "leadInbox": {
         "description": "当队友向团队负责人发送消息时发出通知",
-        "label": "潜在客户收件箱通知"
+        "label": "团队负责人收件箱通知"
       },
       "statusChange": {
         "description": "当任务状态更改时显示原生操作系统通知",
@@ -323,9 +323,9 @@
           "label": "通知这些状态",
           "options": {
             "approved": "已批准",
-            "completed": "完全的",
+            "completed": "已完成",
             "deleted": "已删除",
-            "in_progress": "开始",
+            "in_progress": "进行中",
             "needsFix": "需要修复",
             "pending": "待办的",
             "review": "审核"
@@ -367,7 +367,7 @@
   "advanced": {
     "about": {
       "appIconAlt": "应用图标",
-      "description": "组建 AIAgent Team，这些团队可以并行自主工作、跨团队沟通并在看板上管理任务 - 具有内置代码审核、实时流程监控和完整的工具可见性。",
+      "description": "组建 Agent Teams AI 团队，这些团队可以并行自主工作、跨团队沟通并在看板上管理任务 - 具有内置代码审核、实时流程监控和完整的工具可见性。",
       "standalone": "独立式",
       "title": "关于",
       "version": "版本 {{version}}"
@@ -388,7 +388,7 @@
       "unknownVersion": "未知",
       "upToDate": "最新"
     },
-    "appName": "Agent TeamAI"
+    "appName": "Agent Teams AI"
   },
   "configEditor": {
     "errors": {
@@ -421,10 +421,10 @@
     },
     "card": {
       "builtinBadge": "内置",
-      "collapseAriaLabel": "坍塌",
+      "collapseAriaLabel": "折叠",
       "deleteAriaLabel": "删除触发器",
-      "editNameAriaLabel": "编辑姓名",
-      "expandAriaLabel": "扩张"
+      "editNameAriaLabel": "编辑名称",
+      "expandAriaLabel": "展开"
     },
     "color": {
       "customHexTitle": "自定义十六进制颜色",
@@ -447,7 +447,7 @@
     },
     "fields": {
       "contentType": "内容类型",
-      "matchField": "比赛场地",
+      "matchField": "匹配字段",
       "matchPattern": "匹配模式（正则表达式）",
       "scopeToolName": "范围/工具名称",
       "scopeToolNameOptional": "范围/工具名称（可选）",
@@ -471,19 +471,19 @@
         "tool_use": "工具使用"
       },
       "matchFields": {
-        "args": "论点",
+        "args": "参数",
         "command": "命令",
         "content": "内容",
         "description": "描述",
         "file_path": "文件路径",
         "fullInput": "完整输入 (JSON)",
         "glob": "全局过滤器",
-        "new_string": "新弦",
-        "old_string": "旧弦",
-        "path": "小路",
-        "pattern": "图案",
-        "prompt": "迅速的",
-        "query": "询问",
+        "new_string": "新字符串",
+        "old_string": "旧字符串",
+        "path": "路径",
+        "pattern": "模式",
+        "prompt": "提示词",
+        "query": "查询",
         "skill": "技能名称",
         "subagent_type": "子智能体类型",
         "text": "文字内容",
@@ -558,10 +558,10 @@
     },
     "form": {
       "authentication": "验证",
-      "host": "主持人",
+      "host": "主机",
       "name": "姓名",
       "passwordPrompt": "连接时系统将提示词您输入密码。",
-      "port": "港口",
+      "port": "端口",
       "privateKeyPath": "私钥路径",
       "username": "用户名",
       "namePlaceholder": "我的服务器",
@@ -587,9 +587,9 @@
     "description": "连接到远程计算机以查看在那里运行的 Claude Code 会话",
     "form": {
       "authentication": "验证",
-      "host": "主持人",
+      "host": "主机",
       "password": "密码",
-      "port": "港口",
+      "port": "端口",
       "privateKeyPath": "私钥路径",
       "username": "用户名",
       "hostPlaceholder": "主机名或 SSH 配置别名",
@@ -616,15 +616,15 @@
     "actions": {
       "cancel": "取消",
       "cancelLogin": "取消登录",
-      "connectChatGpt": "连接聊天 GPT",
+      "connectChatGpt": "连接 ChatGPT",
       "delete": "删除",
       "disable": "禁用",
       "disconnectAccount": "断开帐户连接",
       "generateLink": "生成链接",
       "openLogin": "打开登录",
-      "reconnectAnthropic": "重新连接人类",
+      "reconnectAnthropic": "重新连接 Anthropic",
       "refresh": "刷新",
-      "replaceKey": "更换钥匙",
+      "replaceKey": "更换密钥",
       "saveEndpoint": "保存端点",
       "saveKey": "保存密钥",
       "saving": "保存…",
@@ -641,7 +641,7 @@
       "storedInApp": "存储在应用中",
       "providers": {
         "anthropic": {
-          "name": "人为 API 密钥",
+          "name": "Anthropic API 密钥",
           "title": "API 密钥",
           "description": "使用直接 Anthropic API 密钥进行 API 计费访问。当您切换回来时，您的 Anthropic 订阅会话仍然可用。",
           "placeholder": "sk-ant-…"
@@ -668,7 +668,7 @@
         "loginInProgress": "登录正在进行中",
         "plan": "计划：{{plan}}",
         "reconnectRequired": "需要重新连接",
-        "title": "聊天 GPT 帐户",
+        "title": "ChatGPT 帐户",
         "hints": {
           "autoUsesApiKeyUntilChatgpt": "{{message}} Auto 将继续使用检测到的 API 密钥，直到连接 ChatGPT。",
           "detectedApiKeyNeedsApiMode": "{{message}} 检测到的 API 密钥仅在您将 Codex 切换到 API 密钥模式后使用。",
@@ -704,7 +704,7 @@
         "weeklyUsed": "每周使用",
         "weeklyUsedOneWeek": "每周使用（1w）",
         "weeklyWindow": "每周窗口",
-        "secondaryFallback": "中学",
+        "secondaryFallback": "辅助",
         "secondaryWindowNote": "每周限制单独显示在 {{window}} 窗口中。",
         "usageExplanationGeneric": "显示已用配额，而不是剩余配额。",
         "usageExplanationWindowOnly": "显示当前 {{window}} 窗口中已使用的配额，而不是剩余配额。",
@@ -743,8 +743,8 @@
       "method": "连接方式",
       "mode": "模式：{{mode}}",
       "selected": "已选择",
-      "switching": "交换…",
-      "title": "联系"
+      "switching": "切换…",
+      "title": "连接"
     },
     "connectionCards": {
       "apiKey": {
@@ -755,16 +755,16 @@
         "autoDescription": "使用 Anthropic 运行时默认值和可用的最佳本地凭据。",
         "hint": "Auto 使 Anthropic 保持其默认的本地凭证解析。",
         "subscriptionDescription": "使用您本地的 Anthropic 登录会话和订阅访问权限。",
-        "subscriptionTitle": "人择订阅"
+        "subscriptionTitle": "Anthropic 订阅"
       },
       "auto": {
-        "title": "汽车"
+        "title": "自动"
       },
       "codex": {
         "apiKeyDescription": "使用 OPENAI_API_KEY 和 CODEX_API_KEY 计费进行本机 Codex 启动。",
         "autoDescription": "首选您的 ChatGPT 帐户和订阅。仅在需要时使用 API 密钥模式。",
         "chatgptDescription": "使用您连接的 ChatGPT 帐户和 Codex 订阅。",
-        "chatgptTitle": "聊天 GPT 帐户",
+        "chatgptTitle": "ChatGPT 帐户",
         "hint": "Codex 始终在本机运行时运行。 Auto 在回退到 API 密钥凭据之前更喜欢使用您的 ChatGPT 帐户。"
       }
     },
@@ -782,7 +782,7 @@
     "alerts": {
       "anthropicApiKeyMissing": "已选择 API 密钥模式，但尚无可用的 Anthropic API 凭证。",
       "anthropicStoredKeyAvailable": "已保存的 API 密钥可用，但应用启动的 Anthropic 会话仅在您切换到 API 密钥模式后才使用它。",
-      "anthropicSubscriptionMissing": "选择人择订阅模式。登录 Anthropic 以使用此提供商。",
+      "anthropicSubscriptionMissing": "选择 Anthropic 订阅模式。登录 Anthropic 以使用此提供商。",
       "authTokenMissing": "未配置认证 Token。许多本地 Anthropic 兼容端点需要非空 Token。",
       "chatgptLoginPending": "等待 ChatGPT 帐户登录完成…",
       "chatgptLoginStarting": "正在开始 ChatGPT 登录…",
@@ -862,11 +862,11 @@
     },
     "connectionUi": {
       "authMode": {
-        "auto": "汽车",
+        "auto": "自动",
         "oauth": "订阅/OAuth",
-        "chatgpt": "聊天 GPT 帐户",
+        "chatgpt": "ChatGPT 帐户",
         "apiKey": "API 密钥",
-        "anthropicSubscription": "人择订阅"
+        "anthropicSubscription": "Anthropic 订阅"
       },
       "authMethod": {
         "apiKey": "API 密钥",
@@ -908,7 +908,7 @@
         "unableToVerify": "无法验证"
       },
       "mode": {
-        "selectedAuth": "所选作者：{{authMode}}",
+        "selectedAuth": "所选认证：{{authMode}}",
         "preferredAuth": "首选授权：{{authMode}}"
       },
       "credential": {
@@ -924,8 +924,8 @@
       },
       "actions": {
         "connect": "连接",
-        "connectAnthropic": "连接人类",
-        "connectChatGpt": "连接聊天 GPT",
+        "connectAnthropic": "连接 Anthropic",
+        "connectChatGpt": "连接 ChatGPT",
         "disconnect": "断开",
         "openLogin": "打开登录"
       },
