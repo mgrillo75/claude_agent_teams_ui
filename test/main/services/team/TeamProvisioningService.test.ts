@@ -21421,7 +21421,8 @@ describe('TeamProvisioningService', () => {
           status: 'failed',
           lastAttemptAt: Date.parse(acceptedAt),
           lastObservedAt: Date.parse(failureAt),
-          failureReason: 'Teammate was registered but did not bootstrap-confirm before timeout.',
+          failureReason:
+            'Bootstrap prompt was submitted, but teammate did not bootstrap-confirm before submitted-confirmation timeout (3m). Last transport stage: bootstrap_submitted',
         },
       ],
       failureAt
