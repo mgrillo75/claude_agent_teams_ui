@@ -411,6 +411,7 @@ export function GraphView({
       hoveredEdgeId: hoveredEdgeIdRef.current,
       focusNodeIds: focusState.focusNodeIds,
       focusEdgeIds: focusState.focusEdgeIds,
+      ownerColumnGroupRects: simulationRef.current.getOwnerColumnGroupRects(),
       dragPreview: dragPreviewRef.current,
     });
 

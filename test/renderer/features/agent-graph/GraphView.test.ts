@@ -89,6 +89,8 @@ vi.mock('../../../../packages/agent-graph/src/hooks/useGraphSimulation', () => (
     getExtraWorldBounds: vi.fn(() => []),
     getLaunchAnchorWorldPosition: vi.fn(() => null),
     getActivityWorldRect: vi.fn(() => null),
+    getLogWorldRect: vi.fn(() => null),
+    getOwnerColumnGroupRects: vi.fn(() => []),
     resolveNearestOwnerSlot: hoisted.resolveNearestOwnerSlot,
     resolveNearestOwnerGridTarget: hoisted.resolveNearestOwnerGridTarget,
     clearNodePosition: hoisted.clearNodePosition,
