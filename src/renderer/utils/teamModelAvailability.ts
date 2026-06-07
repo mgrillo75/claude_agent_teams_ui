@@ -71,21 +71,6 @@ export interface TeamProviderModelVerificationCounts {
   verifying: boolean;
 }
 
-function mergeModelLists(primary: readonly string[], supplemental: readonly string[]): string[] {
-  const merged = new Map<string, string>();
-  for (const model of [...primary, ...supplemental]) {
-    const trimmed = model.trim();
-    if (!trimmed) {
-      continue;
-    }
-    const key = trimmed.toLowerCase();
-    if (!merged.has(key)) {
-      merged.set(key, trimmed);
-    }
-  }
-  return Array.from(merged.values());
-}
-
 export function getOpenCodeOpenAiRouteAuthUnavailableReason(
   providerId: SupportedProviderId | undefined,
   model: string | undefined,
@@ -476,7 +461,9 @@ function getRuntimeSelectorModels(
 
     const sourceModels =
       providerId === 'opencode'
-        ? mergeModelLists(catalogModels, providerStatus.models)
+        ? providerStatus.models.length > 0
+          ? providerStatus.models
+          : catalogModels
         : catalogModels;
     return getVisibleTeamProviderModels(providerId, sourceModels, providerStatus);
   }

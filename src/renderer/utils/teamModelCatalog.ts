@@ -685,10 +685,13 @@ export function getVisibleTeamProviderModels(
   models: readonly string[],
   providerStatus?: RuntimeAwareProviderStatus | null
 ): string[] {
+  const hasExplicitModels = models.some((model) => model.trim().length > 0);
   const catalogModels =
     providerId === 'opencode' ? getRuntimeCatalogLaunchModels(providerId, providerStatus) : null;
   const sourceModels =
-    providerId === 'opencode' && catalogModels ? mergeModelLists(catalogModels, models) : models;
+    providerId === 'opencode' && catalogModels && !hasExplicitModels
+      ? mergeModelLists(catalogModels, models)
+      : models;
 
   return sortTeamProviderModels(
     providerId,

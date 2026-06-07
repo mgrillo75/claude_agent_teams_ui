@@ -277,7 +277,7 @@ describe('teamModelAvailability', () => {
     ).toBe('openrouter/moonshotai/kimi-k2');
   });
 
-  it('uses the OpenCode model catalog when runtime models are summary-only', () => {
+  it('keeps the live OpenCode model list authoritative when the catalog is broader', () => {
     const providerStatus = createOpenCodeProviderStatus(['opencode/big-pickle'], {
       modelCatalog: {
         schemaVersion: 1,
@@ -290,9 +290,9 @@ describe('teamModelAvailability', () => {
         defaultLaunchModel: 'opencode/big-pickle',
         models: [
           {
-            id: 'openai/gpt-5.4',
-            launchModel: 'openai/gpt-5.4',
-            displayName: 'openai/gpt-5.4',
+            id: 'opencode/minimax-m3-free',
+            launchModel: 'opencode/minimax-m3-free',
+            displayName: 'opencode/minimax-m3-free',
             hidden: false,
             supportedReasoningEfforts: [],
             defaultReasoningEffort: null,
@@ -301,7 +301,7 @@ describe('teamModelAvailability', () => {
             isDefault: false,
             upgrade: false,
             source: 'app-server',
-            badgeLabel: null,
+            badgeLabel: 'Free',
           },
           {
             id: 'opencode/big-pickle',
@@ -341,7 +341,6 @@ describe('teamModelAvailability', () => {
 
     expect(getAvailableTeamProviderModels('opencode', providerStatus)).toEqual([
       'opencode/big-pickle',
-      'openai/gpt-5.4',
     ]);
     expect(getAvailableTeamProviderModelOptions('opencode', providerStatus)).toEqual([
       { value: '', label: 'Default', badgeLabel: 'Default' },
@@ -352,18 +351,13 @@ describe('teamModelAvailability', () => {
         availabilityStatus: 'available',
         availabilityReason: null,
       },
-      {
-        value: 'openai/gpt-5.4',
-        label: 'GPT-5.4',
-        badgeLabel: 'OpenAI',
-        availabilityStatus: 'available',
-        availabilityReason: null,
-      },
     ]);
-    expect(normalizeTeamModelForUi('opencode', 'openai/gpt-5.4', providerStatus)).toBe(
-      'openai/gpt-5.4'
+    expect(normalizeTeamModelForUi('opencode', 'opencode/minimax-m3-free', providerStatus)).toBe(
+      ''
     );
-    expect(getTeamModelSelectionError('opencode', 'openai/gpt-5.4', providerStatus)).toBeNull();
+    expect(
+      getTeamModelSelectionError('opencode', 'opencode/minimax-m3-free', providerStatus)
+    ).toContain('is not available for the current OpenCode runtime');
   });
 
   it('uses the OpenCode model catalog when runtime models are empty', () => {

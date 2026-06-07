@@ -905,7 +905,7 @@ describe('CliInstallerService', () => {
       expect(verifiedProvider?.modelAvailability).toEqual([]);
     });
 
-    it('does not shrink cached OpenCode models when a provider refresh returns summary-only models', async () => {
+    it('keeps non-empty OpenCode refresh models authoritative while preserving catalog metadata', async () => {
       allowConsoleLogs();
       vi.mocked(getConfiguredCliFlavor).mockReturnValue('agent_teams_orchestrator');
       vi.mocked(getCliFlavorUiOptions).mockReturnValue({
@@ -1032,11 +1032,7 @@ describe('CliInstallerService', () => {
       const opencode = latestSnapshot?.providers.find(
         (provider) => provider.providerId === 'opencode'
       );
-      expect(opencode?.models).toEqual([
-        'opencode/big-pickle',
-        'openai/gpt-5.4',
-        'openrouter/openai/gpt-oss-20b:free',
-      ]);
+      expect(opencode?.models).toEqual(['opencode/big-pickle']);
       expect(opencode?.modelCatalog?.models.map((model) => model.id)).toEqual([
         'opencode/big-pickle',
         'openai/gpt-5.4',
