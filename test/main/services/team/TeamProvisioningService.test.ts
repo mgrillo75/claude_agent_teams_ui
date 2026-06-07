@@ -25523,6 +25523,73 @@ describe('TeamProvisioningService', () => {
     ).toEqual(['claude', 'codex', 'gemini', 'opencode']);
   });
 
+  it('does not add Claude workspace trust for Codex-only teams', () => {
+    const svc = new TeamProvisioningService();
+
+    expect(
+      (svc as any).collectWorkspaceTrustProviders({
+        leadProviderId: 'codex',
+        members: [
+          { name: 'alice', providerId: 'codex' },
+          { name: 'bob', provider: 'codex' },
+        ],
+      })
+    ).toEqual(['codex']);
+  });
+
+  it.each([
+    {
+      label: 'OpenCode-only',
+      leadProviderId: 'opencode',
+      members: [{ name: 'alice', providerId: 'opencode' }],
+      expected: ['opencode'],
+    },
+    {
+      label: 'Gemini-only',
+      leadProviderId: 'gemini',
+      members: [{ name: 'alice', providerId: 'gemini' }],
+      expected: ['gemini'],
+    },
+    {
+      label: 'Codex with OpenCode members',
+      leadProviderId: 'codex',
+      members: [
+        { name: 'alice', providerId: 'codex' },
+        { name: 'bob', providerId: 'opencode' },
+      ],
+      expected: ['codex', 'opencode'],
+    },
+    {
+      label: 'OpenCode with Anthropic member',
+      leadProviderId: 'opencode',
+      members: [
+        { name: 'alice', providerId: 'opencode' },
+        { name: 'reviewer', providerId: 'anthropic' },
+      ],
+      expected: ['claude', 'opencode'],
+    },
+  ])('collects provider-scoped workspace trust providers for $label teams', (input) => {
+    const svc = new TeamProvisioningService();
+
+    expect(
+      (svc as any).collectWorkspaceTrustProviders({
+        leadProviderId: input.leadProviderId,
+        members: input.members,
+      })
+    ).toEqual(input.expected);
+  });
+
+  it('falls back to Claude workspace trust when provider metadata is missing', () => {
+    const svc = new TeamProvisioningService();
+
+    expect(
+      (svc as any).collectWorkspaceTrustProviders({
+        leadProviderId: undefined,
+        members: [{}],
+      })
+    ).toEqual(['claude']);
+  });
+
   it('uses the canonical repository root for workspace trust git worktree candidates', async () => {
     const svc = new TeamProvisioningService();
     const harness = svc as unknown as {
@@ -25603,7 +25670,7 @@ describe('TeamProvisioningService', () => {
           fileLock: false,
         },
       })
-    ).resolves.toEqual({ workspaces, launchArgPatches: [] });
+    ).resolves.toEqual({ providers: ['claude', 'codex'], workspaces, launchArgPatches: [] });
     expect(vi.mocked(console.warn).mock.calls.map((call) => call.join(' '))).toEqual([
       expect.stringContaining(
         'Workspace trust args-only planning failed; continuing without trust arg patches'
@@ -25661,6 +25728,7 @@ describe('TeamProvisioningService', () => {
       shellEnv: {},
       stopAllGenerationAtStart: (svc as any).stopAllTeamsGeneration,
       workspaceTrustPlan: {
+        providers: ['claude'],
         launchArgPatches: [],
         workspaces: buildWorkspaceTrustPathCandidates({
           cwd: '/tmp/workspace-trust-preflight-ok-team',
@@ -25680,6 +25748,7 @@ describe('TeamProvisioningService', () => {
     });
 
     expect(execute).toHaveBeenCalledTimes(1);
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({ providers: ['claude'] }));
     expect(run.workspaceTrustExecution).toMatchObject({ status: 'ok' });
     expect(run.progress.warnings).toEqual([]);
     expect(progressUpdates.at(-1).launchDiagnostics).toEqual([
@@ -25688,6 +25757,84 @@ describe('TeamProvisioningService', () => {
         code: 'workspace_trust_preflight',
         label: 'Workspace trust preflight completed',
         detail: 'trusted project key',
+      }),
+    ]);
+  });
+
+  it('keeps Codex-only deterministic launches moving when Claude preflight is skipped', async () => {
+    const progressUpdates: any[] = [];
+    const run = createMemberSpawnRun({
+      runId: 'run-workspace-trust-codex-only-skipped',
+      teamName: 'workspace-trust-codex-only-team',
+      expectedMembers: ['alice'],
+    });
+    Object.assign(run, {
+      cancelRequested: false,
+      processKilled: false,
+      progress: {
+        runId: run.runId,
+        teamName: run.teamName,
+        state: 'validating',
+        message: 'Validating launch',
+        warnings: [],
+        startedAt: '2026-05-12T10:00:00.000Z',
+        updatedAt: '2026-05-12T10:00:00.000Z',
+      },
+      onProgress: (progress: any) => {
+        progressUpdates.push(progress);
+      },
+    });
+    const execute = vi.fn(async () => ({
+      id: 'claude-pty-workspace-trust',
+      provider: 'claude',
+      status: 'skipped',
+      workspaceIds: ['workspace-trust-1'],
+      evidence: ['Claude workspace trust preflight not required for selected providers'],
+    }));
+    const svc = new TeamProvisioningService();
+    svc.setWorkspaceTrustCoordinator({
+      planArgsOnly: vi.fn(),
+      planFull: vi.fn(),
+      execute,
+    } as any);
+    (svc as any).runs.set(run.runId, run);
+    (svc as any).provisioningRunByTeam.set(run.teamName, run.runId);
+
+    await (svc as any).prepareWorkspaceTrustForDeterministicRun({
+      mode: 'create',
+      run,
+      claudePath: '/usr/local/bin/claude',
+      shellEnv: {},
+      stopAllGenerationAtStart: (svc as any).stopAllTeamsGeneration,
+      workspaceTrustPlan: {
+        providers: ['codex'],
+        launchArgPatches: [],
+        workspaces: buildWorkspaceTrustPathCandidates({
+          cwd: '/tmp/workspace-trust-codex-only-team',
+          platform: 'posix',
+        }),
+      },
+      featureFlags: {
+        enabled: true,
+        claudePty: true,
+        codexArgs: true,
+        retry: false,
+        fileLock: false,
+      },
+      provisioningEnv: {
+        anthropicApiKeyHelper: null,
+      },
+    });
+
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({ providers: ['codex'] }));
+    expect(run.workspaceTrustExecution).toMatchObject({ status: 'skipped' });
+    expect(run.progress.warnings).toEqual([]);
+    expect(progressUpdates.at(-1).launchDiagnostics).toEqual([
+      expect.objectContaining({
+        severity: 'info',
+        code: 'workspace_trust_preflight',
+        label: 'Workspace trust preflight completed',
+        detail: 'Claude workspace trust preflight not required for selected providers',
       }),
     ]);
   });
@@ -25736,6 +25883,7 @@ describe('TeamProvisioningService', () => {
       },
       stopAllGenerationAtStart: (svc as any).stopAllTeamsGeneration,
       workspaceTrustPlan: {
+        providers: ['claude'],
         launchArgPatches: [],
         workspaces: buildWorkspaceTrustPathCandidates({
           cwd: '/tmp/workspace-trust-preflight-team',
@@ -25833,6 +25981,7 @@ describe('TeamProvisioningService', () => {
         shellEnv: {},
         stopAllGenerationAtStart: (svc as any).stopAllTeamsGeneration,
         workspaceTrustPlan: {
+          providers: ['claude'],
           launchArgPatches: [],
           workspaces: buildWorkspaceTrustPathCandidates({
             cwd: '/tmp/project',
@@ -25914,6 +26063,7 @@ describe('TeamProvisioningService', () => {
         shellEnv: {},
         stopAllGenerationAtStart: (svc as any).stopAllTeamsGeneration,
         workspaceTrustPlan: {
+          providers: ['claude'],
           launchArgPatches: [],
           workspaces: buildWorkspaceTrustPathCandidates({
             cwd: '/tmp/workspace-trust-preflight-cancelled-team',
@@ -25979,6 +26129,7 @@ describe('TeamProvisioningService', () => {
       shellEnv: {},
       stopAllGenerationAtStart: (svc as any).stopAllTeamsGeneration,
       workspaceTrustPlan: {
+        providers: ['claude'],
         launchArgPatches: [],
         workspaces: buildWorkspaceTrustPathCandidates({
           cwd: '/tmp/workspace-trust-disabled-team',

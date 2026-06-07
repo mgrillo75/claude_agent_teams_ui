@@ -1270,6 +1270,7 @@ function createCodexOnlyWorkspaceTrustCoordinator(): WorkspaceTrustCoordinator {
     },
     async planFull(request) {
       return {
+        providers: request.providers,
         workspaces: request.workspaces,
         launchArgPatches: buildLiveCodexWorkspaceTrustPatches(request),
       };

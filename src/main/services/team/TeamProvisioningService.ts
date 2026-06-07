@@ -4178,7 +4178,7 @@ export class TeamProvisioningService {
     leadProviderId?: TeamProviderId;
     members: TeamCreateRequest['members'];
   }): WorkspaceTrustProvider[] {
-    const providers = new Set<WorkspaceTrustProvider>(['claude']);
+    const providers = new Set<WorkspaceTrustProvider>();
     providers.add(this.toWorkspaceTrustProvider(resolveTeamProviderId(input.leadProviderId)));
     for (const member of input.members) {
       const providerId =
@@ -4188,7 +4188,11 @@ export class TeamProvisioningService {
         providers.add(this.toWorkspaceTrustProvider(providerId));
       }
     }
-    return [...providers];
+    if (providers.size === 0) {
+      providers.add('claude');
+    }
+    const providerOrder: WorkspaceTrustProvider[] = ['claude', 'codex', 'gemini', 'opencode'];
+    return providerOrder.filter((provider) => providers.has(provider));
   }
 
   private async resolveWorkspaceTrustGitRoot(cwd: string): Promise<string | null> {
@@ -4337,7 +4341,7 @@ export class TeamProvisioningService {
           error instanceof Error ? error.message : String(error)
         }`
       );
-      return { workspaces: request.workspaces, launchArgPatches: [] };
+      return { providers: request.providers, workspaces: request.workspaces, launchArgPatches: [] };
     }
   }
 
@@ -4384,6 +4388,7 @@ export class TeamProvisioningService {
     let execution: WorkspaceTrustExecutionResult;
     try {
       execution = await this.workspaceTrustCoordinator.execute({
+        providers: input.workspaceTrustPlan.providers,
         claudePath: input.claudePath,
         workspaces: input.workspaceTrustPlan.workspaces,
         env: buildWorkspaceTrustPreflightEnv(input.shellEnv),

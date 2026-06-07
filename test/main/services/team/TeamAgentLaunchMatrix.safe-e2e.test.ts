@@ -795,9 +795,13 @@ describe('Team agent launch matrix safe e2e', () => {
       }),
     ]);
     expect(planFull).toHaveBeenCalledTimes(1);
+    expect(planFull.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({ providers: ['claude'] })
+    );
     expect(execute).toHaveBeenCalledTimes(1);
     const executePlan = execute.mock.calls[0]?.[0];
     expect(executePlan).toBeDefined();
+    expect(executePlan?.providers).toEqual(['claude']);
     expect(executePlan?.workspaces.map((workspace) => workspace.cwd)).toContain(projectPath);
 
     await expect(fs.readFile(staleLaunchStatePath, 'utf8')).resolves.toBe(
@@ -20755,6 +20759,7 @@ function createBlockedWorkspaceTrustCoordinator(input: {
     })
   );
   const planFull = vi.fn(async (request: Parameters<WorkspaceTrustCoordinator['planFull']>[0]) => ({
+    providers: request.providers,
     workspaces: request.workspaces,
     launchArgPatches: [],
   }));
