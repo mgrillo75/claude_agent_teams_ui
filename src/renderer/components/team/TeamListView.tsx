@@ -524,6 +524,7 @@ export const TeamListView = memo(function TeamListView(): React.JSX.Element {
   const [copyData, setCopyData] = useState<TeamCopyData | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState<TeamListFilterState>(EMPTY_TEAM_FILTER);
+  const [teamPriorityProjectPath, setTeamPriorityProjectPath] = useState<string | null>(null);
   const [aliveTeams, setAliveTeams] = useState<string[]>([]);
   const [teamSectionVisibleCountByKey, setTeamSectionVisibleCountByKey] = useState<
     Record<string, number>
@@ -694,7 +695,7 @@ export const TeamListView = memo(function TeamListView(): React.JSX.Element {
       activeProjectId,
     ]
   );
-  const currentProjectPath = currentProjectSelection.projectPath;
+  const currentProjectPath = teamPriorityProjectPath ?? currentProjectSelection.projectPath;
 
   const filteredTeams = useMemo<TeamSummary[]>(() => {
     let result = teamsWithProvisioning;
@@ -775,13 +776,14 @@ export const TeamListView = memo(function TeamListView(): React.JSX.Element {
   const handleProjectSelectionChange = useCallback(
     (projectPath: string | null): void => {
       if (!projectPath) {
+        setTeamPriorityProjectPath(null);
         useStore.setState(getProjectSelectionResetState());
         return;
       }
 
+      setTeamPriorityProjectPath(projectPath);
       const target = findTeamProjectSelectionTarget(repositoryGroups, projects, projectPath);
       if (!target) {
-        console.warn('Unable to resolve selected team project path:', projectPath);
         return;
       }
 
