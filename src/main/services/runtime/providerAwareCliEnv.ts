@@ -30,6 +30,7 @@ export interface ProviderAwareCliEnvOptions {
   connectionMode?: 'strict' | 'augment';
   allowStoredApiKeyDecryption?: boolean;
   allowedStoredApiKeyEnvVarNames?: readonly string[];
+  allowClaudeUserSettingsAuthEnv?: boolean;
 }
 
 export interface ProviderAwareCliEnvResult {
@@ -62,12 +63,14 @@ export async function buildProviderAwareCliEnv(
   const connectionMode = options.connectionMode ?? 'strict';
   const storedApiKeyAccessArgs =
     options.allowStoredApiKeyDecryption === undefined &&
-    options.allowedStoredApiKeyEnvVarNames === undefined
+    options.allowedStoredApiKeyEnvVarNames === undefined &&
+    options.allowClaudeUserSettingsAuthEnv === undefined
       ? []
       : [
           {
             allowStoredApiKeyDecryption: options.allowStoredApiKeyDecryption,
             allowedStoredApiKeyEnvVarNames: options.allowedStoredApiKeyEnvVarNames,
+            allowClaudeUserSettingsAuthEnv: options.allowClaudeUserSettingsAuthEnv,
           },
         ];
   const shellEnv = options.shellEnv ?? getCachedShellEnv() ?? {};
@@ -143,10 +146,11 @@ export async function buildProviderAwareCliEnv(
   }
 
   if (connectionMode === 'augment') {
-    await providerConnectionService.augmentAllConfiguredConnectionEnv(
-      env,
-      ...storedApiKeyAccessArgs
-    );
+    const aggregateAugmentOptions = {
+      ...(storedApiKeyAccessArgs[0] ?? {}),
+      allowClaudeUserSettingsAuthEnv: options.allowClaudeUserSettingsAuthEnv ?? false,
+    };
+    await providerConnectionService.augmentAllConfiguredConnectionEnv(env, aggregateAugmentOptions);
     removeGlobalElectronRunAsNodeEnv(env);
     return {
       env,

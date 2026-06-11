@@ -248,6 +248,7 @@ describe('buildProviderAwareCliEnv', () => {
       {
         allowStoredApiKeyDecryption: false,
         allowedStoredApiKeyEnvVarNames: ['ANTHROPIC_AUTH_TOKEN'],
+        allowClaudeUserSettingsAuthEnv: false,
       }
     );
     expect(applyAllConfiguredConnectionEnvMock).not.toHaveBeenCalled();
@@ -388,7 +389,10 @@ describe('buildProviderAwareCliEnv', () => {
     expect(augmentAllConfiguredConnectionEnvMock).toHaveBeenCalledWith(
       expect.objectContaining({
         OPENAI_API_KEY: 'shell-key',
-      })
+      }),
+      {
+        allowClaudeUserSettingsAuthEnv: false,
+      }
     );
     expect(result.connectionIssues).toEqual({});
     expect(result.providerArgs).toEqual([]);
@@ -432,7 +436,10 @@ describe('buildProviderAwareCliEnv', () => {
       expect.objectContaining({
         CLAUDE_CODE_GEMINI_BACKEND: 'api',
         CLAUDE_CODE_CODEX_BACKEND: 'codex-native',
-      })
+      }),
+      {
+        allowClaudeUserSettingsAuthEnv: false,
+      }
     );
     expect(result.env.CLAUDE_CODE_GEMINI_BACKEND).toBe('api');
     expect(result.env.CLAUDE_CODE_CODEX_BACKEND).toBe('codex-native');

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CodexAccountSnapshotDto } from '@features/codex-account/contracts';
 
 const getCachedShellEnvMock = vi.fn<() => NodeJS.ProcessEnv | null>();
+const readClaudeUserAnthropicSettingsAuthEnvMock = vi.fn();
 const execCliMock = vi.fn<
   (
     binaryPath: string | null,
@@ -32,6 +33,11 @@ vi.mock('@main/utils/childProcess', () => ({
       maxBuffer?: number;
     }
   ) => execCliMock(binaryPath, args, options),
+}));
+
+vi.mock('@main/services/runtime/claudeUserSettingsEnv', () => ({
+  readClaudeUserAnthropicSettingsAuthEnv: () =>
+    readClaudeUserAnthropicSettingsAuthEnvMock(),
 }));
 
 describe('ProviderConnectionService', () => {
@@ -139,6 +145,7 @@ describe('ProviderConnectionService', () => {
     vi.resetModules();
     vi.clearAllMocks();
     getCachedShellEnvMock.mockReturnValue({});
+    readClaudeUserAnthropicSettingsAuthEnvMock.mockResolvedValue(null);
     execCliMock.mockResolvedValue({ stdout: 'Logged in using ChatGPT', stderr: '' });
     delete process.env.OPENAI_API_KEY;
     delete process.env.CODEX_API_KEY;
@@ -411,6 +418,202 @@ describe('ProviderConnectionService', () => {
     expect(lookupPreferred).toHaveBeenCalledWith('ANTHROPIC_AUTH_TOKEN');
     expect(result.ANTHROPIC_BASE_URL).toBe('http://localhost:1234');
     expect(result.ANTHROPIC_AUTH_TOKEN).toBe('shell-local-token');
+    expect(result.ANTHROPIC_API_KEY).toBe('');
+  });
+
+  it('imports Anthropic-compatible auth from Claude user settings in auto mode', async () => {
+    readClaudeUserAnthropicSettingsAuthEnvMock.mockResolvedValue({
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:15721',
+      ANTHROPIC_AUTH_TOKEN: 'ccs-internal-managed',
+    });
+    const { ProviderConnectionService } =
+      await import('@main/services/runtime/ProviderConnectionService');
+
+    const service = new ProviderConnectionService(
+      {
+        lookupPreferred: vi.fn().mockResolvedValue(null),
+      } as never,
+      {
+        getConfig: () => createConfig('auto'),
+      } as never
+    );
+
+    const result = await service.applyConfiguredConnectionEnv({}, 'anthropic');
+
+    expect(readClaudeUserAnthropicSettingsAuthEnvMock).toHaveBeenCalledTimes(1);
+    expect(result.ANTHROPIC_BASE_URL).toBe('http://127.0.0.1:15721');
+    expect(result.ANTHROPIC_AUTH_TOKEN).toBe('ccs-internal-managed');
+    expect(result.ANTHROPIC_API_KEY).toBe('');
+  });
+
+  it('imports Anthropic API key auth from Claude user settings in auto mode', async () => {
+    readClaudeUserAnthropicSettingsAuthEnvMock.mockResolvedValue({
+      ANTHROPIC_API_KEY: 'sk-ant-settings',
+      ANTHROPIC_BASE_URL: 'https://api.anthropic.com',
+      ANTHROPIC_AUTH_TOKEN: 'ignored-token',
+    });
+    const { ProviderConnectionService } =
+      await import('@main/services/runtime/ProviderConnectionService');
+
+    const service = new ProviderConnectionService(
+      {
+        lookupPreferred: vi.fn().mockResolvedValue(null),
+      } as never,
+      {
+        getConfig: () => createConfig('auto'),
+      } as never
+    );
+
+    const result = await service.applyConfiguredConnectionEnv({}, 'anthropic');
+
+    expect(readClaudeUserAnthropicSettingsAuthEnvMock).toHaveBeenCalledTimes(1);
+    expect(result.ANTHROPIC_BASE_URL).toBe('https://api.anthropic.com');
+    expect(result.ANTHROPIC_API_KEY).toBe('sk-ant-settings');
+    expect(result.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+  });
+
+  it('does not let Claude user settings override explicit Anthropic-compatible env', async () => {
+    readClaudeUserAnthropicSettingsAuthEnvMock.mockResolvedValue({
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:15721',
+      ANTHROPIC_AUTH_TOKEN: 'settings-token',
+    });
+    const { ProviderConnectionService } =
+      await import('@main/services/runtime/ProviderConnectionService');
+
+    const service = new ProviderConnectionService(
+      {
+        lookupPreferred: vi.fn().mockResolvedValue(null),
+      } as never,
+      {
+        getConfig: () => createConfig('auto'),
+      } as never
+    );
+
+    const result = await service.applyConfiguredConnectionEnv(
+      {
+        ANTHROPIC_BASE_URL: 'http://localhost:11434',
+        ANTHROPIC_AUTH_TOKEN: 'env-token',
+      },
+      'anthropic'
+    );
+
+    expect(result.ANTHROPIC_BASE_URL).toBe('http://localhost:11434');
+    expect(result.ANTHROPIC_AUTH_TOKEN).toBe('env-token');
+  });
+
+  it('does not import Claude user settings when OAuth mode is selected', async () => {
+    readClaudeUserAnthropicSettingsAuthEnvMock.mockResolvedValue({
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:15721',
+      ANTHROPIC_AUTH_TOKEN: 'settings-token',
+    });
+    const { ProviderConnectionService } =
+      await import('@main/services/runtime/ProviderConnectionService');
+
+    const service = new ProviderConnectionService(
+      {
+        lookupPreferred: vi.fn().mockResolvedValue(null),
+      } as never,
+      {
+        getConfig: () => createConfig('oauth'),
+      } as never
+    );
+
+    const result = await service.applyConfiguredConnectionEnv({}, 'anthropic');
+
+    expect(readClaudeUserAnthropicSettingsAuthEnvMock).not.toHaveBeenCalled();
+    expect(result.ANTHROPIC_BASE_URL).toBeUndefined();
+    expect(result.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+    expect(result.ANTHROPIC_API_KEY).toBeUndefined();
+  });
+
+  it('does not import Claude user settings when API key mode is selected', async () => {
+    readClaudeUserAnthropicSettingsAuthEnvMock.mockResolvedValue({
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:15721',
+      ANTHROPIC_AUTH_TOKEN: 'settings-token',
+    });
+    const { ProviderConnectionService } =
+      await import('@main/services/runtime/ProviderConnectionService');
+
+    const service = new ProviderConnectionService(
+      {
+        lookupPreferred: vi.fn().mockResolvedValue(null),
+      } as never,
+      {
+        getConfig: () => createConfig('api_key'),
+      } as never
+    );
+
+    const result = await service.applyConfiguredConnectionEnv({}, 'anthropic');
+    const issue = await service.getConfiguredConnectionIssue(result, 'anthropic');
+
+    expect(readClaudeUserAnthropicSettingsAuthEnvMock).not.toHaveBeenCalled();
+    expect(result.ANTHROPIC_BASE_URL).toBeUndefined();
+    expect(result.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+    expect(result.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(issue).toContain('Anthropic API key mode is enabled');
+  });
+
+  it('can disable Claude user settings import for generic augment envs', async () => {
+    readClaudeUserAnthropicSettingsAuthEnvMock.mockResolvedValue({
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:15721',
+      ANTHROPIC_AUTH_TOKEN: 'settings-token',
+    });
+    const { ProviderConnectionService } =
+      await import('@main/services/runtime/ProviderConnectionService');
+
+    const service = new ProviderConnectionService(
+      {
+        lookupPreferred: vi.fn().mockResolvedValue(null),
+      } as never,
+      {
+        getConfig: () => createConfig('auto'),
+      } as never
+    );
+
+    const result = await service.augmentConfiguredConnectionEnv({}, 'anthropic', undefined, {
+      allowClaudeUserSettingsAuthEnv: false,
+    });
+
+    expect(readClaudeUserAnthropicSettingsAuthEnvMock).not.toHaveBeenCalled();
+    expect(result.ANTHROPIC_BASE_URL).toBeUndefined();
+    expect(result.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+    expect(result.ANTHROPIC_API_KEY).toBeUndefined();
+  });
+
+  it('prefers app-managed Anthropic-compatible endpoint over Claude user settings', async () => {
+    readClaudeUserAnthropicSettingsAuthEnvMock.mockResolvedValue({
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:15721',
+      ANTHROPIC_AUTH_TOKEN: 'settings-token',
+    });
+    const lookupPreferred = vi.fn(async (envVarName: string) =>
+      envVarName === 'ANTHROPIC_AUTH_TOKEN'
+        ? {
+            envVarName,
+            value: 'stored-local-token',
+          }
+        : null
+    );
+    const { ProviderConnectionService } =
+      await import('@main/services/runtime/ProviderConnectionService');
+
+    const service = new ProviderConnectionService(
+      {
+        lookupPreferred,
+      } as never,
+      {
+        getConfig: () =>
+          createConfig('auto', {
+            enabled: true,
+            baseUrl: 'http://localhost:1234',
+          }),
+      } as never
+    );
+
+    const result = await service.applyConfiguredConnectionEnv({}, 'anthropic');
+
+    expect(readClaudeUserAnthropicSettingsAuthEnvMock).not.toHaveBeenCalled();
+    expect(result.ANTHROPIC_BASE_URL).toBe('http://localhost:1234');
+    expect(result.ANTHROPIC_AUTH_TOKEN).toBe('stored-local-token');
     expect(result.ANTHROPIC_API_KEY).toBe('');
   });
 

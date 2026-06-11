@@ -11,6 +11,7 @@ import {
 import { ApiKeyService } from '../extensions/apikeys/ApiKeyService';
 import { ConfigManager } from '../infrastructure/ConfigManager';
 
+import { readClaudeUserAnthropicSettingsAuthEnv } from './claudeUserSettingsEnv';
 import { isCodexExecBinary } from './codexCliBinary';
 
 import type {
@@ -44,6 +45,7 @@ type ExternalCredential = {
 interface StoredApiKeyAccessOptions {
   allowStoredApiKeyDecryption?: boolean;
   allowedStoredApiKeyEnvVarNames?: readonly string[];
+  allowClaudeUserSettingsAuthEnv?: boolean;
 }
 
 interface CodexLaunchSnapshotRefreshOptions {
@@ -199,6 +201,14 @@ function hasAnthropicCompatibleAuthEnv(env: NodeJS.ProcessEnv): boolean {
   }
 
   return Boolean(env.ANTHROPIC_AUTH_TOKEN?.trim() || env.ANTHROPIC_API_KEY?.trim());
+}
+
+function hasExplicitAnthropicCredentialEnv(env: NodeJS.ProcessEnv): boolean {
+  return Boolean(
+    env.ANTHROPIC_BASE_URL?.trim() ||
+    env.ANTHROPIC_AUTH_TOKEN?.trim() ||
+    env.ANTHROPIC_API_KEY?.trim()
+  );
 }
 
 function isUsableAnthropicCompatibleEndpoint(
@@ -692,6 +702,42 @@ export class ProviderConnectionService {
     return true;
   }
 
+  private async applyClaudeUserAnthropicSettingsAuthEnv(
+    env: NodeJS.ProcessEnv,
+    options?: StoredApiKeyAccessOptions
+  ): Promise<boolean> {
+    if (options?.allowClaudeUserSettingsAuthEnv === false) {
+      return false;
+    }
+
+    if (this.getConfiguredAuthMode('anthropic') !== 'auto') {
+      return false;
+    }
+
+    if (hasExplicitAnthropicCredentialEnv(env)) {
+      return false;
+    }
+
+    const settingsEnv = await readClaudeUserAnthropicSettingsAuthEnv();
+    if (!settingsEnv) {
+      return false;
+    }
+
+    if (settingsEnv.ANTHROPIC_BASE_URL) {
+      env.ANTHROPIC_BASE_URL = settingsEnv.ANTHROPIC_BASE_URL;
+    }
+    if (settingsEnv.ANTHROPIC_API_KEY) {
+      env.ANTHROPIC_API_KEY = settingsEnv.ANTHROPIC_API_KEY;
+      delete env.ANTHROPIC_AUTH_TOKEN;
+      return true;
+    }
+    if (settingsEnv.ANTHROPIC_AUTH_TOKEN) {
+      env.ANTHROPIC_AUTH_TOKEN = settingsEnv.ANTHROPIC_AUTH_TOKEN;
+    }
+    env.ANTHROPIC_API_KEY = '';
+    return true;
+  }
+
   private async getAnthropicCompatibleEndpointConnectionInfo(): Promise<
     NonNullable<CliProviderConnectionInfo['compatibleEndpoint']>
   > {
@@ -746,6 +792,10 @@ export class ProviderConnectionService {
   ): Promise<NodeJS.ProcessEnv> {
     if (providerId === 'anthropic') {
       if (await this.applyConfiguredAnthropicCompatibleEndpointEnv(env, options)) {
+        return env;
+      }
+
+      if (await this.applyClaudeUserAnthropicSettingsAuthEnv(env, options)) {
         return env;
       }
 
@@ -849,6 +899,10 @@ export class ProviderConnectionService {
   ): Promise<NodeJS.ProcessEnv> {
     if (providerId === 'anthropic') {
       if (await this.applyConfiguredAnthropicCompatibleEndpointEnv(env, options)) {
+        return env;
+      }
+
+      if (await this.applyClaudeUserAnthropicSettingsAuthEnv(env, options)) {
         return env;
       }
 
