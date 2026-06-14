@@ -63,6 +63,7 @@ export function createTerminalWorkspaceFeature(
 ): TerminalWorkspaceFeatureFacade {
   const records = new Map<string, TerminalRuntimeRecord>();
   const pending = new Map<string, Promise<TerminalRuntimeRecord>>();
+  const cancelledStarts = new WeakSet<Promise<TerminalRuntimeRecord>>();
 
   async function getBootstrap(
     request: TerminalWorkspaceBootstrapRequest
@@ -81,19 +82,28 @@ export function createTerminalWorkspaceFeature(
 
     try {
       const record = await startPromise;
+      if (cancelledStarts.has(startPromise)) {
+        throw new Error('Terminal runtime start was cancelled');
+      }
       records.set(key, record);
       return toBootstrap(record);
     } finally {
-      pending.delete(key);
+      if (pending.get(key) === startPromise) {
+        pending.delete(key);
+      }
     }
   }
 
   async function stopTeamRuntime(teamName: string): Promise<void> {
     const pendingStart = pending.get(teamName);
     if (pendingStart) {
+      cancelledStarts.add(pendingStart);
       const record = await pendingStart;
+      records.delete(teamName);
       await disposeRecord(record, deps.logger);
-      pending.delete(teamName);
+      if (pending.get(teamName) === pendingStart) {
+        pending.delete(teamName);
+      }
       return;
     }
 

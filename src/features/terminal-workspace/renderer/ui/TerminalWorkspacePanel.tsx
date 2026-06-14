@@ -2299,9 +2299,13 @@ export function inferTerminalCommandOutputStatus(
   const output = outputLines.join('\n').toLowerCase();
   if (
     /(?:^|\n)\s*(?:fatal|error):/u.test(output) ||
+    /(?:^|\n)\s*(?:npm|pnpm|yarn)\s+err!?/u.test(output) ||
+    /(?:^|\n)\s*traceback\s+\(most recent call last\):/u.test(output) ||
+    /(?:^|\n)\s*exception:/u.test(output) ||
     /(?:command not found|no such file or directory|permission denied|not a git repository)/u.test(
       output
-    )
+    ) ||
+    /(?:exit(?:ed)?\s+(?:with\s+)?(?:status|code)|exit\s+code)\s+[1-9]\d*/u.test(output)
   ) {
     return 'failed';
   }

@@ -1,5 +1,3 @@
-import { describe, expect, it } from 'vitest';
-
 import {
   formatTerminalPromptLabel,
   formatWorkingDirectory,
@@ -10,6 +8,7 @@ import {
   type TerminalCommandRunPresentation,
   upsertTerminalCommandRun,
 } from '@features/terminal-workspace/renderer/ui/TerminalWorkspacePanel';
+import { describe, expect, it } from 'vitest';
 
 describe('terminal workspace panel internals fixture-e2e', () => {
   it('formats working directories for compact terminal chrome', () => {
@@ -211,7 +210,46 @@ describe('terminal workspace panel internals fixture-e2e', () => {
     expect(inferTerminalCommandOutputStatus(['zsh: command not found: nope'])).toBe('failed');
     expect(inferTerminalCommandOutputStatus(['fatal: not a git repository'])).toBe('failed');
     expect(inferTerminalCommandOutputStatus(['permission denied'])).toBe('failed');
+    expect(inferTerminalCommandOutputStatus(['ls: nope: No such file or directory'])).toBe(
+      'failed'
+    );
     expect(inferTerminalCommandOutputStatus(['all good'])).toBe('succeeded');
+  });
+
+  it('infers failed status from common process and package-manager failures', () => {
+    expect(inferTerminalCommandOutputStatus(['Command exited with code 1'])).toBe('failed');
+    expect(inferTerminalCommandOutputStatus(['process exit status 2'])).toBe('failed');
+    expect(inferTerminalCommandOutputStatus(['npm ERR! missing script: build'])).toBe('failed');
+    expect(inferTerminalCommandOutputStatus(['pnpm ERR! test failed'])).toBe('failed');
+    expect(
+      inferTerminalCommandOutputStatus([
+        'Traceback (most recent call last):',
+        'ValueError: fixture failed',
+      ])
+    ).toBe('failed');
+  });
+
+  it('does not treat successful output mentioning zero failures as an error', () => {
+    expect(inferTerminalCommandOutputStatus(['Tests: 0 failed, 42 passed'])).toBe('succeeded');
+    expect(inferTerminalCommandOutputStatus(['exit code 0'])).toBe('succeeded');
+  });
+
+  it('keeps quoted shell continuation prompts inside output rather than mixing commands', () => {
+    expect(
+      inferTerminalCommandCompletion(
+        [
+          'shell % printf "TP_QUOTE',
+          'dquote> _OK\\n"',
+          'TP_QUOTE_OK',
+          'shell %',
+          'shell % echo next',
+        ],
+        'printf "TP_QUOTE'
+      )
+    ).toEqual({
+      completed: true,
+      outputLines: ['dquote> _OK\\n"', 'TP_QUOTE_OK'],
+    });
   });
 });
 
