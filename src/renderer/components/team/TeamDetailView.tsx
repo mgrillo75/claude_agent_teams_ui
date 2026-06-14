@@ -1362,8 +1362,13 @@ export const TeamDetailView = memo(function TeamDetailView({
   const [editorOpen, setEditorOpen] = useState(false);
   const [graphOpen, setGraphOpen] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
+  const visualizeButtonRef = useRef<HTMLButtonElement>(null);
   const taskDetailDialogRef = useRef<TaskDetailDialogHostHandle>(null);
   const taskDetailDialogPreloadScheduledRef = useRef(false);
+  const [pinnedVisualizeButtonPosition, setPinnedVisualizeButtonPosition] = useState<{
+    right: number;
+    top: number;
+  } | null>(null);
   const [messagesPanelMountPoint, setMessagesPanelMountPoint] = useState<HTMLDivElement | null>(
     null
   );
@@ -1586,6 +1591,7 @@ export const TeamDetailView = memo(function TeamDetailView({
         : nameColorSet(teamSummaryDisplayName || teamName),
     [teamName, teamSummaryColor, teamSummaryDisplayName]
   );
+  const canTrackVisualizeButton = data?.teamName === teamName;
 
   // Messages panel resize
   const { isResizing: isMessagesPanelResizing, handleProps: messagesPanelHandleProps } =
@@ -1624,6 +1630,56 @@ export const TeamDetailView = memo(function TeamDetailView({
       provisioningBannerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   }, [isTeamProvisioning, isThisTabActive]);
+
+  useEffect(() => {
+    const container = contentRef.current;
+    if (!container || !canTrackVisualizeButton || graphOpen) {
+      setPinnedVisualizeButtonPosition(null);
+      return undefined;
+    }
+
+    let trackedButton: HTMLButtonElement | null = null;
+    const updatePinnedButton = (): void => {
+      const button = visualizeButtonRef.current;
+      const currentContainer = contentRef.current;
+      if (!button || !currentContainer) {
+        setPinnedVisualizeButtonPosition(null);
+        return;
+      }
+
+      trackedButton = button;
+      const containerRect = currentContainer.getBoundingClientRect();
+      const buttonRect = button.getBoundingClientRect();
+      const top = Math.round(containerRect.top + 12);
+      const right = Math.round(Math.max(window.innerWidth - containerRect.right + 16, 16));
+      const shouldPin = currentContainer.scrollTop > 0 && buttonRect.top <= top;
+
+      button.style.visibility = shouldPin ? 'hidden' : '';
+      button.style.pointerEvents = shouldPin ? 'none' : '';
+
+      setPinnedVisualizeButtonPosition((current) => {
+        if (!shouldPin) return current === null ? current : null;
+        if (current?.top === top && current.right === right) return current;
+        return { right, top };
+      });
+    };
+
+    updatePinnedButton();
+    container.addEventListener('scroll', updatePinnedButton, { passive: true });
+    window.addEventListener('resize', updatePinnedButton);
+
+    const resizeObserver =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updatePinnedButton);
+    resizeObserver?.observe(container);
+
+    return () => {
+      trackedButton?.style.removeProperty('visibility');
+      trackedButton?.style.removeProperty('pointer-events');
+      container.removeEventListener('scroll', updatePinnedButton);
+      window.removeEventListener('resize', updatePinnedButton);
+      resizeObserver?.disconnect();
+    };
+  }, [canTrackVisualizeButton, graphOpen]);
 
   const [kanbanSearch, setKanbanSearch] = useState('');
 
@@ -2628,6 +2684,41 @@ export const TeamDetailView = memo(function TeamDetailView({
     ]
   );
 
+  const renderVisualizeButton = (pinned: boolean): React.JSX.Element => (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          ref={pinned ? undefined : visualizeButtonRef}
+          variant="ghost"
+          size="sm"
+          className={cn(
+            'h-8 shrink-0 rounded-full border px-3.5 text-xs font-semibold tracking-[0.02em] transition-all',
+            pinned ? 'pointer-events-auto fixed z-50' : '-mt-2 self-start',
+            !pinned && pinnedVisualizeButtonPosition && 'pointer-events-none invisible',
+            'hover:-translate-y-0.5 hover:brightness-[1.03] active:translate-y-0 active:brightness-[0.98]',
+            isLight
+              ? 'hover:border-sky-400/50'
+              : 'hover:border-cyan-300/50 hover:shadow-[0_14px_32px_rgba(8,145,178,0.28)]'
+          )}
+          style={
+            pinned && pinnedVisualizeButtonPosition
+              ? {
+                  ...visualizeButtonStyle,
+                  right: pinnedVisualizeButtonPosition.right,
+                  top: pinnedVisualizeButtonPosition.top,
+                }
+              : visualizeButtonStyle
+          }
+          onClick={handleOpenGraphTab}
+        >
+          <Network size={13} className="shrink-0" />
+          {t('detail.actions.visualize')}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{t('detail.tooltips.openTeamGraph')}</TooltipContent>
+    </Tooltip>
+  );
+
   if (!teamName) {
     return (
       <div className="flex size-full items-center justify-center p-6 text-sm text-red-400">
@@ -2771,6 +2862,7 @@ export const TeamDetailView = memo(function TeamDetailView({
 
     return (
       <>
+        {pinnedVisualizeButtonPosition ? renderVisualizeButton(true) : null}
         <div className="relative flex size-full overflow-hidden">
           <LeadLoadBridge
             teamName={teamName}
@@ -2900,16 +2992,6 @@ export const TeamDetailView = memo(function TeamDetailView({
                     </Tooltip>
                   </div>
                 </div>
-                {data.config.description && (
-                  <p
-                    className={cn(
-                      'min-w-0 truncate text-xs text-[var(--color-text-muted)]',
-                      headerColorSet && 'relative z-10'
-                    )}
-                  >
-                    {data.config.description}
-                  </p>
-                )}
                 <div
                   className={cn(
                     'mt-1 flex items-start justify-between gap-3',
@@ -2959,29 +3041,7 @@ export const TeamDetailView = memo(function TeamDetailView({
                       </span>
                     )}
                   </div>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className={cn(
-                          '-mt-2 h-8 shrink-0 self-start rounded-full border px-3.5 text-xs font-semibold tracking-[0.02em] transition-all',
-                          'hover:-translate-y-0.5 hover:brightness-[1.03] active:translate-y-0 active:brightness-[0.98]',
-                          isLight
-                            ? 'hover:border-sky-400/50'
-                            : 'hover:border-cyan-300/50 hover:shadow-[0_14px_32px_rgba(8,145,178,0.28)]'
-                        )}
-                        style={visualizeButtonStyle}
-                        onClick={handleOpenGraphTab}
-                      >
-                        <Network size={13} className="shrink-0" />
-                        {t('detail.actions.visualize')}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">
-                      {t('detail.tooltips.openTeamGraph')}
-                    </TooltipContent>
-                  </Tooltip>
+                  {renderVisualizeButton(false)}
                 </div>
                 {(() => {
                   const currentPath = data.config.projectPath;
