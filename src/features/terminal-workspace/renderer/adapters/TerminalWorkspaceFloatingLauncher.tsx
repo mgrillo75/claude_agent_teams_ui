@@ -98,8 +98,8 @@ export const TerminalWorkspaceFloatingLauncher = ({
             size="icon"
             variant="ghost"
             className={cn(
-              'fixed left-4 z-[33] size-11 rounded-full border border-sky-300/30 bg-[#08111a]/70 text-sky-100 shadow-[0_16px_42px_rgba(0,0,0,0.34)] backdrop-blur-xl transition-colors hover:border-sky-300/50 hover:bg-[#0d1a26]/75 hover:text-white',
-              open && 'bg-sky-400/18 border-sky-300/60 text-white',
+              'fixed left-4 z-[33] size-11 rounded-full border border-sky-300/30 bg-[#08111a]/70 text-sky-100 opacity-75 shadow-[0_16px_42px_rgba(0,0,0,0.34)] backdrop-blur-xl transition-colors hover:border-sky-300/50 hover:bg-[#0d1a26]/75 hover:text-white hover:opacity-90',
+              open && 'bg-sky-400/18 border-sky-300/60 text-white opacity-85',
               className
             )}
             style={{ bottom: Math.max(10, bottomOffset) }}
