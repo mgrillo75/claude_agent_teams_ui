@@ -2518,6 +2518,56 @@ describe('TeamProvisioningService', () => {
       expect(run.stdoutParserCarry).not.toBe(hugeIncompleteJson);
     });
 
+    it('bounds live lead cache text without mutating the original message', () => {
+      const svc = new TeamProvisioningService();
+      const hugeText = `start-${'x'.repeat(300_000)}-end`;
+      const message = {
+        from: 'team-lead',
+        text: hugeText,
+        timestamp: '2026-04-19T10:00:01.000Z',
+        read: true,
+        messageId: 'huge-live-message',
+        source: 'lead_process',
+      } as const;
+
+      svc.pushLiveLeadProcessMessage('live-cache-team', message);
+
+      const [cached] = svc.getLiveLeadProcessMessages('live-cache-team');
+      expect(cached?.text.length).toBeLessThan(hugeText.length);
+      expect(cached?.text.length).toBeLessThanOrEqual(256 * 1024);
+      expect(cached?.text).toContain('[truncated live message]');
+      expect(message.text).toBe(hugeText);
+    });
+
+    it('bounds coalesced synthetic live lead text buffers', () => {
+      const svc = new TeamProvisioningService();
+      const run = createClaudeLogsRun({
+        teamName: 'live-buffer-team',
+        provisioningComplete: true,
+        liveLeadTextBuffer: null,
+        pendingToolCalls: [],
+        leadMsgSeq: 0,
+        lastLeadTextEmitMs: 0,
+        request: {
+          members: [{ name: 'team-lead', role: 'Team Lead' }],
+        },
+      });
+      const hugeChunk = 's'.repeat(180_000);
+
+      (svc as any).pushLiveLeadTextMessage(run, hugeChunk, undefined, undefined, {
+        coalesceStreamChunk: true,
+      });
+      (svc as any).pushLiveLeadTextMessage(run, hugeChunk, undefined, undefined, {
+        coalesceStreamChunk: true,
+      });
+
+      expect(run.liveLeadTextBuffer?.text.length).toBeLessThan(hugeChunk.length * 2);
+      expect(run.liveLeadTextBuffer?.text.length).toBeLessThanOrEqual(256 * 1024);
+      expect(run.liveLeadTextBuffer?.text).toContain('[truncated live message]');
+      const [cached] = svc.getLiveLeadProcessMessages('live-buffer-team');
+      expect(cached?.text.length).toBeLessThanOrEqual(256 * 1024);
+    });
+
     it('bounds retained provisioning output parts and keeps message indexes valid', () => {
       const svc = new TeamProvisioningService();
       const run = createClaudeLogsRun({

@@ -1231,6 +1231,7 @@ const STDERR_RING_LIMIT = 64 * 1024;
 const STDOUT_RING_LIMIT = 64 * 1024;
 const CLI_LOG_LINE_CARRY_LIMIT = PROGRESS_RETAINED_LOG_LINE_CHARS;
 const STDOUT_PARSER_CARRY_LIMIT = PROGRESS_RETAINED_LOG_CHARS;
+const LIVE_LEAD_PROCESS_MESSAGE_TEXT_LIMIT = 256 * 1024;
 // Progress emissions fan out the latest CLI tail + assistant output to the
 // renderer over IPC. Under load the previous 300ms cadence combined with an
 // unbounded payload (see `emitLogsProgress`) caused renderer OOM crashes
@@ -2839,6 +2840,32 @@ function boundStdoutParserCarry(carry: string): string {
     return carry;
   }
   return carry.slice(-STDOUT_PARSER_CARRY_LIMIT);
+}
+
+function boundLiveLeadProcessText(text: string): string {
+  if (text.length <= LIVE_LEAD_PROCESS_MESSAGE_TEXT_LIMIT) {
+    return text;
+  }
+  const marker = '\n...[truncated live message]\n';
+  if (LIVE_LEAD_PROCESS_MESSAGE_TEXT_LIMIT <= marker.length) {
+    return text.slice(0, LIVE_LEAD_PROCESS_MESSAGE_TEXT_LIMIT);
+  }
+  const retainedChars = LIVE_LEAD_PROCESS_MESSAGE_TEXT_LIMIT - marker.length;
+  const headChars = Math.floor(retainedChars / 2);
+  const tailChars = retainedChars - headChars;
+  return `${text.slice(0, headChars)}${marker}${text.slice(-tailChars)}`;
+}
+
+function boundLiveLeadProcessMessage(message: InboxMessage): InboxMessage {
+  const text = boundLiveLeadProcessText(message.text);
+  if (text === message.text) {
+    return message;
+  }
+  return {
+    ...message,
+    text,
+    summary: text.length > 60 ? `${text.slice(0, 57)}...` : text,
+  };
 }
 
 function boundRunProvisioningOutputParts(run: ProvisioningRun): void {
@@ -32484,28 +32511,30 @@ export class TeamProvisioningService {
   }
 
   pushLiveLeadProcessMessage(teamName: string, message: InboxMessage): void {
+    let cacheMessage = message;
     // Enrich with leadSessionId if missing — needed for session boundary separators
-    if (!message.leadSessionId) {
+    if (!cacheMessage.leadSessionId) {
       const runId = this.getTrackedRunId(teamName);
       if (runId) {
         const run = this.runs.get(runId);
         if (run?.detectedSessionId) {
-          message.leadSessionId = run.detectedSessionId;
+          cacheMessage = { ...cacheMessage, leadSessionId: run.detectedSessionId };
         }
       }
     }
+    cacheMessage = boundLiveLeadProcessMessage(cacheMessage);
     const MAX = 100;
     const list = this.liveLeadProcessMessages.get(teamName) ?? [];
-    const id = typeof message.messageId === 'string' ? message.messageId.trim() : '';
+    const id = typeof cacheMessage.messageId === 'string' ? cacheMessage.messageId.trim() : '';
     if (id) {
       const existingIdx = list.findIndex((m) => (m.messageId ?? '').trim() === id);
       if (existingIdx >= 0) {
-        list[existingIdx] = message;
+        list[existingIdx] = cacheMessage;
       } else {
-        list.push(message);
+        list.push(cacheMessage);
       }
     } else {
-      list.push(message);
+      list.push(cacheMessage);
     }
     if (list.length > MAX) {
       list.splice(0, list.length - MAX);
@@ -32638,14 +32667,16 @@ export class TeamProvisioningService {
         toolSummary = toolCalls ? formatToolSummaryFromCalls(toolCalls) : undefined;
         run.liveLeadTextBuffer = {
           messageId: `lead-turn-${run.runId}-${run.leadMsgSeq}`,
-          text: cleanText,
+          text: boundLiveLeadProcessText(cleanText),
           timestamp,
           toolCalls,
           toolSummary,
         };
         run.pendingToolCalls = [];
       } else {
-        run.liveLeadTextBuffer.text += cleanText;
+        run.liveLeadTextBuffer.text = boundLiveLeadProcessText(
+          run.liveLeadTextBuffer.text + cleanText
+        );
       }
 
       messageId = run.liveLeadTextBuffer.messageId;
@@ -33581,6 +33612,7 @@ export class TeamProvisioningService {
             capture.textJoinMode = 'block';
           }
           capture.textParts.push(text);
+          capture.textParts = boundProgressAssistantParts(capture.textParts);
           if (capture.idleHandle) {
             clearTimeout(capture.idleHandle);
           }
